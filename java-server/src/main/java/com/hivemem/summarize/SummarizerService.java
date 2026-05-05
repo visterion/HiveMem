@@ -51,9 +51,7 @@ public class SummarizerService {
         this.extractionProps = extractionProps;
         this.repo = repo;
         this.budget = new SummarizeBudgetTracker(dsl, props.getDailyBudgetUsd());
-        this.anthropic = new AnthropicSummarizer(
-                builder, props.getAnthropicApiKey(), props.getModel(),
-                props.getCallTimeoutSeconds(), props.getMaxInputChars());
+        this.anthropic = new AnthropicSummarizer(builder, props);
         this.writeService = writeService;
         this.profileRegistry = profileRegistry;
     }

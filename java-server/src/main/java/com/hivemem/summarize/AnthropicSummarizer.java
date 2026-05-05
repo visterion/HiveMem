@@ -2,7 +2,6 @@ package com.hivemem.summarize;
 
 import com.hivemem.extraction.ExtractionProfile;
 import com.hivemem.extraction.FactSpec;
-import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 import tools.jackson.databind.JsonNode;
@@ -44,29 +43,42 @@ public class AnthropicSummarizer {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final RestClient client;
-    private final String apiKey;
+    private final String tenantToken;
     private final String model;
     private final int maxInputChars;
 
-    public AnthropicSummarizer(RestClient.Builder builder, String apiKey, String model,
-                               int timeoutSeconds, int maxInputChars) {
-        this(builder, apiKey, model, timeoutSeconds, maxInputChars, true);
+    /**
+     * Production constructor — called by SummarizerService via SummarizerProperties.
+     */
+    public AnthropicSummarizer(RestClient.Builder builder, SummarizerProperties props) {
+        SimpleClientHttpRequestFactory rf = new SimpleClientHttpRequestFactory();
+        rf.setConnectTimeout(props.getCallTimeoutSeconds() * 1000);
+        rf.setReadTimeout(props.getCallTimeoutSeconds() * 1000);
+        this.client = builder
+                .baseUrl(props.getVistierieBaseUrl())
+                .requestFactory(rf)
+                .build();
+        this.tenantToken = props.getVistierieToken();
+        this.model = props.getModel();
+        this.maxInputChars = props.getMaxInputChars();
     }
 
-    AnthropicSummarizer(RestClient.Builder builder, String apiKey, String model,
-                        int timeoutSeconds, int maxInputChars, boolean configureRequestFactory) {
-        if (configureRequestFactory) {
-            SimpleClientHttpRequestFactory rf = new SimpleClientHttpRequestFactory();
-            rf.setConnectTimeout(timeoutSeconds * 1000);
-            rf.setReadTimeout(timeoutSeconds * 1000);
-            builder = builder.requestFactory(rf);
-        }
-        this.client = builder.build();
-        this.apiKey = apiKey;
+    /**
+     * Package-private constructor for unit tests — takes a builder + base URL and forces
+     * SimpleClientHttpRequestFactory (HTTP/1.1) so WireMock-standalone works correctly.
+     */
+    AnthropicSummarizer(RestClient.Builder builder, String baseUrl,
+                        String tenantToken, String model, int maxInputChars) {
+        SimpleClientHttpRequestFactory rf = new SimpleClientHttpRequestFactory();
+        rf.setConnectTimeout(30_000);
+        rf.setReadTimeout(30_000);
+        this.client = builder.baseUrl(baseUrl).requestFactory(rf).build();
+        this.tenantToken = tenantToken;
         this.model = model;
         this.maxInputChars = maxInputChars;
     }
 
+    // Public method signature is unchanged — callers are unaffected.
     public SummaryResult summarize(String content, ExtractionProfile profile) {
         String input = (content.length() > maxInputChars)
                 ? content.substring(0, maxInputChars) + "\n\n[truncated]"
@@ -80,26 +92,31 @@ public class AnthropicSummarizer {
                 + String.join(", ", profile.optionalFacts());
 
         Map<String, Object> body = Map.of(
+                "tenant", "hivemem",
+                "purpose", "summarize_cell",
+                "realm", profile.type(),
                 "model", model,
-                "max_tokens", 800,
-                "system", systemPrompt,
-                "messages", List.of(Map.of("role", "user", "content", input))
+                "messages", List.of(
+                        Map.of("role", "system", "content", systemPrompt),
+                        Map.of("role", "user", "content", input)
+                ),
+                "max_tokens", 800
         );
 
         JsonNode resp = client.post()
-                .uri("https://api.anthropic.com/v1/messages")
-                .header("x-api-key", apiKey)
-                .header("anthropic-version", "2023-06-01")
-                .contentType(MediaType.APPLICATION_JSON)
+                .uri("/llm/complete")
+                .header("Authorization", "Bearer " + tenantToken)
+                .header("content-type", "application/json")
                 .body(body)
                 .retrieve()
                 .body(JsonNode.class);
 
-        if (resp == null) throw new IllegalStateException("Anthropic returned null body");
+        if (resp == null) throw new IllegalStateException("Vistierie returned null body");
 
-        String text = resp.path("content").path(0).path("text").asText();
+        // Vistierie envelope: { "text": "<llm output>", "usage": { "inputTokens": N, "outputTokens": M }, ... }
+        String text = resp.path("text").asText();
         if (text == null || text.isBlank()) {
-            throw new IllegalStateException("Anthropic returned empty content");
+            throw new IllegalStateException("Vistierie returned empty text");
         }
 
         JsonNode parsed;
@@ -117,8 +134,9 @@ public class AnthropicSummarizer {
                 ? parsed.path("document_type").asText() : null;
         List<FactSpec> facts = asFactList(parsed.path("facts"));
 
-        int inputTokens = resp.path("usage").path("input_tokens").asInt(0);
-        int outputTokens = resp.path("usage").path("output_tokens").asInt(0);
+        // Vistierie usage fields are camelCase (inputTokens / outputTokens)
+        int inputTokens = resp.path("usage").path("inputTokens").asInt(0);
+        int outputTokens = resp.path("usage").path("outputTokens").asInt(0);
 
         return new SummaryResult(summary, keyPoints, insight, tags,
                 documentType, facts, inputTokens, outputTokens);

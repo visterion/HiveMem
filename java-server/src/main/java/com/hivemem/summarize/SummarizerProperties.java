@@ -10,8 +10,9 @@ import java.time.Duration;
 public class SummarizerProperties {
 
     private boolean enabled = false;
-    private String anthropicApiKey = "";
-    private String model = "claude-haiku-4-5-20251001";
+    private String vistierieBaseUrl = "http://vistierie:8090";
+    private String vistierieToken = "";
+    private String model = "claude-haiku-4-5";
     private double dailyBudgetUsd = 1.00;
     private Duration backfillInterval = Duration.ofMinutes(5);
     private int backfillBatchSize = 10;
@@ -21,8 +22,10 @@ public class SummarizerProperties {
 
     public boolean isEnabled() { return enabled; }
     public void setEnabled(boolean v) { this.enabled = v; }
-    public String getAnthropicApiKey() { return anthropicApiKey; }
-    public void setAnthropicApiKey(String v) { this.anthropicApiKey = v; }
+    public String getVistierieBaseUrl() { return vistierieBaseUrl; }
+    public void setVistierieBaseUrl(String v) { this.vistierieBaseUrl = v; }
+    public String getVistierieToken() { return vistierieToken; }
+    public void setVistierieToken(String v) { this.vistierieToken = v; }
     public String getModel() { return model; }
     public void setModel(String v) { this.model = v; }
     public double getDailyBudgetUsd() { return dailyBudgetUsd; }

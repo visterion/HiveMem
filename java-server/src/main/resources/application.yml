@@ -53,8 +53,9 @@ hivemem:
     export-retention-count: ${HIVEMEM_BACKUP_EXPORT_RETENTION:5}
   summarize:
     enabled: ${HIVEMEM_SUMMARIZE_ENABLED:false}
-    anthropic-api-key: ${ANTHROPIC_API_KEY:}
-    model: ${HIVEMEM_SUMMARIZE_MODEL:claude-haiku-4-5-20251001}
+    vistierie-base-url: ${HIVEMEM_VISTIERIE_BASE_URL:http://vistierie:8090}
+    vistierie-token: ${HIVEMEM_VISTIERIE_TOKEN:}
+    model: ${HIVEMEM_SUMMARIZE_MODEL:claude-haiku-4-5}
     daily-budget-usd: ${HIVEMEM_SUMMARIZE_DAILY_BUDGET:1.00}
     backfill-interval: ${HIVEMEM_SUMMARIZE_BACKFILL_INTERVAL:PT5M}
     backfill-batch-size: ${HIVEMEM_SUMMARIZE_BATCH:10}

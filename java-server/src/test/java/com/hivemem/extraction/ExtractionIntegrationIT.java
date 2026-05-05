@@ -11,17 +11,17 @@ import com.hivemem.sync.PeerClient;
 import com.hivemem.sync.PushDispatcher;
 import com.hivemem.sync.SyncOpsRepository;
 import com.hivemem.sync.SyncPeerRepository;
+import com.hivemem.testsupport.MockVistierieServer;
 import com.hivemem.write.WriteToolRepository;
 import com.hivemem.write.WriteToolService;
 import org.jooq.DSLContext;
 import org.jooq.SQLDialect;
 import org.jooq.impl.DSL;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.http.MediaType;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -36,8 +36,6 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
-import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
-import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
 @Testcontainers
 class ExtractionIntegrationIT {
@@ -50,6 +48,7 @@ class ExtractionIntegrationIT {
                             : cmd.getHostConfig()).withSecurityOpts(java.util.List.of("apparmor=unconfined"))));
 
     private DSLContext dsl;
+    private MockVistierieServer mockVistierie;
 
     @BeforeEach
     void setUp() {
@@ -64,7 +63,13 @@ class ExtractionIntegrationIT {
         dsl.execute("DELETE FROM ops_log");
         dsl.execute("DELETE FROM summarize_usage");
         dsl.execute("INSERT INTO instance_identity (id, instance_id) VALUES (1, gen_random_uuid()) ON CONFLICT DO NOTHING");
+
+        mockVistierie = new MockVistierieServer();
+        mockVistierie.start();
     }
+
+    @AfterEach
+    void tearDown() { mockVistierie.stop(); }
 
     @Test
     void invoiceCellGetsDocumentTypeAndFactsPersisted() throws Exception {
@@ -78,24 +83,15 @@ class ExtractionIntegrationIT {
                             + "ARRAY['needs_summary']::text[], NULL, now(), now())");
         }
 
-        String mockResp = """
-                {
-                  "id":"msg_x","type":"message","model":"haiku",
-                  "usage":{"input_tokens":50,"output_tokens":80},
-                  "content":[{"type":"text","text":"{\\"summary\\":\\"Stadtwerke München – 234.56 EUR\\",\\"key_points\\":[],\\"insight\\":null,\\"tags\\":[\\"invoice\\"],\\"document_type\\":\\"invoice\\",\\"facts\\":[{\\"predicate\\":\\"vendor\\",\\"object\\":\\"Stadtwerke München\\",\\"confidence\\":0.98},{\\"predicate\\":\\"amount_total\\",\\"object\\":\\"234.56\\",\\"confidence\\":0.99},{\\"predicate\\":\\"currency\\",\\"object\\":\\"EUR\\",\\"confidence\\":1.0}]}"}]
-                }
-                """;
+        // Vistierie stub — "text" field is the LLM output JSON that AnthropicSummarizer parses
+        mockVistierie.stubComplete(
+                "{\\\"summary\\\":\\\"Stadtwerke M\\\\u00fcnchen \\\\u2013 234.56 EUR\\\",\\\"key_points\\\":[]," +
+                "\\\"insight\\\":null,\\\"tags\\\":[\\\"invoice\\\"],\\\"document_type\\\":\\\"invoice\\\"," +
+                "\\\"facts\\\":[{\\\"predicate\\\":\\\"vendor\\\",\\\"object\\\":\\\"Stadtwerke M\\\\u00fcnchen\\\"," +
+                "\\\"confidence\\\":0.98},{\\\"predicate\\\":\\\"amount_total\\\",\\\"object\\\":\\\"234.56\\\"," +
+                "\\\"confidence\\\":0.99},{\\\"predicate\\\":\\\"currency\\\",\\\"object\\\":\\\"EUR\\\"," +
+                "\\\"confidence\\\":1.0}]}");
 
-        // Two builders: one is consumed (and mutated) by SummarizerService's internal
-        // AnthropicSummarizer; the other is bound to MockRestServiceServer and used to
-        // build a replacement AnthropicSummarizer below.
-        RestClient.Builder serviceBuilder = RestClient.builder();
-        RestClient.Builder mockBuilder = RestClient.builder();
-        MockRestServiceServer server = MockRestServiceServer.bindTo(mockBuilder).build();
-        server.expect(requestTo("https://api.anthropic.com/v1/messages"))
-                .andRespond(withSuccess(mockResp, MediaType.APPLICATION_JSON));
-
-        // Build the service stack identical to SummarizerServiceIT
         SummarizerRepository repo = new SummarizerRepository(dsl);
         WriteToolRepository writeRepo = new WriteToolRepository(dsl);
         InstanceConfig instanceConfig = new InstanceConfig(dsl);
@@ -113,28 +109,16 @@ class ExtractionIntegrationIT {
 
         SummarizerProperties props = new SummarizerProperties();
         props.setEnabled(true);
-        props.setAnthropicApiKey("k");
-        props.setModel("claude-haiku-4-5-20251001");
+        props.setVistierieBaseUrl(mockVistierie.baseUrl());
+        props.setVistierieToken("test-token");
+        props.setModel("claude-haiku-4-5");
         props.setDailyBudgetUsd(1.0);
 
         ExtractionProperties extractionProps = new ExtractionProperties();
         ExtractionProfileRegistry registry = new ExtractionProfileRegistry();
 
         SummarizerService service = new SummarizerService(
-                props, extractionProps, repo, dsl, serviceBuilder, writeService, registry);
-
-        // SummarizerService's default-constructed AnthropicSummarizer overrides the request
-        // factory, which would unbind MockRestServiceServer. Replace it with one that does
-        // NOT override the factory, so the mock binding survives. The package-private
-        // constructor is reached via reflection.
-        var pkgCtor = AnthropicSummarizer.class.getDeclaredConstructor(
-                RestClient.Builder.class, String.class, String.class, int.class, int.class, boolean.class);
-        pkgCtor.setAccessible(true);
-        AnthropicSummarizer mockedAnthropic = pkgCtor.newInstance(
-                mockBuilder, "k", "claude-haiku-4-5-20251001", 30, 8000, false);
-        var anthropicField = SummarizerService.class.getDeclaredField("anthropic");
-        anthropicField.setAccessible(true);
-        anthropicField.set(service, mockedAnthropic);
+                props, extractionProps, repo, dsl, RestClient.builder(), writeService, registry);
 
         var summarizeOne = SummarizerService.class.getDeclaredMethod("summarizeOne", UUID.class);
         summarizeOne.setAccessible(true);

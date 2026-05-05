@@ -4,22 +4,23 @@ import com.hivemem.auth.AuthPrincipal;
 import com.hivemem.auth.AuthRole;
 import com.hivemem.embedding.EmbeddingClient;
 import com.hivemem.embedding.FixedEmbeddingClient;
+import com.hivemem.extraction.ExtractionProfile;
 import com.hivemem.sync.InstanceConfig;
 import com.hivemem.sync.OpLogWriter;
 import com.hivemem.sync.PeerClient;
 import com.hivemem.sync.PushDispatcher;
 import com.hivemem.sync.SyncOpsRepository;
 import com.hivemem.sync.SyncPeerRepository;
+import com.hivemem.testsupport.MockVistierieServer;
 import com.hivemem.write.WriteToolRepository;
 import com.hivemem.write.WriteToolService;
 import org.jooq.DSLContext;
 import org.jooq.SQLDialect;
 import org.jooq.impl.DSL;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.http.MediaType;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -31,12 +32,11 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.Statement;
+import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
-import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
-import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
 @Testcontainers
 class SummarizerServiceIT {
@@ -49,6 +49,7 @@ class SummarizerServiceIT {
                             : cmd.getHostConfig()).withSecurityOpts(java.util.List.of("apparmor=unconfined"))));
 
     private DSLContext dsl;
+    private MockVistierieServer mockVistierie;
 
     @BeforeEach
     void setUp() {
@@ -60,9 +61,14 @@ class SummarizerServiceIT {
         dsl.execute("DELETE FROM cells");
         dsl.execute("DELETE FROM summarize_usage");
         dsl.execute("DELETE FROM ops_log");
-        // Seed instance_identity so OpLogWriter works
         dsl.execute("INSERT INTO instance_identity (id, instance_id) VALUES (1, gen_random_uuid()) ON CONFLICT DO NOTHING");
+
+        mockVistierie = new MockVistierieServer();
+        mockVistierie.start();
     }
+
+    @AfterEach
+    void tearDown() { mockVistierie.stop(); }
 
     @Test
     void summarizesLongCell_endToEnd() throws Exception {
@@ -77,21 +83,10 @@ class SummarizerServiceIT {
                             + "ARRAY['needs_summary']::text[], NULL, now(), now())");
         }
 
-        // --- Build mock Anthropic response ---
-        String anthropicResp = """
-                {
-                  "id":"msg_x","type":"message","model":"haiku",
-                  "usage":{"input_tokens":2000,"output_tokens":50},
-                  "content":[{"type":"text","text":"{\\"summary\\":\\"Mocked summary about a long cell.\\",\\"key_points\\":[\\"a\\"],\\"insight\\":\\"i\\",\\"tags\\":[\\"x\\"],\\"document_type\\":\\"other\\",\\"facts\\":[]}"}]
-                }
-                """;
-
-        // Build a RestClient.Builder, bind MockRestServiceServer FIRST, then construct
-        // AnthropicSummarizer with configureRequestFactory=false so the mock binding survives.
-        RestClient.Builder builder = RestClient.builder();
-        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
-        server.expect(requestTo("https://api.anthropic.com/v1/messages"))
-                .andRespond(withSuccess(anthropicResp, MediaType.APPLICATION_JSON));
+        // Vistierie stub: the "text" field contains the JSON that AnthropicSummarizer parses
+        mockVistierie.stubComplete(
+                "{\\\"summary\\\":\\\"Mocked summary about a long cell.\\\",\\\"key_points\\\":[\\\"a\\\"]," +
+                "\\\"insight\\\":\\\"i\\\",\\\"tags\\\":[\\\"x\\\"],\\\"document_type\\\":\\\"other\\\",\\\"facts\\\":[]}");
 
         // --- Build the service stack ---
         SummarizerRepository repo = new SummarizerRepository(dsl);
@@ -99,16 +94,13 @@ class SummarizerServiceIT {
 
         EmbeddingClient embedding = new FixedEmbeddingClient();
 
-        // InstanceConfig backed by the real testcontainer DB
         InstanceConfig instanceConfig = new InstanceConfig(dsl);
-        // initialize() is package-private (@PostConstruct); invoke via reflection
         var initMethod = InstanceConfig.class.getDeclaredMethod("initialize");
         initMethod.setAccessible(true);
         initMethod.invoke(instanceConfig);
 
         OpLogWriter opLogWriter = new OpLogWriter(dsl, instanceConfig, new ObjectMapper());
 
-        // PushDispatcher: mock its dependencies so dispatch() is a no-op
         SyncPeerRepository peerRepo = mock(SyncPeerRepository.class);
         SyncOpsRepository syncOpsRepo = mock(SyncOpsRepository.class);
         PeerClient peerClient = mock(PeerClient.class);
@@ -119,35 +111,33 @@ class SummarizerServiceIT {
         WriteToolService writeService = new WriteToolService(
                 writeRepo, embedding, opLogWriter, pushDispatcher, noopPublisher);
 
-        // AnthropicSummarizer with configureRequestFactory=false — uses mock-bound RestClient
+        // Build AnthropicSummarizer directly against the mock Vistierie server
         AnthropicSummarizer anthropic = new AnthropicSummarizer(
-                builder, "test-key", "claude-haiku-4-5-20251001", 30, 8000, false);
+                RestClient.builder(),
+                mockVistierie.baseUrl(),
+                "test-token",
+                "claude-haiku-4-5",
+                8000);
 
         SummarizeBudgetTracker budget = new SummarizeBudgetTracker(dsl, 10.00);
 
         // --- Execute the same sequence as SummarizerService.summarizeOne ---
         var snap = repo.findCellSnapshot(id).orElseThrow(
                 () -> new AssertionError("Cell not found — check status/valid_until conditions"));
-        com.hivemem.extraction.ExtractionProfile profile =
-                new com.hivemem.extraction.ExtractionProfile(
-                        "other", "p", java.util.List.of("topic"),
-                        java.util.List.of(), null, java.util.List.of());
+        ExtractionProfile profile = new ExtractionProfile(
+                "other", "p", List.of("topic"), List.of(), null, List.of());
         var result = anthropic.summarize(snap.content(), profile);
         budget.recordCall(result.inputTokens(), result.outputTokens());
         var reviseResult = writeService.reviseCell(
                 new AuthPrincipal("system-summarizer", AuthRole.ADMIN),
                 id, snap.content(), result.summary());
-        // Remove needs_summary from old cell and from the new revision (which inherits tags)
         repo.removeNeedsSummaryTag(id);
         Object newIdObj = reviseResult.get("new_id");
         if (newIdObj != null) {
             repo.removeNeedsSummaryTag(UUID.fromString(newIdObj.toString()));
         }
 
-        server.verify();
-
         // --- Assertions ---
-        // reviseCell creates a NEW row; look for the latest committed cell with a summary
         try (Connection c = DriverManager.getConnection(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword());
              Statement st = c.createStatement();
              ResultSet rs = st.executeQuery(
@@ -162,13 +152,13 @@ class SummarizerServiceIT {
                     "needs_summary tag should be absent on the new revision");
         }
 
-        // Budget row was recorded
+        // Budget row was recorded — usage comes from mock (inputTokens=10, outputTokens=3)
         try (Connection c = DriverManager.getConnection(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword());
              Statement st = c.createStatement();
              ResultSet rs = st.executeQuery("SELECT total_calls, total_input_tokens FROM summarize_usage")) {
             assertTrue(rs.next(), "Expected a summarize_usage row");
             assertEquals(1, rs.getInt("total_calls"));
-            assertEquals(2000, rs.getInt("total_input_tokens"));
+            assertEquals(10, rs.getInt("total_input_tokens"));
         }
     }
 }
