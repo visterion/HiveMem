@@ -2,6 +2,7 @@
 // familiar names. Task 5 will replace this with the useApi composable, and
 // Task 22 will rewire hive/*.vue to the new MockApiClient / HttpApiClient.
 import { palace } from '../data/mock'
+import { readEnv } from './env'
 import type { Cell } from './types'
 
 export interface HivememApi {
@@ -32,8 +33,8 @@ export function createHttpClient(_url: string, _token: string): HivememApi {
 }
 
 function selectClient(): HivememApi {
-  const url = import.meta.env.VITE_HIVEMEM_URL
-  const token = import.meta.env.VITE_HIVEMEM_TOKEN
+  const url = readEnv('VITE_HIVEMEM_URL')
+  const token = readEnv('VITE_HIVEMEM_TOKEN')
   if (url && token) {
     console.warn('[hivemem] HTTP client not implemented in Phase 1, using mock')
   }

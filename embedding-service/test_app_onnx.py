@@ -4,6 +4,7 @@ import sys
 import tempfile
 import types
 import unittest
+from os import environ as _ENV
 from pathlib import Path
 from unittest import mock
 
@@ -54,8 +55,8 @@ def stub_modules():
 class AppOnnxConfigTest(unittest.TestCase):
     def setUp(self):
         self.module_name = "embedding_service_app_onnx"
-        self.env = mock.patch.dict(os.environ, {"EMBEDDING_SKIP_BOOTSTRAP": "1"}, clear=False)
-        self.env.start()
+        self.env_patch = mock.patch.dict(_ENV, {"EMBEDDING_SKIP_BOOTSTRAP": "1"}, clear=False)
+        self.env_patch.start()
         self.modules = mock.patch.dict(sys.modules, stub_modules())
         self.modules.start()
         sys.modules.pop(self.module_name, None)
@@ -63,12 +64,12 @@ class AppOnnxConfigTest(unittest.TestCase):
     def tearDown(self):
         sys.modules.pop(self.module_name, None)
         self.modules.stop()
-        self.env.stop()
+        self.env_patch.stop()
 
     def test_resolve_model_dir_prefers_manual_path(self):
         with tempfile.TemporaryDirectory() as model_dir:
             with mock.patch.dict(
-                os.environ,
+                _ENV,
                 {"EMBEDDING_SKIP_BOOTSTRAP": "1", "MODEL_PATH": model_dir},
                 clear=True,
             ):
@@ -80,7 +81,7 @@ class AppOnnxConfigTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as model_dir:
             Path(model_dir, "custom.onnx").write_text("x")
             with mock.patch.dict(
-                os.environ,
+                _ENV,
                 {"EMBEDDING_SKIP_BOOTSTRAP": "1", "ONNX_FILE": "custom.onnx"},
                 clear=True,
             ):
@@ -97,7 +98,7 @@ class AppOnnxConfigTest(unittest.TestCase):
 
     def test_build_info_reports_repo_only_for_cached_models(self):
         with mock.patch.dict(
-            os.environ,
+            _ENV,
             {
                 "EMBEDDING_SKIP_BOOTSTRAP": "1",
                 "MODEL_REPO": "acme/model",
