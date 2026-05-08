@@ -1,4 +1,4 @@
-FROM node:25-alpine AS ui-build
+FROM node:26-alpine AS ui-build
 
 WORKDIR /ui
 COPY knowledge-ui/package.json knowledge-ui/package-lock.json ./
