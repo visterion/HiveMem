@@ -94,7 +94,11 @@ public class HookContextService {
         for (RankedRow r : filtered) {
             cache.recordInjection(sessionKey, r.id(), turn);
         }
-        return formatter.format(filtered, turn);
+        // TODO Task 4: populate refs from findReferencesForCells
+        List<CellWithCitation> cells = filtered.stream()
+                .map(r -> new CellWithCitation(r, List.of()))
+                .toList();
+        return formatter.format(cells, turn);
     }
 
     private String extractProjectHint(String cwd) {

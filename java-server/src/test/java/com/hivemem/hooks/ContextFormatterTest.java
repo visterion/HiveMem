@@ -13,19 +13,25 @@ class ContextFormatterTest {
 
     private final ContextFormatter f = new ContextFormatter();
 
+    private CellWithCitation cell(RankedRow row, List<ReferenceInfo> refs) {
+        return new CellWithCitation(row, refs);
+    }
+
+    private RankedRow row(UUID id, String summary, String realm, String topic, OffsetDateTime validFrom) {
+        return new RankedRow(id, "content", summary, realm, "facts", topic, List.of(), 3,
+                OffsetDateTime.now(), validFrom, null,
+                0.8, 0.0, 0.0, 0.0, 0.0, 0.0, 0.85);
+    }
+
     @Test
     void formatsSingleCellAsCompactXmlWithTurn() {
         UUID id = UUID.fromString("11111111-1111-1111-1111-111111111111");
-        RankedRow row = new RankedRow(id, "full",
-                "Phase 3 plan: SDK wrapper, 4 weeks",
-                "engineering", "facts", "events", List.of("plan"), 1,
-                OffsetDateTime.now(), null, null,
-                0.8, 0.0, 0.0, 0.0, 0.0, 0.0, 0.85);
+        var c = cell(row(id, "Phase 3 plan: SDK wrapper, 4 weeks", "engineering", "events",
+                OffsetDateTime.parse("2025-03-01T00:00:00Z")), List.of());
 
-        String out = f.format(List.of(row), 23);
+        String out = f.format(List.of(c), 23);
 
         assertThat(out).startsWith("<hivemem_context turn=\"23\">");
-        assertThat(out).contains("(id: 11111111-1111-1111-1111-111111111111)");
         assertThat(out).contains("Phase 3 plan: SDK wrapper, 4 weeks");
         assertThat(out).endsWith("</hivemem_context>");
     }
@@ -42,8 +48,8 @@ class ContextFormatterTest {
 
     @Test
     void multipleCellsRenderAsBulletList() {
-        RankedRow a = sampleRow(UUID.randomUUID(), "first summary");
-        RankedRow b = sampleRow(UUID.randomUUID(), "second summary");
+        var a = cell(row(UUID.randomUUID(), "first summary", "r", "t", null), List.of());
+        var b = cell(row(UUID.randomUUID(), "second summary", "r", "t", null), List.of());
 
         String out = f.format(List.of(a, b), 7);
 
@@ -53,21 +59,71 @@ class ContextFormatterTest {
 
     @Test
     void fallsBackToContentWhenSummaryIsBlank() {
-        UUID id = UUID.randomUUID();
-        RankedRow row = new RankedRow(id, "this is the full content",
-                "", // blank summary
-                "r", "s", "t", List.of(), 3,
+        RankedRow r = new RankedRow(UUID.randomUUID(), "this is the full content",
+                "", "r", "facts", "t", List.of(), 3,
                 OffsetDateTime.now(), null, null,
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.5);
 
-        String out = f.format(List.of(row), 1);
+        String out = f.format(List.of(cell(r, List.of())), 1);
 
         assertThat(out).contains("this is the full content");
     }
 
-    private RankedRow sampleRow(UUID id, String summary) {
-        return new RankedRow(id, "x", summary, "r", "s", "t",
-                List.of(), 3, OffsetDateTime.now(), null, null,
-                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.5);
+    @Test
+    void sourceLineWithoutReferenceContainsCellIdAndYear() {
+        UUID id = UUID.fromString("abcdef01-0000-0000-0000-000000000000");
+        var c = cell(row(id, "summary", "engineering", "hivemem",
+                OffsetDateTime.parse("2025-06-15T00:00:00Z")), List.of());
+
+        String out = f.format(List.of(c), 1);
+
+        assertThat(out).contains("[Quelle: engineering/hivemem · Cell abcdef01 · 2025]");
+    }
+
+    @Test
+    void sourceLineWithReferenceContainsTitleAndUrl() {
+        UUID id = UUID.randomUUID();
+        ReferenceInfo ref = new ReferenceInfo(id, "Great Article", "https://example.com/art");
+        var c = cell(row(id, "summary", "engineering", "hivemem", null), List.of(ref));
+
+        String out = f.format(List.of(c), 1);
+
+        assertThat(out).contains("[Quelle: engineering/hivemem · Great Article — https://example.com/art]");
+    }
+
+    @Test
+    void sourceLineWithMultipleReferencesUsesFirst() {
+        UUID id = UUID.randomUUID();
+        ReferenceInfo first = new ReferenceInfo(id, "First", "https://first.com");
+        ReferenceInfo second = new ReferenceInfo(id, "Second", "https://second.com");
+        var c = cell(row(id, "summary", "r", "t", null), List.of(first, second));
+
+        String out = f.format(List.of(c), 1);
+
+        assertThat(out).contains("First");
+        assertThat(out).doesNotContain("Second");
+    }
+
+    @Test
+    void sourceLineWithoutValidFromOmitsYear() {
+        UUID id = UUID.fromString("abcdef01-0000-0000-0000-000000000000");
+        var c = cell(row(id, "summary", "r", "t", null), List.of());
+
+        String out = f.format(List.of(c), 1);
+
+        assertThat(out).contains("[Quelle: r/t · Cell abcdef01]");
+        assertThat(out).doesNotContain("·  ·");
+    }
+
+    @Test
+    void sourceLineWithReferenceAndNullUrlOmitsUrl() {
+        UUID id = UUID.randomUUID();
+        ReferenceInfo ref = new ReferenceInfo(id, "Book Without URL", null);
+        var c = cell(row(id, "summary", "r", "t", null), List.of(ref));
+
+        String out = f.format(List.of(c), 1);
+
+        assertThat(out).contains("[Quelle: r/t · Book Without URL]");
+        assertThat(out).doesNotContain("—");
     }
 }
