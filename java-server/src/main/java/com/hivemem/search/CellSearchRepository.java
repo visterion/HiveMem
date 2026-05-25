@@ -7,7 +7,9 @@ import org.springframework.stereotype.Repository;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Repository
@@ -105,6 +107,28 @@ public class CellSearchRepository {
             double scoreTotal
     ) {
     }
+
+    public Map<UUID, List<RefRow>> findReferencesForCells(List<UUID> cellIds) {
+        if (cellIds == null || cellIds.isEmpty()) return Map.of();
+        UUID[] arr = cellIds.toArray(UUID[]::new);
+        String sql = """
+                SELECT cr.cell_id, r.title, r.url
+                FROM cell_references cr
+                JOIN references_ r ON r.id = cr.reference_id
+                WHERE cr.cell_id = ANY(?::uuid[])
+                """;
+        Map<UUID, List<RefRow>> result = new HashMap<>();
+        for (UUID id : cellIds) result.put(id, new ArrayList<>());
+        for (Record row : dslContext.fetch(sql, (Object) arr)) {
+            UUID cellId = row.get("cell_id", UUID.class);
+            String title = row.get("title", String.class);
+            String url = row.get("url", String.class);
+            result.get(cellId).add(new RefRow(cellId, title, url));
+        }
+        return result;
+    }
+
+    public record RefRow(UUID cellId, String title, String url) {}
 
     private static List<String> textArray(Record row, String field) {
         String[] values = row.get(field, String[].class);
