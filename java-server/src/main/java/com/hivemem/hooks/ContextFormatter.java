@@ -30,11 +30,11 @@ public class ContextFormatter {
             }
             return "[Quelle: " + base + " · " + ref.title() + "]";
         }
-        String cellShort = r.id().toString().substring(0, 8);
+        String cellId = r.id().toString();
         if (r.validFrom() != null) {
-            return "[Quelle: " + base + " · Cell " + cellShort + " · " + r.validFrom().getYear() + "]";
+            return "[Quelle: " + base + " · Cell " + cellId + " · " + r.validFrom().getYear() + "]";
         }
-        return "[Quelle: " + base + " · Cell " + cellShort + "]";
+        return "[Quelle: " + base + " · Cell " + cellId + "]";
     }
 
     private String safeSummary(RankedRow r) {

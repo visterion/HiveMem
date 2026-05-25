@@ -31,16 +31,16 @@ public class HooksController {
                 req == null ? "?" : req.hook_event_name(),
                 req == null || req.prompt() == null ? 0 : req.prompt().length(),
                 threshold, maxCells);
-        String additional;
+        ContextResult result;
         try {
-            ContextResult contextResult = service.contextFor(req, threshold, maxCells);
-            additional = contextResult.formattedContext();
+            result = service.contextFor(req, threshold, maxCells);
         } catch (RuntimeException e) {
             log.warn("Hook context failed; returning empty injection", e);
-            additional = "";
+            result = ContextResult.empty();
         }
         String eventName = req != null && req.hook_event_name() != null
                 ? req.hook_event_name() : "UserPromptSubmit";
-        return ResponseEntity.ok(HookContextResponse.of(eventName, additional));
+        return ResponseEntity.ok(
+                HookContextResponse.of(eventName, result.formattedContext(), result.citedSources()));
     }
 }
