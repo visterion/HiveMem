@@ -88,6 +88,20 @@ The `search` tool combines 6 signals with configurable weights:
 
 Weights are configurable via `hivemem.search.weights` in `application.yml` and per-call via the MCP `search` arguments (`weight_semantic`, `weight_keyword`, `weight_recency`, `weight_importance`, `weight_popularity`, `weight_graph_proximity`).
 
+#### Confidence Level
+
+Each search result includes a `confidence_level` field indicating how strongly the result is supported by the query:
+
+| Level | score_total | Meaning |
+|-------|-------------|---------|
+| `HIGH` | ≥ 0.80 | Strong evidence — safe to use as primary context |
+| `MEDIUM` | ≥ 0.65 | Reasonable match — use with normal attribution |
+| `LOW` | ≥ 0.55 | Weak match — use cautiously, consider caveating |
+| `NONE` | < 0.55 | Below minimum threshold — treat as background noise |
+
+Thresholds are configurable via `hivemem.search.confidence.high/medium/low` in `application.yml`.
+`score_total` (the raw numeric value) is always present alongside `confidence_level`.
+
 `search` defaults to `summary`, `tags`, `importance`, and `created_at` plus required identity fields (`id`, `realm`, `signal`, `topic`). `get_cell` defaults to `summary`, `key_points`, `insight`, `tags`, `importance`, `source`, and `created_at` plus the same required identity fields. Pass `include` to request a specific subset of optional fields, including `content`.
 
 ## Progressive Summarization
