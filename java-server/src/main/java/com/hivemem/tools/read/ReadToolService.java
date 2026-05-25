@@ -4,6 +4,8 @@ import com.hivemem.auth.AuthPrincipal;
 import com.hivemem.cells.CellReadRepository;
 import com.hivemem.embedding.EmbeddingClient;
 import com.hivemem.search.CellSearchRepository;
+import com.hivemem.search.ConfidenceLevel;
+import com.hivemem.search.ConfidenceThresholds;
 import com.hivemem.search.KgSearchRepository;
 import com.hivemem.search.SearchWeightsProperties;
 import com.hivemem.write.AdminToolService;
@@ -25,6 +27,7 @@ public class ReadToolService {
     private final EmbeddingClient embeddingClient;
     private final AdminToolService adminToolService;
     private final SearchWeightsProperties searchWeightsProperties;
+    private final ConfidenceThresholds confidenceThresholds;
 
     public ReadToolService(
             CellReadRepository cellReadRepository,
@@ -32,7 +35,8 @@ public class ReadToolService {
             CellSearchRepository cellSearchRepository,
             EmbeddingClient embeddingClient,
             AdminToolService adminToolService,
-            SearchWeightsProperties searchWeightsProperties
+            SearchWeightsProperties searchWeightsProperties,
+            ConfidenceThresholds confidenceThresholds
     ) {
         this.cellReadRepository = cellReadRepository;
         this.kgSearchRepository = kgSearchRepository;
@@ -40,6 +44,7 @@ public class ReadToolService {
         this.embeddingClient = embeddingClient;
         this.adminToolService = adminToolService;
         this.searchWeightsProperties = searchWeightsProperties;
+        this.confidenceThresholds = confidenceThresholds;
     }
 
     public Map<String, Object> status() {
@@ -82,7 +87,10 @@ public class ReadToolService {
                 weightSemantic, weightKeyword, weightRecency, weightImportance, weightPopularity,
                 weightGraphProximity
         );
-        return rows.stream().map(row -> projectRow(row, selection)).toList();
+        return rows.stream()
+                .map(row -> projectRow(row, selection,
+                        ConfidenceLevel.from(row.scoreTotal(), confidenceThresholds)))
+                .toList();
     }
 
     public List<Map<String, Object>> searchKg(String subject, String predicate, String object_, int limit) {
@@ -147,7 +155,11 @@ public class ReadToolService {
         return cellReadRepository.streamSnapshot(cellLimit, tunnelLimit);
     }
 
-    private static Map<String, Object> projectRow(CellSearchRepository.RankedRow row, CellFieldSelection selection) {
+    private static Map<String, Object> projectRow(
+            CellSearchRepository.RankedRow row,
+            CellFieldSelection selection,
+            ConfidenceLevel confidenceLevel
+    ) {
         Map<String, Object> values = new LinkedHashMap<>();
         values.put("id", row.id().toString());
         values.put("realm", row.realm());
@@ -167,6 +179,7 @@ public class ReadToolService {
         projected.put("score_importance", rounded(row.scoreImportance()));
         projected.put("score_popularity", rounded(row.scorePopularity()));
         projected.put("score_total", rounded(row.scoreTotal()));
+        projected.put("confidence_level", confidenceLevel.name());
         return projected;
     }
 

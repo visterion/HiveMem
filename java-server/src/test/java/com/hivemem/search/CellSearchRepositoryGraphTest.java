@@ -171,6 +171,7 @@ class CellSearchRepositoryGraphTest {
             WriteToolRepository.class,
             ReadToolService.class,
             SearchWeightsProperties.class,
+            ConfidenceThresholds.class,
             CellReadRepository.class,
             CellSearchRepository.class,
             KgSearchRepository.class,

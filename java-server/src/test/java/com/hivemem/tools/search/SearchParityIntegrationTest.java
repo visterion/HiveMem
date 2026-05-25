@@ -454,6 +454,34 @@ class SearchParityIntegrationTest {
     }
 
     @Test
+    void rankedSearchReturnsConfidenceLevel() throws Exception {
+        insertDrawer(
+                UUID.fromString("00000000-0000-0000-0000-000000000802"),
+                "PostgreSQL confidence level probe content",
+                "eng",
+                "facts",
+                "db",
+                2,
+                "confidence level probe",
+                "committed",
+                OffsetDateTime.parse("2026-04-03T10:00:00Z")
+        );
+
+        JsonNode results = callTool("writer-token", "search", Map.of(
+                "query", "confidence level probe",
+                "limit", 10
+        ));
+
+        assertThat(results).isNotEmpty();
+        JsonNode first = results.get(0);
+        assertThat(first.has("confidence_level")).isTrue();
+        assertThat(first.path("confidence_level").asText())
+                .isIn("HIGH", "MEDIUM", "LOW", "NONE");
+        // score_total must still be present (backward compat)
+        assertThat(first.path("score_total").isNumber()).isTrue();
+    }
+
+    @Test
     void validUntilIsExposedWhenIncluded() throws Exception {
         insertDrawer(
                 UUID.fromString("00000000-0000-0000-0000-000000000bb1"),
