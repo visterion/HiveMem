@@ -75,7 +75,7 @@ class HooksAuditLoggingTest {
 
     @Test
     void hookCallEmitsAuditLogLineWithoutPromptContent(CapturedOutput output) throws Exception {
-        Mockito.when(hookContextService.contextFor(any())).thenReturn("");
+        Mockito.when(hookContextService.contextFor(any())).thenReturn(ContextResult.empty());
 
         String secret = "super secret prompt that must not appear in logs";
         String body = om.writeValueAsString(Map.of(

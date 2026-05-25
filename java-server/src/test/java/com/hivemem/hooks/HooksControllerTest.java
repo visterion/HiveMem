@@ -75,7 +75,7 @@ class HooksControllerTest {
     @Test
     void returnsFormattedContextOnHit() throws Exception {
         Mockito.when(hookContextService.contextFor(any(), any(), any()))
-                .thenReturn("<hivemem_context turn=\"1\">hello</hivemem_context>");
+                .thenReturn(new ContextResult("<hivemem_context turn=\"1\">hello</hivemem_context>", java.util.List.of()));
 
         mockMvc.perform(post("/hooks/context")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer good-token")
@@ -89,7 +89,7 @@ class HooksControllerTest {
 
     @Test
     void returnsEmptyContextOnSkip() throws Exception {
-        Mockito.when(hookContextService.contextFor(any(), any(), any())).thenReturn("");
+        Mockito.when(hookContextService.contextFor(any(), any(), any())).thenReturn(ContextResult.empty());
 
         mockMvc.perform(post("/hooks/context")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer good-token")

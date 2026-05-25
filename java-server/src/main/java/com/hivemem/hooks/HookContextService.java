@@ -12,6 +12,8 @@ import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -46,14 +48,14 @@ public class HookContextService {
         this.props = props;
     }
 
-    public String contextFor(HookContextRequest req) {
+    public ContextResult contextFor(HookContextRequest req) {
         return contextFor(req, null, null);
     }
 
-    public String contextFor(HookContextRequest req, Double thresholdOverride, Integer maxCellsOverride) {
-        if (!props.isEnabled()) return "";
-        if (req == null || req.prompt() == null) return "";
-        if (skipHeuristics.evaluate(req.prompt()).skip()) return "";
+    public ContextResult contextFor(HookContextRequest req, Double thresholdOverride, Integer maxCellsOverride) {
+        if (!props.isEnabled()) return ContextResult.empty();
+        if (req == null || req.prompt() == null) return ContextResult.empty();
+        if (skipHeuristics.evaluate(req.prompt()).skip()) return ContextResult.empty();
 
         String sessionKey = req.session_id() == null ? "_" : req.session_id();
         int turn = turnCounters
@@ -70,7 +72,7 @@ public class HookContextService {
                     w.importance(), w.popularity(), w.graphProximity());
         } catch (RuntimeException e) {
             log.warn("Hook search failed; returning empty context", e);
-            return "";
+            return ContextResult.empty();
         }
 
         double threshold = thresholdOverride != null ? thresholdOverride : props.getRelevanceThreshold();
@@ -90,15 +92,38 @@ public class HookContextService {
                 .limit(maxCells)
                 .toList();
 
-        if (filtered.isEmpty()) return "";
+        if (filtered.isEmpty()) return ContextResult.empty();
+
         for (RankedRow r : filtered) {
             cache.recordInjection(sessionKey, r.id(), turn);
         }
-        // TODO Task 4: populate refs from findReferencesForCells
-        List<CellWithCitation> cells = filtered.stream()
-                .map(r -> new CellWithCitation(r, List.of()))
+
+        List<UUID> cellIds = filtered.stream().map(RankedRow::id).toList();
+        Map<UUID, List<CellSearchRepository.RefRow>> refMap =
+                searchRepository.findReferencesForCells(cellIds);
+
+        List<CellWithCitation> enriched = filtered.stream()
+                .map(r -> new CellWithCitation(r,
+                        refMap.getOrDefault(r.id(), List.of()).stream()
+                                .map(ref -> new ReferenceInfo(ref.cellId(), ref.title(), ref.url()))
+                                .toList()))
                 .toList();
-        return formatter.format(cells, turn);
+
+        List<SourceAttribution> attributions = enriched.stream()
+                .map(c -> {
+                    RankedRow r = c.row();
+                    Integer year = r.validFrom() != null ? r.validFrom().getYear() : null;
+                    if (!c.refs().isEmpty()) {
+                        ReferenceInfo ref = c.refs().get(0);
+                        return new SourceAttribution(r.id(), r.realm(), r.topic(),
+                                year, ref.title(), ref.url());
+                    }
+                    return new SourceAttribution(r.id(), r.realm(), r.topic(), year, null, null);
+                })
+                .toList();
+
+        String formatted = formatter.format(enriched, turn);
+        return new ContextResult(formatted, attributions);
     }
 
     private String extractProjectHint(String cwd) {

@@ -33,7 +33,8 @@ public class HooksController {
                 threshold, maxCells);
         String additional;
         try {
-            additional = service.contextFor(req, threshold, maxCells);
+            ContextResult contextResult = service.contextFor(req, threshold, maxCells);
+            additional = contextResult.formattedContext();
         } catch (RuntimeException e) {
             log.warn("Hook context failed; returning empty injection", e);
             additional = "";
