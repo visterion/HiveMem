@@ -28,6 +28,10 @@ hivemem:
       importance: 0.15
       popularity: 0.15
       graph-proximity: 0.10
+    confidence:
+      high: 0.80
+      medium: 0.65
+      low: 0.55
   hooks:
     enabled: true
     relevance-threshold: ${HIVEMEM_HOOKS_RELEVANCE_THRESHOLD:0.65}
