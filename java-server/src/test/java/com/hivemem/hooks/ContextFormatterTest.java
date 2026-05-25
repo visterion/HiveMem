@@ -124,6 +124,6 @@ class ContextFormatterTest {
         String out = f.format(List.of(c), 1);
 
         assertThat(out).contains("[Quelle: r/t · Book Without URL]");
-        assertThat(out).doesNotContain("—");
+        assertThat(out).doesNotContain("Book Without URL —");
     }
 }

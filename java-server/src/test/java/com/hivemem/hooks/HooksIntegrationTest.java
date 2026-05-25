@@ -135,7 +135,7 @@ class HooksIntegrationTest {
                 .isEqualTo("UserPromptSubmit");
         String additional = root.path("hookSpecificOutput").path("additionalContext").asText();
         assertThat(additional).contains("hivemem_context");
-        assertThat(additional).contains(seededId.toString());
+        assertThat(additional).contains(seededId.toString().substring(0, 8));
     }
 
     @Test

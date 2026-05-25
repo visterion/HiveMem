@@ -30,7 +30,7 @@ public class ContextFormatter {
             }
             return "[Quelle: " + base + " · " + ref.title() + "]";
         }
-        String cellId = r.id().toString();
+        String cellId = r.id().toString().substring(0, 8);
         if (r.validFrom() != null) {
             return "[Quelle: " + base + " · Cell " + cellId + " · " + r.validFrom().getYear() + "]";
         }
