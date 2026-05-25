@@ -99,8 +99,14 @@ public class HookContextService {
         }
 
         List<UUID> cellIds = filtered.stream().map(RankedRow::id).toList();
-        Map<UUID, List<CellSearchRepository.RefRow>> refMap =
-                searchRepository.findReferencesForCells(cellIds);
+        Map<UUID, List<CellSearchRepository.RefRow>> refMapRaw;
+        try {
+            refMapRaw = searchRepository.findReferencesForCells(cellIds);
+        } catch (RuntimeException e) {
+            log.warn("Reference lookup failed; proceeding without citations", e);
+            refMapRaw = Map.of();
+        }
+        final Map<UUID, List<CellSearchRepository.RefRow>> refMap = refMapRaw;
 
         List<CellWithCitation> enriched = filtered.stream()
                 .map(r -> new CellWithCitation(r,
