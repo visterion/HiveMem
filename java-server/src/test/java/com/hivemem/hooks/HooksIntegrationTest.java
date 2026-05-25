@@ -156,6 +156,52 @@ class HooksIntegrationTest {
                 .isEmpty();
     }
 
+    @Test
+    void citedSourcesContainLinkedReferenceWhenCellIsInjected() throws Exception {
+        Map<String, Object> seeded = writeToolService.addCell(
+                new AuthPrincipal("integration-writer", AuthRole.WRITER),
+                "semantic plan: project X phase 3 SDK wrapper rollout in 4 weeks",
+                "eng",
+                "facts",
+                "planning",
+                "system",
+                java.util.List.of(),
+                1,
+                "Phase 3 plan for project X: SDK wrapper, 4 weeks (semantic)",
+                java.util.List.of(),
+                null,
+                null,
+                "committed",
+                null,
+                null
+        );
+        UUID seededId = UUID.fromString((String) seeded.get("id"));
+
+        Map<String, Object> ref = writeToolService.addReference(
+                "SDK Design Doc", "https://docs.example.com/sdk", null, "article", "read",
+                null, java.util.List.of(), null);
+        UUID refId = UUID.fromString((String) ref.get("id"));
+        writeToolService.linkReference(seededId, refId, "source");
+
+        String body = """
+                {"hook_event_name":"UserPromptSubmit",
+                 "prompt":"semantic: what was the plan for project X phase 3?",
+                 "session_id":"it-3"}
+                """;
+
+        ResponseEntity<String> response = post("/hooks/context", body, "good-token");
+        assertThat(response.getStatusCode().value()).isEqualTo(200);
+
+        JsonNode root = objectMapper.readTree(response.getBody());
+        JsonNode sources = root.path("citedSources");
+        assertThat(sources.isArray()).isTrue();
+        assertThat(sources.size()).isGreaterThanOrEqualTo(1);
+
+        JsonNode first = sources.get(0);
+        assertThat(first.path("referenceTitle").asText()).isEqualTo("SDK Design Doc");
+        assertThat(first.path("referenceUrl").asText()).isEqualTo("https://docs.example.com/sdk");
+    }
+
     private ResponseEntity<String> post(String path, String body, String token) {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
