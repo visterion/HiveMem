@@ -15,7 +15,7 @@ public class ContextFormatter {
                 .map(c -> "- " + safeSummary(c.row()) + "\n  " + sourceLine(c))
                 .collect(Collectors.joining("\n"));
         return "<hivemem_context turn=\"" + turn + "\">\n"
-                + "Relevant (summaries only - use hivemem_get_cell for details):\n"
+                + "Relevant (summaries only — use hivemem_get_cell for details):\n"
                 + body + "\n"
                 + "</hivemem_context>";
     }
