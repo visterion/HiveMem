@@ -195,11 +195,14 @@ class HooksIntegrationTest {
         JsonNode root = objectMapper.readTree(response.getBody());
         JsonNode sources = root.path("citedSources");
         assertThat(sources.isArray()).isTrue();
-        assertThat(sources.size()).isGreaterThanOrEqualTo(1);
+        assertThat(sources.size()).isEqualTo(1);
 
         JsonNode first = sources.get(0);
         assertThat(first.path("referenceTitle").asText()).isEqualTo("SDK Design Doc");
         assertThat(first.path("referenceUrl").asText()).isEqualTo("https://docs.example.com/sdk");
+        assertThat(first.path("cellId").asText()).isEqualTo(seededId.toString());
+        assertThat(first.path("realm").asText()).isEqualTo("eng");
+        assertThat(first.path("topic").asText()).isEqualTo("planning");
     }
 
     private ResponseEntity<String> post(String path, String body, String token) {
