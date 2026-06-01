@@ -1,0 +1,123 @@
+package com.hivemem.queen;
+
+import com.hivemem.queen.dto.CompletionPayload;
+import com.hivemem.queen.dto.ToolCallRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
+
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Inbound surface Vistierie calls back into: read-only tool webhooks for the Queen/Bee and
+ * the Queen's completion webhook. Path is exempted from {@code AuthFilter}; this controller
+ * does its own constant-time bearer-token check against the configured webhook tokens.
+ */
+@RestController
+@RequestMapping("/vistierie")
+public class VistierieWebhookController {
+
+    private static final Logger log = LoggerFactory.getLogger(VistierieWebhookController.class);
+    private static final String BEARER = "Bearer ";
+
+    private final QueenProperties props;
+    private final QueenWebhookService service;
+
+    public VistierieWebhookController(QueenProperties props, QueenWebhookService service) {
+        this.props = props;
+        this.service = service;
+    }
+
+    @PostMapping("/tools/find_isolated_cells")
+    public ResponseEntity<Map<String, Object>> findIsolatedCells(
+            @RequestHeader(name = "Authorization", required = false) String auth,
+            @RequestBody ToolCallRequest req) {
+        requireToken(auth, props.getWebhookToken());
+        int limit = intInput(req, "limit", props.getIsolatedBatchLimit());
+        return output(service.findIsolatedCells(limit));
+    }
+
+    @PostMapping("/tools/read_cell")
+    public ResponseEntity<Map<String, Object>> readCell(
+            @RequestHeader(name = "Authorization", required = false) String auth,
+            @RequestBody ToolCallRequest req) {
+        requireToken(auth, props.getWebhookToken());
+        try {
+            return output(service.readCell(stringInput(req, "cell_id")));
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "invalid cell_id");
+        }
+    }
+
+    @PostMapping("/tools/search_similar_cells")
+    public ResponseEntity<Map<String, Object>> searchSimilarCells(
+            @RequestHeader(name = "Authorization", required = false) String auth,
+            @RequestBody ToolCallRequest req) {
+        requireToken(auth, props.getWebhookToken());
+        try {
+            return output(service.searchSimilarCells(stringInput(req, "cell_id"), intInput(req, "limit", 5)));
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "invalid cell_id");
+        }
+    }
+
+    @PostMapping("/runs/done")
+    @SuppressWarnings("unchecked")
+    public ResponseEntity<Void> completion(
+            @RequestHeader(name = "Authorization", required = false) String auth,
+            @RequestBody CompletionPayload payload) {
+        requireToken(auth, props.getCompletionWebhookToken());
+        if (payload == null || !"done".equals(payload.status()) || payload.output() == null) {
+            log.info("Queen run {} status={} — nothing to ingest",
+                    payload == null ? "?" : payload.run_id(),
+                    payload == null ? "?" : payload.status());
+            return ResponseEntity.ok().build();
+        }
+        Object raw = payload.output().get("proposals");
+        List<Map<String, Object>> proposals = raw instanceof List<?> l ? (List<Map<String, Object>>) l : List.of();
+        int written = service.ingestProposals(proposals);
+        log.info("Queen run {} ingested {} pending tunnel proposal(s)", payload.run_id(), written);
+        return ResponseEntity.ok().build();
+    }
+
+    private static ResponseEntity<Map<String, Object>> output(Object value) {
+        return ResponseEntity.ok(Map.of("output", value));
+    }
+
+    private void requireToken(String authHeader, String expected) {
+        if (!props.isEnabled() || expected == null || expected.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
+        }
+        if (authHeader == null || !authHeader.startsWith(BEARER)) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
+        }
+        String presented = authHeader.substring(BEARER.length()).trim();
+        if (!MessageDigest.isEqual(
+                presented.getBytes(StandardCharsets.UTF_8),
+                expected.getBytes(StandardCharsets.UTF_8))) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
+        }
+    }
+
+    private static String stringInput(ToolCallRequest req, String key) {
+        Object v = req == null || req.input() == null ? null : req.input().get(key);
+        if (v == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "missing " + key);
+        return String.valueOf(v);
+    }
+
+    private static int intInput(ToolCallRequest req, String key, int fallback) {
+        Object v = req == null || req.input() == null ? null : req.input().get(key);
+        if (v instanceof Number n) return n.intValue();
+        return fallback;
+    }
+}

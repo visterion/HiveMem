@@ -8,6 +8,7 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
+import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -18,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 
 @WebMvcTest(controllers = AuthFilterTest.TestMcpController.class)
 @Import({AuthFilter.class, RateLimiter.class, AuthFilterTest.AuthFilterTestConfig.class})
@@ -44,6 +46,16 @@ class AuthFilterTest {
         mockMvc.perform(post("/mcp").header(HttpHeaders.AUTHORIZATION, "bearer good-token"))
                 .andExpect(status().isOk())
                 .andExpect(content().string("token-1:writer"));
+    }
+
+    @Test
+    void vistieriePathIsExemptFromAuthFilter() throws Exception {
+        // shouldNotFilter must return true for /vistierie/** so the controller's own
+        // webhook-token check runs instead of the api_tokens bearer check.
+        AuthFilter filter = new AuthFilter(Optional.empty(), new RateLimiter(), Optional.empty());
+        MockHttpServletRequest req = new MockHttpServletRequest();
+        req.setRequestURI("/vistierie/tools/find_isolated_cells");
+        assertThat(filter.shouldNotFilter(req)).isTrue();
     }
 
     @Test

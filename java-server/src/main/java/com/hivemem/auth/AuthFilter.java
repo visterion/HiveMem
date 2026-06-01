@@ -44,6 +44,9 @@ public class AuthFilter extends OncePerRequestFilter {
         // they are how MCP clients (Claude.ai, ChatGPT) bootstrap the auth flow.
         if (requestPath.startsWith("/.well-known/oauth-")) return true;
         if (requestPath.startsWith("/oauth/")) return true;
+        // Vistierie webhooks present their own webhook_token (not an api_tokens bearer);
+        // VistierieWebhookController does its own constant-time token check.
+        if (requestPath.startsWith("/vistierie")) return true;
         return !requestPath.startsWith("/mcp") && !requestPath.startsWith("/hooks")
                 && !requestPath.startsWith("/sync") && !requestPath.startsWith("/admin")
                 && !requestPath.startsWith("/api/attachments");

@@ -99,9 +99,17 @@ class SessionAuthFilterTest {
                 .andExpect(status().isUnauthorized());
     }
 
+    @Test
+    void vistieriePathWithoutSessionContinuesChain() throws Exception {
+        // Unauthenticated /vistierie requests must pass through SessionAuthFilter
+        // (mirrors /hooks behaviour) — NOT redirected to /login.
+        mockMvc.perform(get("/vistierie/tools/find_isolated_cells"))
+                .andExpect(status().isOk());
+    }
+
     @RestController
     static class TestController {
-        @GetMapping({"/some-page", "/login", "/mcp"})
+        @GetMapping({"/some-page", "/login", "/mcp", "/vistierie/tools/find_isolated_cells"})
         String index() { return "ok"; }
     }
 }

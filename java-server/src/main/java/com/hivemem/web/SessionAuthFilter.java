@@ -53,6 +53,7 @@ public class SessionAuthFilter extends OncePerRequestFilter {
         boolean isMcp = path.startsWith("/mcp");
         boolean isHooks = path.startsWith("/hooks");
         boolean isApi = path.startsWith("/api/");
+        boolean isVistierie = path.startsWith("/vistierie");
 
         HttpSession session = request.getSession(false);
         if (session != null) {
@@ -68,7 +69,7 @@ public class SessionAuthFilter extends OncePerRequestFilter {
             }
         }
 
-        if (isMcp || isHooks) {
+        if (isMcp || isHooks || isVistierie) {
             filterChain.doFilter(request, response);
         } else if (isApi) {
             response.sendError(HttpServletResponse.SC_UNAUTHORIZED);
