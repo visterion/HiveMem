@@ -31,4 +31,34 @@ public class MockVistierieServer {
                  "cost_micros":0,"llm_call_id":"Y"}
                 """.formatted(text))));
     }
+
+    /** Agent does not exist yet → GET 404, so the client will POST to create. */
+    public void stubAgentMissingThenCreate(String name) {
+        stubFor(get(urlEqualTo("/agents/" + name))
+                .willReturn(aResponse().withStatus(404)));
+        stubFor(post(urlEqualTo("/agents"))
+                .willReturn(aResponse().withStatus(201)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"name\":\"" + name + "\",\"version\":1}")));
+    }
+
+    /** Agent already exists → GET 200, so the client will PUT to replace. */
+    public void stubAgentExistsThenReplace(String name) {
+        stubFor(get(urlEqualTo("/agents/" + name))
+                .willReturn(aResponse().withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"name\":\"" + name + "\",\"version\":2}")));
+        stubFor(put(urlEqualTo("/agents/" + name))
+                .willReturn(aResponse().withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"name\":\"" + name + "\",\"version\":3}")));
+    }
+
+    /** Vistierie unreachable for registration → 500 on create path. */
+    public void stubAgentServerError(String name) {
+        stubFor(get(urlEqualTo("/agents/" + name))
+                .willReturn(aResponse().withStatus(404)));
+        stubFor(post(urlEqualTo("/agents"))
+                .willReturn(aResponse().withStatus(500)));
+    }
 }
