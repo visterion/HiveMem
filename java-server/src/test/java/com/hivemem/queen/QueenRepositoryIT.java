@@ -13,7 +13,6 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.springframework.web.client.RestClient;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -34,12 +33,6 @@ class QueenRepositoryIT {
         @Bean
         @Primary
         EmbeddingClient testEmbeddingClient() { return new FixedEmbeddingClient(); }
-
-        /** Stub client — no Vistierie server needed for repository tests. */
-        @Bean
-        VistierieAgentClient vistierieAgentClient(RestClient.Builder builder, QueenProperties props) {
-            return new VistierieAgentClient(builder, props);
-        }
     }
 
     @Container
