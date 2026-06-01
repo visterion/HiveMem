@@ -66,6 +66,16 @@ hivemem:
     call-timeout-seconds: ${HIVEMEM_SUMMARIZE_TIMEOUT:30}
     max-input-chars: ${HIVEMEM_SUMMARIZE_MAX_INPUT:8000}
     summary-threshold-chars: ${HIVEMEM_SUMMARIZE_THRESHOLD:500}
+  queen:
+    enabled: ${HIVEMEM_QUEEN_ENABLED:false}
+    vistierie-base-url: ${HIVEMEM_VISTIERIE_BASE_URL:http://vistierie:8090}
+    vistierie-token: ${HIVEMEM_VISTIERIE_TOKEN:}
+    hivemem-base-url: ${HIVEMEM_QUEEN_HIVEMEM_BASE_URL:http://hivemem:8080}
+    webhook-token: ${HIVEMEM_QUEEN_WEBHOOK_TOKEN:}
+    completion-webhook-token: ${HIVEMEM_QUEEN_COMPLETION_WEBHOOK_TOKEN:}
+    schedule: ${HIVEMEM_QUEEN_SCHEDULE:0 0 3 * * *}
+    isolated-batch-limit: ${HIVEMEM_QUEEN_ISOLATED_BATCH_LIMIT:20}
+    call-timeout-seconds: ${HIVEMEM_QUEEN_CALL_TIMEOUT:30}
   ocr:
     enabled: ${HIVEMEM_OCR_ENABLED:false}
     tesseract-path: ${HIVEMEM_TESSERACT_PATH:tesseract}
