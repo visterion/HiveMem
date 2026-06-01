@@ -173,3 +173,39 @@ Every HiveMem tool is mapped to a specific role to ensure least privilege. Write
 - **SafeSkill Score:** **100/100 (Verified Safe)**. See [SafeSkill Report](https://safeskill.dev/scan/visterion-hivemem).
 - **Transparency:** 7/7 points. See [SAFE.md](../SAFE.md) for the security manifest.
 - **Human-in-the-Loop:** All agent writes require manual approval via `approve_pending`.
+
+## Vistierie Integration (Queen + Bees)
+
+HiveMem delegates agent scheduling and subagent dispatch to **Vistierie** — the agent runtime running on LXC 102. HiveMem is already a Vistierie tenant (used for `/llm/*` summarizer and vision calls); the Queen + Bees feature reuses that tenancy.
+
+### Outbound: agent registration
+
+On startup (when `hivemem.queen.enabled=true`), `VistierieAgentBootstrap` (in `com.hivemem.queen`) performs idempotent `PUT`/`POST` calls to Vistierie's `/agents` endpoint via `VistierieAgentClient`, registering two agent definitions:
+
+- **`isolated-cell-bee`** — subagent; finds cells with no tunnels and proposes candidate connections.
+- **`queen`** — cron agent; surveys knowledge and dispatches the Bee on a configurable schedule.
+
+HiveMem authenticates these calls with the existing `HIVEMEM_VISTIERIE_TOKEN` (the same credential used for LLM calls).
+
+### Inbound: `/vistierie/**` callbacks
+
+Vistierie calls back into HiveMem over the `hivemem-net` Docker network via three endpoint groups:
+
+| Path | Auth header | Purpose |
+|---|---|---|
+| `POST /vistierie/tools/find_isolated_cells` | `hivemem.queen.webhook-token` | Returns cells that have no outbound tunnels |
+| `POST /vistierie/tools/read_cell` | `hivemem.queen.webhook-token` | Returns full cell detail for a given cell ID |
+| `POST /vistierie/tools/search_similar_cells` | `hivemem.queen.webhook-token` | Semantic search restricted to the cell's realm |
+| `POST /vistierie/runs/done` | `hivemem.queen.completion-webhook-token` | Receives the Queen's aggregated output and writes each proposal as a `pending` tunnel |
+
+All four endpoints live under `/vistierie/**`, which is **exempt from the global `AuthFilter` and `SessionAuthFilter`**. Each request is authenticated by a constant-time bearer-token check against the respective config property.
+
+### Write isolation
+
+HiveMem remains the **sole writer**. The Bee only proposes; `POST /vistierie/runs/done` ingests the aggregated proposals and inserts each as a `pending` tunnel. Those entries then flow through the existing approval workflow (`approve_pending`) before any change is committed to the knowledge graph.
+
+### Audit / scheduling / kill switch
+
+Scheduling (cron ticks), subagent dispatch (context-shielding), per-run cost accounting, and the per-tenant kill switch are all **owned by Vistierie** — stored in its `runs` and `llm_calls` tables, not duplicated in HiveMem. To halt all Queen/Bee activity, issue `POST /admin/tenants/hivemem/kill` on the Vistierie admin API.
+
+> **Budget requirement:** The Vistierie tenant and each agent must have a daily/monthly budget set, or every cron tick returns 403. See the [Operations runbook](operations.md#queen--bees-on-vistierie-lxc-102) for the setup commands.

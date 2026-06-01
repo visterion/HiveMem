@@ -115,7 +115,7 @@ for details on every 🟡 / 🔴 row.
 | [OAuth Custom Connector](documentation/oauth.md) | ✅ Stable | RFC 8414 / 9728 discovery, PKCE |
 | Temporal Knowledge Graph | 🟡 Partial | bi-temporal facts and multi-hop traversal ship; **automatic contradiction detection is not yet implemented** |
 | Privacy by Realm — model routing | 🟡 Partial | data segregation by realm works; **per-realm enforcement of "stays on local models" is not yet wired into the LLM call path** |
-| Queen + Bees periodic agent | 🔴 Planned | `agents` table, registration tool, and approval pipeline exist; **no scheduler, no Bees, no `agent_tasks` audit table, no conversation UI** |
+| Queen + Bees periodic agent | 🟡 Partial | Queen + isolated-cell-Bee run on Vistierie's agent runtime (cron, subagent dispatch, run/cost audit, kill switch); proposals land as `pending` tunnels via the approval workflow. **Still missing: Queen-log UI, preference UI, further Bee types.** |
 
 ## Documentation
 

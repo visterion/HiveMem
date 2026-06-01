@@ -35,55 +35,39 @@ A worker invoked in the `legal` realm can still reach a cloud model.
 the realm of the current task and refuses or rewrites the call when the
 configured policy forbids cloud models.
 
-## 🔴 Planned — described in the README, not yet built
-
 ### Queen + Bees periodic agent
 
-The README's "Knowledge doesn't rot here" section describes a long-running
-agent (the **Queen**) that wakes on a schedule, surveys knowledge, and
-dispatches specialized worker agents (**Bees**) — with a kill-switch in
-config, a conversation UI for teaching preferences, and an `agent_tasks`
-audit table.
+**Today.** The Queen and the isolated-cell Bee are registered in and
+dispatched by the **Vistierie agent runtime** (LXC 102). Vistierie owns
+scheduling (cron), subagent dispatch with context-shielding, per-run cost
+accounting, and the per-tenant kill switch. HiveMem exposes three read-only
+tool webhooks (`find_isolated_cells`, `read_cell`, `search_similar_cells`) and
+a completion webhook (`/vistierie/runs/done`) under `/vistierie/**` so Vistierie
+can drive Bee tasks and deliver results. Tunnel proposals from the Bee land as
+`pending` entries and flow through the existing approval workflow; HiveMem
+remains the sole writer. The feature is gated behind
+`hivemem.queen.enabled=true` (default `false`).
 
-**Today.** The pieces below the Queen exist:
+**Missing.**
 
-- An `agents` table with `name`, `focus`, `autonomy`, `schedule`, and
-  `model_routing` columns.
-- The `register_agent` MCP tool to declare new agents.
-- An approval workflow that gates every agent write (`pending` → admin
-  approves → `committed`).
-- An `agent_diary` for free-form notes per agent.
-
-**Missing.** Everything that turns the schema into an actually-running
-fleet:
-
-- No scheduler / background runner that wakes the Queen.
-- No Bee dispatch logic — no code that translates a Queen finding
-  ("this cell has zero tunnels") into a Bee task.
-- No `agent_tasks` audit table tracking each run, the model used, and
-  the outcome.
-- No conversation UI in `knowledge-ui/` for teaching realm-level
-  preferences in natural language.
-- No enforcement of the documented kill-switch / dry-run / pause flags.
+- No "Queen log" UI page showing run history and cost.
+- No conversation UI in `knowledge-ui/` for teaching realm-level preferences
+  in natural language.
+- Additional Bee types (stale-fact Bee, duplicate-cell Bee,
+  blueprint-drift Bee) are not yet implemented.
 
 **Planned (rough order).**
 
-1. `agent_tasks` table + repository (run id, agent, started/finished,
-   model, status, result summary).
-2. A single Spring `@Scheduled` Queen runner with a kill-switch config
-   property (`hivemem.queen.enabled`, default `false`).
-3. One concrete Bee — the **isolated-cell Bee** — that finds cells
-   without tunnels and proposes candidate tunnels via existing
-   `add_tunnel` (as `pending`).
-4. UI: a "Queen log" page that reads from `agent_tasks` and the
-   approval queue.
-5. Conversation UI for preferences (likely a small textarea per realm
-   that gets stitched into Bee prompts).
+1. UI: a "Queen log" page that reads from Vistierie's `runs` table and the
+   HiveMem approval queue.
+2. Conversation UI for preferences (small textarea per realm, stitched into
+   Bee prompts).
+3. Stale-fact, duplicate-cell, and blueprint-drift Bees.
 
-Each of those is intended to ship as its own PR. Until the first three
-land, the Queen narrative in the README should be read as design intent,
-not running code. The execution model is tracked in
+The execution model is tracked in
 [#28 Asynchronous Curator](https://github.com/visterion/HiveMem/issues/28).
+
+## 🔴 Planned — described in the README, not yet built
 
 ## Tracked GitHub issues
 

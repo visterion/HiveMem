@@ -87,3 +87,76 @@ SeaweedFS is included in `docker-compose.yml` as a sidecar service. No additiona
 ```bash
 docker logs hivemem --tail 50  # Container logs
 ```
+
+## Queen + Bees on Vistierie (LXC 102)
+
+### Prerequisites
+
+HiveMem and Vistierie must share the external `hivemem-net` Docker network. This network is already used for summarizer and vision LLM calls, so no additional network configuration is needed.
+
+HiveMem authenticates to Vistierie as tenant `hivemem` using the existing `HIVEMEM_VISTIERIE_TOKEN`. Reuse that token — no new Vistierie credential is needed for Queen/Bee registration.
+
+### 1 — Set Vistierie budgets (mandatory)
+
+Budgets are required. Without them, every cron tick from Vistierie returns 403 and the Queen never runs.
+
+```bash
+# Set tenant-level budget
+curl -X PATCH http://vistierie:8090/admin/tenants/hivemem/budget \
+  -H "Authorization: Bearer $VISTIERIE_ADMIN_TOKEN" \
+  -H 'content-type: application/json' \
+  -d '{"daily_cap_micros":2000000,"monthly_cap_micros":20000000}'
+
+# Set per-agent budgets for both agents
+for a in queen isolated-cell-bee; do
+  curl -X PATCH http://vistierie:8090/admin/tenants/hivemem/agents/$a/budget \
+    -H "Authorization: Bearer $VISTIERIE_ADMIN_TOKEN" \
+    -H 'content-type: application/json' \
+    -d '{"daily_cap_micros":1000000,"monthly_cap_micros":10000000}'
+done
+```
+
+### 2 — Enable the Queen in HiveMem
+
+Add the following environment variables to your HiveMem deployment and restart the container. On startup HiveMem registers `isolated-cell-bee` and then `queen` in Vistierie (idempotent; safe to restart at any time).
+
+```
+HIVEMEM_QUEEN_ENABLED=true
+HIVEMEM_QUEEN_HIVEMEM_BASE_URL=http://hivemem:8080
+HIVEMEM_QUEEN_WEBHOOK_TOKEN=<strong random token>
+HIVEMEM_QUEEN_COMPLETION_WEBHOOK_TOKEN=<second strong random token>
+HIVEMEM_QUEEN_SCHEDULE=0 0 3 * * *
+```
+
+Use distinct, independently-rotatable tokens for `HIVEMEM_QUEEN_WEBHOOK_TOKEN` (read-only tool webhooks) and `HIVEMEM_QUEEN_COMPLETION_WEBHOOK_TOKEN` (result ingestion).
+
+### 3 — Verify registration
+
+```bash
+curl http://vistierie:8090/agents \
+  -H "Authorization: Bearer $HIVEMEM_VISTIERIE_TOKEN"
+```
+
+Expect the response to include entries for `isolated-cell-bee` and `queen`.
+
+### 4 — Optional smoke test (manual trigger)
+
+```bash
+curl -X POST http://vistierie:8090/agents/queen/run \
+  -H "Authorization: Bearer $HIVEMEM_VISTIERIE_TOKEN" \
+  -H 'content-type: application/json' \
+  -d '{"payload":{}}'
+```
+
+Then check HiveMem's pending approvals (`approve_pending` MCP tool or the admin UI) for new `pending` tunnel proposals from the Bee.
+
+### Kill switch
+
+To halt all Queen and Bee activity immediately:
+
+```bash
+curl -X POST http://vistierie:8090/admin/tenants/hivemem/kill \
+  -H "Authorization: Bearer $VISTIERIE_ADMIN_TOKEN"
+```
+
+Re-enable by removing the kill flag via the Vistierie admin API, then restarting HiveMem (re-registration is idempotent).
