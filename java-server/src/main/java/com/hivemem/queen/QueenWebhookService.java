@@ -90,8 +90,12 @@ public class QueenWebhookService {
     public int ingestProposals(List<Map<String, Object>> proposals) {
         if (proposals == null) return 0;
         int written = 0;
-        for (Map<String, Object> p : proposals) {
+        for (Object item : proposals) {
             try {
+                if (!(item instanceof Map<?, ?> p)) {
+                    log.warn("Queen proposal skipped: not an object: {}", item);
+                    continue;
+                }
                 String relation = String.valueOf(p.get("relation"));
                 if (!RELATIONS.contains(relation)) {
                     log.warn("Queen proposal skipped: bad relation '{}'", relation);
@@ -104,8 +108,8 @@ public class QueenWebhookService {
                 String note = p.get("note") == null ? null : String.valueOf(p.get("note"));
                 writes.addTunnel(QUEEN, from, to, relation, note, "pending");
                 written++;
-            } catch (IllegalArgumentException e) {
-                log.warn("Queen proposal skipped: invalid payload {}", p, e);
+            } catch (RuntimeException e) {
+                log.warn("Queen proposal skipped: invalid payload {}", item, e);
             }
         }
         return written;

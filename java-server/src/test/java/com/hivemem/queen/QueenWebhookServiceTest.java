@@ -94,6 +94,14 @@ class QueenWebhookServiceTest {
         verify(writes, never()).addTunnel(any(), eq(from), eq(dupTo), anyString(), any(), anyString());
     }
 
+    @Test
+    void ingestToleratesNonMapItems() {
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        List<Map<String, Object>> bad = (List) java.util.List.of("not-a-map");
+        int written = service().ingestProposals(bad);
+        org.assertj.core.api.Assertions.assertThat(written).isEqualTo(0);
+    }
+
     private static AuthPrincipal argThatIsQueenAgent() {
         return org.mockito.ArgumentMatchers.argThat(
                 pr -> pr != null && "queen".equals(pr.name()) && pr.role() == AuthRole.AGENT);
