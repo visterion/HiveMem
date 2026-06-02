@@ -34,7 +34,10 @@ class VistierieRunsClientTest {
         JsonNode out = client("admin-tok").listRuns(50, 0);
         assertThat(out.get("items").get(0).get("id").asString()).isEqualTo("r1");
         verify(getRequestedFor(urlPathEqualTo("/admin/runs"))
-                .withHeader("Authorization", equalTo("Bearer admin-tok")));
+                .withHeader("Authorization", equalTo("Bearer admin-tok"))
+                .withQueryParam("agent", equalTo("queen"))
+                .withQueryParam("agent", equalTo("isolated-cell-bee"))
+                .withQueryParam("tenant", equalTo("hivemem")));
     }
 
     @Test
@@ -50,8 +53,13 @@ class VistierieRunsClientTest {
     void detailAndEventsUseTenantToken() {
         mock.stubRunDetail("r1", "{\"id\":\"r1\",\"status\":\"done\",\"output\":{}}");
         mock.stubRunEvents("r1", "[{\"type\":\"subagent_spawned\"}]");
-        assertThat(client("admin-tok").getRun("r1").get("status").asString()).isEqualTo("done");
-        assertThat(client("admin-tok").getRunEvents("r1").get(0).get("type").asString()).isEqualTo("subagent_spawned");
+        VistierieRunsClient c = client("admin-tok");
+        assertThat(c.getRun("r1").get("status").asString()).isEqualTo("done");
+        assertThat(c.getRunEvents("r1").get(0).get("type").asString()).isEqualTo("subagent_spawned");
+        verify(getRequestedFor(urlPathEqualTo("/runs/r1"))
+                .withHeader("Authorization", equalTo("Bearer tenant-tok")));
+        verify(getRequestedFor(urlPathEqualTo("/runs/r1/events"))
+                .withHeader("Authorization", equalTo("Bearer tenant-tok")));
     }
 
     @Test
