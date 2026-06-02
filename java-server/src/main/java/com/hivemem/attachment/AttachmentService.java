@@ -48,10 +48,18 @@ public class AttachmentService {
         this.krokiClient = krokiClient;
     }
 
-    @Transactional
     public Map<String, Object> ingest(InputStream inputStream, String originalFilename,
                                       String mimeType, String realm, String signal, String topic,
                                       UUID optionalLinkCellId, String uploadedBy) throws Exception {
+        return ingest(inputStream, originalFilename, mimeType, realm, signal, topic,
+                      optionalLinkCellId, uploadedBy, "pending", "attachment:");
+    }
+
+    @Transactional
+    public Map<String, Object> ingest(InputStream inputStream, String originalFilename,
+                                      String mimeType, String realm, String signal, String topic,
+                                      UUID optionalLinkCellId, String uploadedBy,
+                                      String initialStatus, String sourcePrefix) throws Exception {
         if (!props.isEnabled()) throw new IllegalStateException("Attachment storage is not enabled");
 
         mimeType = MimeTypeResolver.resolve(mimeType, originalFilename);
@@ -121,9 +129,9 @@ public class AttachmentService {
 
             Map<String, Object> cellRow = writeRepo.addCell(
                     cellContent, embedding, realm, signal, topic,
-                    "attachment:" + attachmentRow.get("id"),
+                    sourcePrefix + attachmentRow.get("id"),
                     List.of(), null, null, null, null, null,
-                    "pending", uploadedBy, null);
+                    initialStatus, uploadedBy, null);
 
             UUID cellId = UUID.fromString((String) cellRow.get("id"));
             UUID attachmentId = UUID.fromString((String) attachmentRow.get("id"));
