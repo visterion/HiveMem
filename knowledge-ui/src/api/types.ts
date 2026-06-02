@@ -72,3 +72,43 @@ export interface ApiClient {
   call<T>(tool: string, args?: Record<string, unknown>): Promise<T>
   subscribe(onEvent: (e: HiveEvent) => void): () => void
 }
+
+export interface QueenRun {
+  id: string
+  agent: string
+  trigger: string | null
+  status: string
+  startedAt: string | null
+  finishedAt: string | null
+  durationMs: number | null
+  llmCalls: number | null
+  costMicros: number | null
+}
+
+export interface QueenRunList {
+  items: QueenRun[]
+  total: number
+  costAvailable: boolean
+  unavailable?: boolean
+}
+
+export interface QueenRunEvent {
+  type: string
+  [key: string]: unknown
+}
+
+export interface QueenRunDetail {
+  run: Record<string, unknown>
+  events: QueenRunEvent[]
+  unavailable?: boolean
+}
+
+export interface PendingApproval {
+  type: string
+  id: string
+  description: string | null
+  realm: string | null
+  signal: string | null
+  created_by: string | null
+  created_at: string
+}
