@@ -27,6 +27,10 @@ public class QueenProperties {
     private int isolatedBatchLimit = 20;
     /** Connect/read timeout for outbound registration calls. */
     private int callTimeoutSeconds = 30;
+    /** Token HiveMem expects Vistierie to present on the separation webhook callback. */
+    private String separationWebhookToken = "";
+    /** Vistierie agent name that handles document separation tasks. */
+    private String documentSeparatorAgent = "document-separator";
 
     public boolean isEnabled() { return enabled; }
     public void setEnabled(boolean v) { this.enabled = v; }
@@ -48,4 +52,8 @@ public class QueenProperties {
     public void setIsolatedBatchLimit(int v) { this.isolatedBatchLimit = v; }
     public int getCallTimeoutSeconds() { return callTimeoutSeconds; }
     public void setCallTimeoutSeconds(int v) { this.callTimeoutSeconds = v; }
+    public String getSeparationWebhookToken() { return separationWebhookToken; }
+    public void setSeparationWebhookToken(String v) { this.separationWebhookToken = v; }
+    public String getDocumentSeparatorAgent() { return documentSeparatorAgent; }
+    public void setDocumentSeparatorAgent(String v) { this.documentSeparatorAgent = v; }
 }
