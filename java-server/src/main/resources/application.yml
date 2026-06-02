@@ -97,6 +97,7 @@ hivemem:
     max-pages: ${HIVEMEM_CONSUMPTION_MAX_PAGES:200}
     confidence-threshold: ${HIVEMEM_CONSUMPTION_CONFIDENCE:0.80}
     max-dispatch-retries: ${HIVEMEM_CONSUMPTION_MAX_RETRIES:3}
+    reconcile-interval-ms: ${HIVEMEM_CONSUMPTION_RECONCILE_MS:300000}
 
 server:
   port: ${SERVER_PORT:8421}
