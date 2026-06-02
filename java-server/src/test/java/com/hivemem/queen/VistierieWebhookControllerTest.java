@@ -1,7 +1,9 @@
 package com.hivemem.queen;
 
+import com.hivemem.consumption.SeparationApplier;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -22,6 +24,7 @@ class VistierieWebhookControllerTest {
     private QueenWebhookService service;
     private MockMvc mvc;
 
+    @SuppressWarnings("unchecked")
     @BeforeEach
     void up() {
         service = mock(QueenWebhookService.class);
@@ -29,7 +32,9 @@ class VistierieWebhookControllerTest {
         p.setEnabled(true);
         p.setWebhookToken("wt");
         p.setCompletionWebhookToken("cwt");
-        mvc = MockMvcBuilders.standaloneSetup(new VistierieWebhookController(p, service)).build();
+        ObjectProvider<SeparationApplier> noApplier = mock(ObjectProvider.class);
+        when(noApplier.getIfAvailable()).thenReturn(null);
+        mvc = MockMvcBuilders.standaloneSetup(new VistierieWebhookController(p, service, noApplier)).build();
     }
 
     @Test

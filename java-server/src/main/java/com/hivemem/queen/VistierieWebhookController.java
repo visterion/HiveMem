@@ -4,6 +4,7 @@ import com.hivemem.queen.dto.CompletionPayload;
 import com.hivemem.queen.dto.ToolCallRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -32,10 +33,13 @@ public class VistierieWebhookController {
 
     private final QueenProperties props;
     private final QueenWebhookService service;
+    private final ObjectProvider<com.hivemem.consumption.SeparationApplier> separationApplier;
 
-    public VistierieWebhookController(QueenProperties props, QueenWebhookService service) {
+    public VistierieWebhookController(QueenProperties props, QueenWebhookService service,
+            ObjectProvider<com.hivemem.consumption.SeparationApplier> separationApplier) {
         this.props = props;
         this.service = service;
+        this.separationApplier = separationApplier;
     }
 
     @PostMapping("/tools/find_isolated_cells")
@@ -87,6 +91,22 @@ public class VistierieWebhookController {
         List<Map<String, Object>> proposals = raw instanceof List<?> l ? (List<Map<String, Object>>) l : List.of();
         int written = service.ingestProposals(proposals);
         log.info("Queen run {} ingested {} pending tunnel proposal(s)", payload.run_id(), written);
+        return ResponseEntity.ok().build();
+    }
+
+    @PostMapping("/separation/done")
+    public ResponseEntity<Void> separationDone(
+            @RequestHeader(name = "Authorization", required = false) String auth,
+            @RequestBody com.hivemem.consumption.SeparationResult payload) {
+        requireToken(auth, props.getSeparationWebhookToken());
+        if (payload == null || payload.correlationId() == null) {
+            return ResponseEntity.badRequest().build();
+        }
+        com.hivemem.consumption.SeparationApplier applier = separationApplier.getIfAvailable();
+        if (applier == null) {
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).build();
+        }
+        applier.apply(payload);
         return ResponseEntity.ok().build();
     }
 
