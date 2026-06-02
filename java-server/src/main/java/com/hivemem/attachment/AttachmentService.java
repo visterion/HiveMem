@@ -48,6 +48,7 @@ public class AttachmentService {
         this.krokiClient = krokiClient;
     }
 
+    @Transactional
     public Map<String, Object> ingest(InputStream inputStream, String originalFilename,
                                       String mimeType, String realm, String signal, String topic,
                                       UUID optionalLinkCellId, String uploadedBy) throws Exception {
