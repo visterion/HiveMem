@@ -32,7 +32,8 @@ export const useQueenStore = defineStore('queen', {
       this.selectedRun = await useApi().call<QueenRunDetail>('queen_run_detail', { run_id: runId })
     },
     async approve(id: string, approved: boolean) {
-      await useApi().call('approve_pending', { id, approved })
+      // Backend `approve_pending` expects a UUID list + a decision enum, not {id, approved}.
+      await useApi().call('approve_pending', { ids: [id], decision: approved ? 'committed' : 'rejected' })
       this.pending = this.pending.filter(p => p.id !== id)
     },
   },

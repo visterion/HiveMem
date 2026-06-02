@@ -1,6 +1,7 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { resetApi } from '../../src/api/useApi'
+import { MockApiClient } from '../../src/api/mockClient'
 import { useQueenStore } from '../../src/stores/queen'
 
 describe('queen store', () => {
@@ -31,5 +32,15 @@ describe('queen store', () => {
     await store.refresh()
     await store.approve('p-1', true)
     expect(store.pending.find(p => p.id === 'p-1')).toBeUndefined()
+  })
+
+  it('calls approve_pending with the backend ids/decision contract', async () => {
+    const spy = vi.spyOn(MockApiClient.prototype, 'call')
+    const store = useQueenStore()
+    await store.refresh()
+    spy.mockClear()
+    await store.approve('p-2', false)
+    expect(spy).toHaveBeenCalledWith('approve_pending', { ids: ['p-2'], decision: 'rejected' })
+    spy.mockRestore()
   })
 })
