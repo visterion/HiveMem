@@ -130,6 +130,15 @@ HIVEMEM_QUEEN_SCHEDULE=0 0 3 * * *
 
 Use distinct, independently-rotatable tokens for `HIVEMEM_QUEEN_WEBHOOK_TOKEN` (read-only tool webhooks) and `HIVEMEM_QUEEN_COMPLETION_WEBHOOK_TOKEN` (result ingestion).
 
+| Variable | Required | Description |
+|---|---|---|
+| `HIVEMEM_QUEEN_ENABLED` | Yes | Set to `true` to activate Queen + Bee registration on startup |
+| `HIVEMEM_QUEEN_HIVEMEM_BASE_URL` | Yes | Base URL HiveMem advertises to Vistierie for webhook callbacks |
+| `HIVEMEM_QUEEN_WEBHOOK_TOKEN` | Yes | Bearer token for read-only tool webhooks (`/vistierie/tools/**`) |
+| `HIVEMEM_QUEEN_COMPLETION_WEBHOOK_TOKEN` | Yes | Bearer token for result ingestion (`/vistierie/runs/done`) |
+| `HIVEMEM_QUEEN_SCHEDULE` | Yes | Cron expression controlling how often the Queen runs (e.g. `0 0 3 * * *`) |
+| `HIVEMEM_QUEEN_VISTIERIE_ADMIN_TOKEN` | No | Vistierie admin token. When set, the Queen-Log UI shows per-run cost + LLM-call counts via `GET /admin/runs`. Unset → cost columns hidden (falls back to tenant `GET /runs`, no cost data). |
+
 ### 3 — Verify registration
 
 ```bash

@@ -1,10 +1,10 @@
 # Tools
 
-HiveMem exposes **34 MCP tools** across search, knowledge graph, progressive summarization, agent fleet, references, attachments, and admin. Large file uploads can also use the REST endpoint (`POST /api/attachments`) — see [Attachments](#attachments).
+HiveMem exposes **36 MCP tools** across search, knowledge graph, progressive summarization, agent fleet, references, attachments, and admin. Large file uploads can also use the REST endpoint (`POST /api/attachments`) — see [Attachments](#attachments).
 
 ## Feature Overview
 
-- **34 MCP tools** across search, knowledge graph, progressive summarization, agent fleet, references, attachments, and admin
+- **36 MCP tools** across search, knowledge graph, progressive summarization, agent fleet, references, attachments, and admin
 - **6-signal ranked search** — semantic similarity + keyword match + recency + importance + popularity + graph proximity
 - **Append-only versioning** — never lose history, revise with parent_id chains, point-in-time queries
 - **Progressive summarization** — content, summary, key_points, insight per cell
@@ -19,7 +19,7 @@ HiveMem exposes **34 MCP tools** across search, knowledge graph, progressive sum
 
 ## Tool List
 
-**Read (17):**
+**Read (19):**
 
 1. `status`: System overview and counts.
 2. `search`: Semantic similarity + keyword search; returns metadata by default and supports `include` for optional fields.
@@ -38,6 +38,8 @@ HiveMem exposes **34 MCP tools** across search, knowledge graph, progressive sum
 15. `diary_read`: Read agent diary entries.
 16. `list_attachments`: List all file attachments linked to a cell (metadata only, no file content).
 17. `get_attachment_info`: Get metadata for a single attachment by ID. Return fields include `cell_id` (UUID of the extraction cell), `content_uri` (`hivemem://attachments/{id}/content`), and `thumbnail_uri` (`hivemem://attachments/{id}/thumbnail` or null). Download via `GET /api/attachments/{id}/content`.
+18. `queen_runs` *(admin only)*: List recent Queen/Bee agent runs from Vistierie. Optional args: `limit` (1–200, default 50), `offset` (0+, default 0). Returns `{items:[{id,agent,trigger,status,startedAt,finishedAt,durationMs,llmCalls,costMicros}], total, costAvailable}`; on Vistierie outage returns `{items:[],total:0,costAvailable:false,unavailable:true}`. Cost fields (`llmCalls`, `costMicros`) are populated only when `HIVEMEM_QUEEN_VISTIERIE_ADMIN_TOKEN` is configured.
+19. `queen_run_detail` *(admin only)*: Fetch full detail for a single Queen/Bee run. Required arg: `run_id` (string). Returns `{run:{...}, events:[{type,...}]}` (run metadata + Vistierie event timeline); on outage returns `{run:{},events:[],unavailable:true}`.
 
 **Write (15):**
 
