@@ -31,6 +31,7 @@ export class MockApiClient implements ApiClient {
       hivemem_stream_next: (args: { since?: string; timeout_ms?: number }) => this.streamNext(args),
       reading_list: () => mockPalace.references ?? [],
       pending_approvals: () => this.queenPending(),
+      approve_pending: () => ({ ok: true }),
       queen_runs: () => this.queenRuns(),
       queen_run_detail: (args: { run_id: string }) => this.queenRunDetail(args),
       list_agents: () => [],
