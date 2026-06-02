@@ -30,7 +30,9 @@ export class MockApiClient implements ApiClient {
       hivemem_list_tunnels: () => mockPalace.tunnels,
       hivemem_stream_next: (args: { since?: string; timeout_ms?: number }) => this.streamNext(args),
       reading_list: () => mockPalace.references ?? [],
-      pending_approvals: () => [],
+      pending_approvals: () => this.queenPending(),
+      queen_runs: () => this.queenRuns(),
+      queen_run_detail: (args: { run_id: string }) => this.queenRunDetail(args),
       list_agents: () => [],
       diary_read: () => [],
       get_blueprint: () => null,
@@ -152,6 +154,45 @@ export class MockApiClient implements ApiClient {
       frontier.splice(0, frontier.length, ...next)
     }
     return result
+  }
+
+  private queenRuns() {
+    return {
+      items: [
+        { id: 'run-001', agent: 'queen', trigger: 'scheduled', status: 'done',
+          startedAt: '2026-06-02T03:00:00Z', finishedAt: '2026-06-02T03:00:14Z',
+          durationMs: 14000, llmCalls: 4, costMicros: 18200 },
+        { id: 'run-002', agent: 'isolated-cell-bee', trigger: 'subagent', status: 'done',
+          startedAt: '2026-06-02T03:00:02Z', finishedAt: '2026-06-02T03:00:09Z',
+          durationMs: 7000, llmCalls: 1, costMicros: 4100 },
+        { id: 'run-003', agent: 'queen', trigger: 'scheduled', status: 'failed',
+          startedAt: '2026-06-01T03:00:00Z', finishedAt: '2026-06-01T03:00:03Z',
+          durationMs: 3000, llmCalls: 0, costMicros: 0 },
+      ],
+      total: 3,
+      costAvailable: true,
+    }
+  }
+
+  private queenRunDetail(args: { run_id: string }) {
+    return {
+      run: { id: args.run_id, status: 'done', summary: 'Surveyed 12 isolated cells, proposed 3 tunnels.',
+             output: { proposals: 3 }, error: null },
+      events: [
+        { type: 'run_started', at: '2026-06-02T03:00:00Z' },
+        { type: 'subagent_spawned', at: '2026-06-02T03:00:02Z', agent: 'isolated-cell-bee', cell_id: 'c-42' },
+        { type: 'run_finished', at: '2026-06-02T03:00:14Z' },
+      ],
+    }
+  }
+
+  private queenPending() {
+    return [
+      { type: 'tunnel', id: 'p-1', description: 'c-42 → c-7 (related_to): both cover yoyo migrations',
+        realm: 'engineering', signal: null, created_by: 'queen', created_at: '2026-06-02T03:00:13Z' },
+      { type: 'tunnel', id: 'p-2', description: 'c-99 → c-13 (refines): supersedes the older rename note',
+        realm: 'hivemem', signal: null, created_by: 'queen', created_at: '2026-06-02T03:00:14Z' },
+    ]
   }
 }
 
