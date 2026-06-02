@@ -67,6 +67,11 @@ public class SeaweedFsClient {
                 ResponseTransformer.toInputStream());
     }
 
+    public byte[] downloadBytes(String key) {
+        return s3.getObjectAsBytes(
+                r -> r.bucket(props.getS3Bucket()).key(key)).asByteArray();
+    }
+
     public void delete(String key) {
         s3.deleteObject(r -> r.bucket(props.getS3Bucket()).key(key));
     }
