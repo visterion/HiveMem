@@ -25,5 +25,8 @@ Auto-inject relevant memory cells into every Claude Code session before you even
 ### [Operations](operations.md)
 Backups, deploying changes, adding Flyway migrations, and debugging.
 
+### [Consumption Folder](consumption.md)
+Automatic scan ingest: drop PDFs into a folder, HiveMem polls and ingests. Multi-page batches are split into individual documents by a Vistierie LLM agent based on content (no separator sheets required). Hardware setup, how it works, config reference, and known limitations.
+
 ### [Vision](vision.md)
 The cognitive science behind HiveMem — Working Memory, Cognitive Load Theory, the Extended Mind Thesis — and how Zettelkasten and PARA shaped the design.

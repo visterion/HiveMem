@@ -1,0 +1,186 @@
+# Consumption Folder — Automatic Scan Ingest
+
+The consumption pipeline lets you drop a stack of scanned documents into a
+watched folder and have HiveMem ingest them automatically — including splitting
+a mixed batch into individual documents based on content, without any barcode
+or separator sheets.
+
+## Purpose
+
+| | HiveMem consumption pipeline | Paperless-ngx |
+|---|---|---|
+| Document boundary detection | **Content-based** (LLM reads OCR text, detects letterhead/signature/page-counter changes) | Barcode / patch-code / ASN separator sheets only |
+| Separator sheet required | No | Yes (unless using ASN barcodes) |
+| LLM requirement | Vistierie `document-separator` agent (Sonnet via `model_purpose = "separator"`) | None |
+| Low-confidence splits | Land as `pending` → approval queue | Not applicable |
+| Works without Vistierie | Yes — multi-page PDFs are ingested as one `pending` document (graceful degradation) | Yes |
+
+## Hardware / ingress setup
+
+The typical setup uses a **Brother ADS-2400N** (or any network scanner that
+supports Scan-to-Network-Folder / SMB):
+
+1. On the HiveMem LXC, install Samba and export the consumption directory:
+
+   ```ini
+   # /etc/samba/smb.conf — minimal share stanza
+   [scans]
+       path = /data/consumption
+       valid users = scanner
+       read only = no
+       create mask = 0644
+   ```
+
+2. Bind-mount the share directory into the container in `docker-compose.yml`:
+
+   ```yaml
+   services:
+     hivemem:
+       volumes:
+         - /data/consumption:/data/consumption
+   ```
+
+   The default container path (`/data/consumption`) matches
+   `hivemem.consumption.dir`. Change the right side of the bind-mount if you
+   configured a different path.
+
+3. Configure the scanner's Scan-to-Network-Folder destination to the Samba
+   share (IP of the LXC, share name `scans`, credentials matching `valid users`
+   above).
+
+4. Enable the pipeline in your environment:
+
+   ```
+   HIVEMEM_CONSUMPTION_ENABLED=true
+   ```
+
+## How it works
+
+### Polling and stability detection
+
+`ConsumptionWatcher` polls the consumption directory every `poll-interval`
+(default 10 s). A file is eligible for ingest only after it has been **stable**
+for `stable-seconds` (default 5 s) — meaning its size and mtime were identical
+across two consecutive polls and the mtime is at least `stable-seconds` old.
+Dotfiles (`.*`) and the `processed/` / `failed/` subdirectories are ignored.
+
+### Single-document path (M1)
+
+Any file that is **not a multi-page PDF**, or any PDF whose page count is ≤ 1,
+or any file when Vistierie is unavailable (Queen disabled), is ingested
+directly:
+
+- MIME type is guessed from the filename.
+- `AttachmentService.ingest` creates a `committed` cell in the configured
+  `realm` with `source = "consumption"`.
+- The file moves to `processed/`.
+
+### Multi-page PDF batch-separation path (M2)
+
+If `hivemem.queen.enabled=true` AND the file is a multi-page PDF:
+
+1. **Rasterize + OCR.** Each page is rasterized at the configured DPI and run
+   through Tesseract. Up to `max-pages` pages are processed; larger PDFs are
+   truncated at that limit.
+2. **Build page digests.** Each page is distilled into a `PageDigest`:
+   `page` (1-based), `head` (first ~300 OCR chars), `tail` (last ~100 chars),
+   `blank` (bool), `hasPageMarker` (`Seite X von Y` / `Page X of Y` found).
+3. **Store batch.** The original PDF is uploaded to SeaweedFS under
+   `consumption/batch-<correlationId>.pdf`. A row is inserted into
+   `consumption_jobs` (status `awaiting`).
+4. **Dispatch to Vistierie.** `VistierieSeparationClient` POSTs to
+   `/agents/document-separator/runs` with the page digests plus a
+   `completion_webhook` pointing back to
+   `POST /vistierie/separation/done` on HiveMem.
+5. **Webhook result.** When Vistierie finishes, it calls
+   `POST /vistierie/separation/done` (authenticated with
+   `hivemem.queen.separation-webhook-token`). HiveMem:
+   - Retrieves the batch PDF from SeaweedFS.
+   - Applies the boundaries from `SeparationResult` to split the PDF
+     (`BatchSplitter` using PDFBox).
+   - Ingests each part: the first part is always `committed`; subsequent
+     parts are `committed` if the boundary confidence ≥ `confidence-threshold`
+     (default 0.80), otherwise `pending` (lands in the approval queue).
+   - Marks the job `done` and moves the source file to `processed/`.
+
+### File disposition
+
+| Outcome | Destination |
+|---|---|
+| Ingest succeeded | `<dir>/processed/` |
+| Any exception during ingest | `<dir>/failed/` |
+
+Collision-safe: if a file with the same name already exists in the target
+subdirectory, a monotonic counter suffix is appended (`scan-1.pdf`,
+`scan-2.pdf`, …).
+
+## Requirements for auto-split
+
+Auto-split requires both pipelines to be active:
+
+- `hivemem.consumption.enabled=true`
+- `hivemem.queen.enabled=true` (with Vistierie base URL, `HIVEMEM_VISTIERIE_TOKEN`,
+  `HIVEMEM_QUEEN_HIVEMEM_BASE_URL`, and `HIVEMEM_QUEEN_SEPARATION_WEBHOOK_TOKEN` set)
+
+If the Queen is disabled, multi-page PDFs are ingested as a single document on
+the direct path (no split attempted).
+
+## Graceful degradation
+
+If the Vistierie separation webhook never arrives (Vistierie down, agent
+misconfigured, etc.), `SeparationReconcileSweep` runs every
+`reconcile-interval-ms` (default 5 min) and picks up any `awaiting` job older
+than 10 minutes. It ingests the whole batch PDF as a single `pending` document
+and moves the source file to `processed/`. **Nothing is lost.**
+
+Re-dispatch is not attempted because per-page digests are not persisted between
+the initial dispatch and the sweep — the sweep degrades rather than retries.
+
+## Configuration reference
+
+### `hivemem.consumption.*`
+
+| Property | Env var | Default | Description |
+|---|---|---|---|
+| `enabled` | `HIVEMEM_CONSUMPTION_ENABLED` | `false` | Master switch. Set to `true` to activate the watcher. |
+| `dir` | `HIVEMEM_CONSUMPTION_DIR` | `/data/consumption` | Absolute path to the watched folder. |
+| `realm` | `HIVEMEM_CONSUMPTION_REALM` | `documents` | HiveMem realm cells are created in. |
+| `poll-interval` | `HIVEMEM_CONSUMPTION_POLL_INTERVAL` | `PT10S` | How often the watcher scans the directory (ISO 8601 duration). |
+| `stable-seconds` | `HIVEMEM_CONSUMPTION_STABLE_SECONDS` | `5` | Seconds a file must be size+mtime-unchanged before ingest begins. |
+| `max-pages` | `HIVEMEM_CONSUMPTION_MAX_PAGES` | `200` | Maximum pages rasterized + OCR'd per batch PDF. Pages beyond this limit are not included in the digest. |
+| `confidence-threshold` | `HIVEMEM_CONSUMPTION_CONFIDENCE` | `0.80` | Minimum confidence for a split boundary to produce a `committed` cell. Below this value the part is `pending`. |
+| `max-dispatch-retries` | `HIVEMEM_CONSUMPTION_MAX_RETRIES` | `3` | Reserved; re-dispatch is not implemented (see degradation note). |
+| `reconcile-interval-ms` | `HIVEMEM_CONSUMPTION_RECONCILE_MS` | `300000` | Interval in ms for the stale-job reconcile sweep (default 5 min). |
+
+### New `hivemem.queen.*` keys added by this feature
+
+| Property | Env var | Default | Description |
+|---|---|---|---|
+| `separation-webhook-token` | `HIVEMEM_QUEEN_SEPARATION_WEBHOOK_TOKEN` | `""` | Bearer token HiveMem expects Vistierie to present on `POST /vistierie/separation/done`. Must be set when consumption + queen are both enabled. |
+| `document-separator-agent` | `HIVEMEM_QUEEN_SEPARATOR_AGENT` | `document-separator` | Vistierie agent name to dispatch separation jobs to. |
+
+## Known limitations and assumptions
+
+1. **Assumed Vistierie run-creation contract.** `VistierieSeparationClient`
+   calls `POST /agents/{name}/runs` with a body containing `correlation_id`,
+   `input.pages` (the page digest list), and `completion_webhook` (URL + token).
+   This matches the existing `VistierieAgentClient` idiom but must be reconciled
+   with Vistierie's actual run-creation API shape before production use.
+
+2. **`model_purpose = "separator"`.** The `document-separator` agent definition
+   sets `model_purpose = "separator"` rather than a hard-coded model ID.
+   Vistierie must map this purpose to a model (intended: Claude Sonnet). If the
+   mapping is absent in Vistierie, dispatches will fail with a 4xx response.
+
+3. **No barcode / separator-sheet support.** Boundary detection is purely
+   content-based. If your scanner produces separator sheets, they will be
+   treated as (likely blank) pages and may or may not trigger a boundary.
+
+4. **No split/merge correction UI.** Low-confidence splits land in the approval
+   queue as `pending` cells. Review and approval use the standard
+   `approve_pending` workflow. A dedicated correction UI (merge/re-split) is not
+   yet implemented.
+
+5. **Page-digest truncation.** Batches larger than `max-pages` are rasterized
+   only up to that limit. Boundaries beyond the limit are never detected; those
+   pages are folded into the last split part.

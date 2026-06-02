@@ -85,6 +85,7 @@ Extended Mind, Forgetting Curve, Zettelkasten, PARA).
 - **[Progressive Summarization](documentation/tools.md#progressive-summarization)** — Four layers per cell: content, summary, key points, and insight. Never lose nuance.
 - **[Long cells stay searchable](documentation/summarizer.md)** — auto-summarizer turns multi-page documents into curated summaries that are embedded for semantic search; cost-capped, opt-in.
 - **[Scanned PDFs become searchable](documentation/ocr.md)** — Tesseract OCR extracts text from scan-only PDFs; combined with the auto-summarizer, even paper-mailed documents are findable by semantic search.
+- **[Consumption folder — auto document separation](documentation/consumption.md)** — Drop a stack of mixed scans into a network folder; HiveMem ingests each file and uses a Vistierie LLM agent to detect document boundaries by content, with no separator or barcode sheets required.
 - **[Document-Type Extraction](documentation/extraction.md)** — invoices, contracts, and other typed documents are auto-classified during summarization; typed facts (vendor, amount, parties, dates) land in the knowledge graph.
 - **[Kroki + Vision](documentation/kroki-vision.md)** — Diagramm-Thumbnails (Mermaid/PUML/Graphviz/D2) und Bildbeschreibung via Claude Haiku, async + opt-in.
 - **[Append-Only Versioning + Time Machine](documentation/structure.md)** — No data is ever deleted. Query your knowledge at any point in time.
@@ -116,6 +117,7 @@ for details on every 🟡 / 🔴 row.
 | Temporal Knowledge Graph | 🟡 Partial | bi-temporal facts and multi-hop traversal ship; **automatic contradiction detection is not yet implemented** |
 | Privacy by Realm — model routing | 🟡 Partial | data segregation by realm works; **per-realm enforcement of "stays on local models" is not yet wired into the LLM call path** |
 | Queen + Bees periodic agent | 🟡 Partial | Queen + isolated-cell-Bee run on Vistierie's agent runtime (cron, subagent dispatch, run/cost audit, kill switch); proposals land as `pending` tunnels via the approval workflow. An admin-only Queen-log UI (`/queen`) shows runs + event timelines and the proposal approval queue. **Still missing: preference UI, further Bee types.** |
+| [Consumption folder — auto document separation](documentation/consumption.md) | 🟡 Partial | Drop scans into a folder; HiveMem auto-ingests and uses a Vistierie LLM agent to detect document boundaries by content (no separator sheets). High-confidence splits → `committed`; low-confidence → `pending` approval queue. **Still missing: Vistierie API contract finalized, split/merge correction UI.** |
 
 ## Documentation
 
@@ -132,6 +134,7 @@ for details on every 🟡 / 🔴 row.
 | [Hook Integration](documentation/hook/) | Auto-inject context into Claude Code sessions |
 | [Operations](documentation/operations.md) | Deployment, migrations, debugging |
 | [Roadmap](documentation/roadmap.md) | What's planned, what's partial, order of work |
+| [Consumption Folder](documentation/consumption.md) | Scan-to-folder ingest, automatic content-based document separation, config reference |
 
 ## License
 

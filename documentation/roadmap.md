@@ -67,6 +67,42 @@ remains the sole writer. The feature is gated behind
 The execution model is tracked in
 [#28 Asynchronous Curator](https://github.com/visterion/HiveMem/issues/28).
 
+### Consumption folder — automatic document separation
+
+**Today.** `ConsumptionWatcher` polls a configured directory every
+`hivemem.consumption.poll-interval`, picks up files that have been
+size+mtime-stable for `stable-seconds`, and ingests them. Single files and
+non-multi-page PDFs are ingested directly as `committed` cells. Multi-page
+PDFs are rasterized, OCR'd per page, and dispatched to the Vistierie
+`document-separator` agent via `POST /agents/document-separator/runs`
+(HiveMem-initiated, the first outbound Vistierie task dispatch). When
+Vistierie calls back on `POST /vistierie/separation/done`, HiveMem splits the
+PDF and ingests each part — high-confidence boundaries as `committed`, low-
+confidence boundaries as `pending` (approval queue). If Vistierie never
+responds, the reconcile sweep ingests the whole batch as a single `pending`
+document after 10 minutes — nothing is lost. The feature is gated behind
+`hivemem.consumption.enabled=true` (default `false`); Queen must also be
+enabled for auto-split.
+
+**Missing.**
+
+- No barcode / separator-sheet support (by design; boundaries are content-based only).
+- No split/merge correction UI — low-confidence splits are reviewed via the
+  existing `approve_pending` approval queue, but there is no dedicated UI to
+  re-split or merge parts.
+- The `VistierieSeparationClient` run-creation contract (`POST /agents/{name}/runs`,
+  `correlation_id` + `input.pages` + `completion_webhook`) is an assumed shape
+  that must be reconciled with the real Vistierie API before production use.
+
+**Planned (rough order).**
+
+1. Reconcile + stabilize the Vistierie run-creation API contract.
+2. Dedicated split/merge correction UI in `knowledge-ui/`.
+3. Optional barcode-sheet support.
+
+The feature is tracked in
+[#33 SP5 — Paperless-style consumption folder watcher](https://github.com/visterion/HiveMem/issues/33).
+
 ## 🔴 Planned — described in the README, not yet built
 
 ## Tracked GitHub issues
@@ -85,7 +121,6 @@ README* but is on the agenda:
 | [#30](https://github.com/visterion/HiveMem/issues/30) | SP2 — Attachment storage upload API | Paperless+Obsidian sub-project. |
 | [#31](https://github.com/visterion/HiveMem/issues/31) | SP4 — Markdown editor + Obsidian vault import | UI on top of the existing knowledge UI. |
 | [#32](https://github.com/visterion/HiveMem/issues/32) | SP3 — Ingest pipeline (OCR + email/doc → cells) | Extends today's OCR/extraction into a full ingest flow; depends on #30. |
-| [#33](https://github.com/visterion/HiveMem/issues/33) | SP5 — Paperless-style consumption folder watcher | Depends on #32. |
 
 ## How this page stays honest
 

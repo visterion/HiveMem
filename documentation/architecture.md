@@ -210,6 +210,31 @@ Scheduling (cron ticks), subagent dispatch (context-shielding), per-run cost acc
 
 > **Budget requirement:** The Vistierie tenant and each agent must have a daily/monthly budget set, or every cron tick returns 403. See the [Operations runbook](operations.md#queen--bees-on-vistierie-lxc-102) for the setup commands.
 
+### HiveMem → Vistierie task dispatch (new direction)
+
+The consumption pipeline is the **first instance of HiveMem initiating a
+Vistierie run** rather than merely registering agents and waiting for Vistierie
+to call back. When a multi-page PDF arrives in the consumption folder,
+`VistierieSeparationClient` POSTs directly to
+`/agents/document-separator/runs`, supplying the page digests and a
+`completion_webhook` URL that Vistierie calls when the separation run finishes.
+
+This establishes a new request/response pattern on top of the existing
+callback-based integration:
+
+| Direction | Mechanism | Who initiates |
+|---|---|---|
+| Agent registration | PUT/POST `/agents` | HiveMem (startup) |
+| Tool calls during a run | POST `/vistierie/tools/**` | Vistierie (inbound) |
+| Queen completion | POST `/vistierie/runs/done` | Vistierie (inbound) |
+| **Task dispatch (new)** | **POST `/agents/{name}/runs`** | **HiveMem (outbound, on demand)** |
+| Separation result | POST `/vistierie/separation/done` | Vistierie (inbound) |
+
+The intended long-term direction is for **all generative LLM work to live in
+Vistierie** — models, budgets, scheduling, and audit traces owned there — while
+HiveMem retains only local embedding inference. The consumption pipeline's
+dispatch pattern is the first step toward that model.
+
 ### Queen-Log UI
 
 The Queen-Log UI lets admins inspect past Queen and Bee runs without leaving HiveMem. The data path is:
