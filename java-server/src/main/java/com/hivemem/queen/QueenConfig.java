@@ -11,4 +11,9 @@ public class QueenConfig {
     public VistierieAgentClient vistierieAgentClient(RestClient.Builder builder, QueenProperties props) {
         return new VistierieAgentClient(builder, props);
     }
+
+    @Bean
+    public VistierieRunsClient vistierieRunsClient(RestClient.Builder builder, QueenProperties props) {
+        return new VistierieRunsClient(builder, props);
+    }
 }

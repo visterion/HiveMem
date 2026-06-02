@@ -59,7 +59,9 @@ public class ToolPermissionService {
 
     private static final Set<String> ADMIN_TOOLS = tools(
             "approve_pending",
-            "health"
+            "health",
+            "queen_runs",
+            "queen_run_detail"
     );
 
     private static final Set<String> WRITER_TOOLS = union(READ_TOOLS, WRITE_TOOLS);
