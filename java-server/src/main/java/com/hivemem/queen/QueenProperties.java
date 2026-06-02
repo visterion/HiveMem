@@ -13,6 +13,8 @@ public class QueenProperties {
     private String vistierieBaseUrl = "http://vistierie:8090";
     /** HiveMem tenant bearer token in Vistierie (may reuse HIVEMEM_VISTIERIE_TOKEN). */
     private String vistierieToken = "";
+    /** Optional Vistierie ADMIN token. When set, queen_runs uses GET /admin/runs to include cost metrics. */
+    private String vistierieAdminToken = "";
     /** HiveMem's own externally-reachable base URL, used to build tool webhook_url + completion_webhook. */
     private String hivememBaseUrl = "http://hivemem:8080";
     /** Token Vistierie presents to HiveMem on every tool webhook call (agent.webhook_token). */
@@ -32,6 +34,8 @@ public class QueenProperties {
     public void setVistierieBaseUrl(String v) { this.vistierieBaseUrl = v; }
     public String getVistierieToken() { return vistierieToken; }
     public void setVistierieToken(String v) { this.vistierieToken = v; }
+    public String getVistierieAdminToken() { return vistierieAdminToken; }
+    public void setVistierieAdminToken(String v) { this.vistierieAdminToken = v; }
     public String getHivememBaseUrl() { return hivememBaseUrl; }
     public void setHivememBaseUrl(String v) { this.hivememBaseUrl = v; }
     public String getWebhookToken() { return webhookToken; }

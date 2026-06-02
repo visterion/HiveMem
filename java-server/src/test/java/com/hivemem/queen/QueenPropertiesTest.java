@@ -32,4 +32,12 @@ class QueenPropertiesTest {
         assertThat(p.getWebhookToken()).isEqualTo("wt");
         assertThat(p.getCompletionWebhookToken()).isEqualTo("cwt");
     }
+
+    @Test
+    void adminTokenDefaultsEmptyAndIsSettable() {
+        QueenProperties p = new QueenProperties();
+        org.assertj.core.api.Assertions.assertThat(p.getVistierieAdminToken()).isEmpty();
+        p.setVistierieAdminToken("admin-tok");
+        org.assertj.core.api.Assertions.assertThat(p.getVistierieAdminToken()).isEqualTo("admin-tok");
+    }
 }
