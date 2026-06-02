@@ -34,6 +34,7 @@ function visible(it: typeof items[number]) { return !it.role || auth.role === it
     <div class="spacer" />
     <v-btn icon="mdi-graph-outline" variant="text" @click="router.push('/graph')" />
     <v-btn icon="mdi-rotate-3d-variant" variant="text" @click="router.push('/cinema')" />
+    <v-btn v-if="auth.role === 'admin'" icon="mdi-crown" variant="text" @click="router.push('/queen')" />
   </div>
 </template>
 

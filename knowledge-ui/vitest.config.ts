@@ -9,6 +9,12 @@ export default defineConfig({
   test: {
     environment: 'happy-dom',
     globals: true,
-    include: ['tests/unit/**/*.spec.ts']
-  }
+    include: ['tests/unit/**/*.spec.ts'],
+    // Run vuetify through Vite's transform pipeline so CSS side-effects are handled
+    server: {
+      deps: {
+        inline: ['vuetify'],
+      },
+    },
+  },
 })
