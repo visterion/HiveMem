@@ -86,6 +86,15 @@ hivemem:
     backfill-interval: ${HIVEMEM_OCR_BACKFILL_INTERVAL:PT1H}
     backfill-batch-size: ${HIVEMEM_OCR_BATCH:5}
     max-pages: ${HIVEMEM_OCR_MAX_PAGES:50}
+  consumption:
+    enabled: ${HIVEMEM_CONSUMPTION_ENABLED:false}
+    dir: ${HIVEMEM_CONSUMPTION_DIR:/data/consumption}
+    realm: ${HIVEMEM_CONSUMPTION_REALM:documents}
+    poll-interval: ${HIVEMEM_CONSUMPTION_POLL_INTERVAL:PT10S}
+    stable-seconds: ${HIVEMEM_CONSUMPTION_STABLE_SECONDS:5}
+    max-pages: ${HIVEMEM_CONSUMPTION_MAX_PAGES:200}
+    confidence-threshold: ${HIVEMEM_CONSUMPTION_CONFIDENCE:0.80}
+    max-dispatch-retries: ${HIVEMEM_CONSUMPTION_MAX_RETRIES:3}
 
 server:
   port: ${SERVER_PORT:8421}
