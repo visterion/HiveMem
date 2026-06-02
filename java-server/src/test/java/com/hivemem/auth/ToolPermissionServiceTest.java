@@ -13,5 +13,7 @@ class ToolPermissionServiceTest {
         assertThat(svc.isAllowed(AuthRole.ADMIN, "queen_run_detail")).isTrue();
         assertThat(svc.isAllowed(AuthRole.WRITER, "queen_runs")).isFalse();
         assertThat(svc.isAllowed(AuthRole.READER, "queen_run_detail")).isFalse();
+        assertThat(svc.isAllowed(AuthRole.AGENT, "queen_runs")).isFalse();
+        assertThat(svc.isAllowed(AuthRole.AGENT, "queen_run_detail")).isFalse();
     }
 }

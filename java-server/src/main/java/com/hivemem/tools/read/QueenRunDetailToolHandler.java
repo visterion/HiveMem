@@ -39,7 +39,13 @@ public class QueenRunDetailToolHandler implements ToolHandler {
 
     @Override
     public Object call(AuthPrincipal principal, JsonNode arguments) {
+        if (arguments == null || !arguments.hasNonNull("run_id")) {
+            throw new IllegalArgumentException("Missing run_id");
+        }
         String runId = arguments.get("run_id").asText();
+        if (runId.isBlank()) {
+            throw new IllegalArgumentException("Missing run_id");
+        }
         try {
             return service.runDetail(runId);
         } catch (VistierieUnavailableException e) {
