@@ -43,26 +43,26 @@ HiveMem exposes **36 MCP tools** across search, knowledge graph, progressive sum
 
 **Write (15):**
 
-18. `add_cell`: Store a cell with content, summary, key points, and insight; optional `dedupe_threshold` runs an embedding-based dedupe gate in one call.
-19. `add_tunnel`: Link two cells together.
-20. `kg_add`: Fact triple; optional `on_conflict` (`insert`|`return`|`reject`) gates against active conflicts.
-21. `kg_invalidate`: Soft-delete/expire a fact.
-22. `update_identity`: Update session context facts.
-23. `add_reference`: Store source documents/URLs.
-24. `link_reference`: Cite source for a cell.
-25. `remove_tunnel`: Expire a cell link.
-26. `revise_cell`: Create a new version of a cell.
-27. `revise_fact`: Create a new version of a fact.
-28. `register_agent`: Add an agent to the fleet.
-29. `diary_write`: Agent-private reflection tool.
-30. `update_blueprint`: Update realm narrative.
-31. `reclassify_cell`: Move a cell to a different realm/signal/topic in-place without creating a new revision. Leaves content, embeddings, tunnels, facts, and references untouched. Use for taxonomy migrations.
-32. `upload_attachment`: Upload a file attachment (Base64-encoded). Required params: `realm` (target realm), `data` (Base64 payload), `filename`. Optional: `signal`, `topic`, `cell_id` (existing cell — creates a `related_to` tunnel). Always creates a new `pending` Cell whose content is the extracted text (or the filename if no text could be extracted); the Classifier agent enriches the cell asynchronously. Stores original in SeaweedFS, generates JPEG thumbnail at ingest. Returns `{ attachment_id, cell_id, mime_type, size_bytes, has_thumbnail }`. For large files (>~10 MB) prefer `POST /api/attachments` (multipart) — see [Attachments](#attachments).
+20. `add_cell`: Store a cell with content, summary, key points, and insight; optional `dedupe_threshold` runs an embedding-based dedupe gate in one call.
+21. `add_tunnel`: Link two cells together.
+22. `kg_add`: Fact triple; optional `on_conflict` (`insert`|`return`|`reject`) gates against active conflicts.
+23. `kg_invalidate`: Soft-delete/expire a fact.
+24. `update_identity`: Update session context facts.
+25. `add_reference`: Store source documents/URLs.
+26. `link_reference`: Cite source for a cell.
+27. `remove_tunnel`: Expire a cell link.
+28. `revise_cell`: Create a new version of a cell.
+29. `revise_fact`: Create a new version of a fact.
+30. `register_agent`: Add an agent to the fleet.
+31. `diary_write`: Agent-private reflection tool.
+32. `update_blueprint`: Update realm narrative.
+33. `reclassify_cell`: Move a cell to a different realm/signal/topic in-place without creating a new revision. Leaves content, embeddings, tunnels, facts, and references untouched. Use for taxonomy migrations.
+34. `upload_attachment`: Upload a file attachment (Base64-encoded). Required params: `realm` (target realm), `data` (Base64 payload), `filename`. Optional: `signal`, `topic`, `cell_id` (existing cell — creates a `related_to` tunnel). Always creates a new `pending` Cell whose content is the extracted text (or the filename if no text could be extracted); the Classifier agent enriches the cell asynchronously. Stores original in SeaweedFS, generates JPEG thumbnail at ingest. Returns `{ attachment_id, cell_id, mime_type, size_bytes, has_thumbnail }`. For large files (>~10 MB) prefer `POST /api/attachments` (multipart) — see [Attachments](#attachments).
 
 **Admin (2):**
 
-33. `approve_pending`: Admin tool to batch approve or reject agent writes.
-34. `health`: Monitor DB and service state.
+35. `approve_pending`: Admin tool to batch approve or reject agent writes.
+36. `health`: Monitor DB and service state.
 
 ## Attachments
 
