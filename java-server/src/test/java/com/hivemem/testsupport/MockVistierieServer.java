@@ -61,4 +61,29 @@ public class MockVistierieServer {
         stubFor(post(urlEqualTo("/agents"))
                 .willReturn(aResponse().withStatus(500)));
     }
+
+    /** Admin runs list with cost fields. */
+    public void stubAdminRuns(String body) {
+        stubFor(get(urlPathEqualTo("/admin/runs"))
+                .willReturn(okJson(body)));
+    }
+
+    /** Tenant runs list (no cost). */
+    public void stubTenantRuns(String body) {
+        stubFor(get(urlPathEqualTo("/runs"))
+                .willReturn(okJson(body)));
+    }
+
+    public void stubRunDetail(String runId, String body) {
+        stubFor(get(urlEqualTo("/runs/" + runId)).willReturn(okJson(body)));
+    }
+
+    public void stubRunEvents(String runId, String body) {
+        stubFor(get(urlEqualTo("/runs/" + runId + "/events")).willReturn(okJson(body)));
+    }
+
+    public void stubRunsServerError() {
+        stubFor(get(urlPathEqualTo("/admin/runs")).willReturn(aResponse().withStatus(500)));
+        stubFor(get(urlPathEqualTo("/runs")).willReturn(aResponse().withStatus(500)));
+    }
 }
