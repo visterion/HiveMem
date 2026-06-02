@@ -47,6 +47,24 @@ class QueenRunsServiceTest {
     }
 
     @Test
+    void filtersOutNonQueenBeeAgents() {
+        VistierieRunsClient client = Mockito.mock(VistierieRunsClient.class);
+        Mockito.when(client.costAvailable()).thenReturn(false);
+        Mockito.when(client.listRuns(50, 0)).thenReturn(json("""
+            {"items":[
+               {"id":"r1","agent":"queen","status":"done"},
+               {"id":"r2","agent":"isolated-cell-bee","status":"done"},
+               {"id":"r3","agent":"some-other-agent","status":"done"}
+            ]}
+            """));
+        QueenRunsService svc = new QueenRunsService(client);
+        QueenRunView.RunList out = svc.listRuns(50, 0);
+        assertThat(out.items()).hasSize(2);
+        assertThat(out.items()).extracting(QueenRunView.RunSummary::agent)
+                .containsExactlyInAnyOrder("queen", "isolated-cell-bee");
+    }
+
+    @Test
     void detailCombinesRunAndEvents() {
         VistierieRunsClient client = Mockito.mock(VistierieRunsClient.class);
         Mockito.when(client.getRun("r1")).thenReturn(json("{\"id\":\"r1\",\"status\":\"done\"}"));
