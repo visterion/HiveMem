@@ -12,6 +12,7 @@ public class AgentDefinitions {
 
     public static final String BEE_NAME = "isolated-cell-bee";
     public static final String QUEEN_NAME = "queen";
+    public static final String SEPARATOR_NAME = "document-separator";
 
     private static final String BEE_SYSTEM = """
             You are an isolated-cell Bee in HiveMem, a personal knowledge graph.
@@ -99,6 +100,39 @@ public class AgentDefinitions {
                 httpTool("search_similar_cells", "Find cells semantically similar to a cell", searchIn)));
         def.put("output_schema", outputSchema);
         def.put("max_turns", 10);
+        def.put("max_run_seconds", 60);
+        def.put("webhook_token", props.getWebhookToken());
+        return def;
+    }
+
+    public Map<String, Object> documentSeparator() {
+        Map<String, Object> boundaryItem = objectSchema(
+                Map.of(
+                        "afterPage", Map.of("type", "integer"),
+                        "confidence", Map.of("type", "number")),
+                List.of("afterPage", "confidence"));
+        Map<String, Object> outputSchema = objectSchema(
+                Map.of("boundaries", Map.of("type", "array", "items", boundaryItem)),
+                List.of("boundaries"));
+
+        Map<String, Object> def = new LinkedHashMap<>();
+        def.put("name", SEPARATOR_NAME);
+        def.put("system_prompt", """
+                You separate a scanned page stream into individual documents.
+                You receive an ordered list of pages; each page has: page (1-based),
+                head (first ~300 chars of OCR text), tail (last ~100 chars), blank (bool),
+                hasPageMarker (a 'Seite X von Y' / 'Page X of Y' phrase was found).
+                Decide AFTER which pages a new document begins. Use letterhead/sender changes,
+                salutations, totals/signatures at page end, date jumps, blank separator pages,
+                and 'Seite X von Y' counters. A blank page usually ends the previous document.
+                Return STRICT JSON: {"boundaries":[{"afterPage":N,"confidence":0.0-1.0}, ...]}.
+                confidence is YOUR certainty that a new document truly starts after page N.
+                Prefer low confidence over dropping an uncertain boundary.
+                If the whole stream is one document, return {"boundaries":[]}.
+                """);
+        def.put("model_purpose", "separator");
+        def.put("output_schema", outputSchema);
+        def.put("max_turns", 5);
         def.put("max_run_seconds", 60);
         def.put("webhook_token", props.getWebhookToken());
         return def;
