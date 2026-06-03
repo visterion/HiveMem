@@ -74,15 +74,18 @@ The execution model is tracked in
 size+mtime-stable for `stable-seconds`, and ingests them. Single files and
 non-multi-page PDFs are ingested directly as `committed` cells. Multi-page
 PDFs are rasterized, OCR'd per page, and dispatched to the Vistierie
-`document-separator` agent via `POST /agents/document-separator/runs`
-(HiveMem-initiated, the first outbound Vistierie task dispatch). When
-Vistierie calls back on `POST /vistierie/separation/done`, HiveMem splits the
-PDF and ingests each part — high-confidence boundaries as `committed`, low-
-confidence boundaries as `pending` (approval queue). If Vistierie never
-responds, the reconcile sweep ingests the whole batch as a single `pending`
-document after 10 minutes — nothing is lost. The feature is gated behind
-`hivemem.consumption.enabled=true` (default `false`); Queen must also be
-enabled for auto-split.
+`document-separator` agent via `POST /agents/document-separator/run`
+(HiveMem-initiated, the first outbound Vistierie task dispatch). The page
+digests + a correlation id ride inside the run `payload`; HiveMem stores the
+`run_id` Vistierie returns and correlates the callback on it. When Vistierie
+calls back on `POST /vistierie/separation/done` (envelope `{run_id, status,
+output, …}`), HiveMem splits the PDF and ingests each part — high-confidence
+boundaries as `committed`, low-confidence boundaries as `pending` (approval
+queue). A non-`done` run or a missing `output` leaves the job awaiting so the
+reconcile sweep degrades it; if Vistierie never responds, that sweep ingests
+the whole batch as a single `pending` document after 10 minutes — nothing is
+lost. The feature is gated behind `hivemem.consumption.enabled=true` (default
+`false`); Queen must also be enabled for auto-split.
 
 **Missing.**
 
@@ -90,15 +93,18 @@ enabled for auto-split.
 - No split/merge correction UI — low-confidence splits are reviewed via the
   existing `approve_pending` approval queue, but there is no dedicated UI to
   re-split or merge parts.
-- The `VistierieSeparationClient` run-creation contract (`POST /agents/{name}/runs`,
-  `correlation_id` + `input.pages` + `completion_webhook`) is an assumed shape
-  that must be reconciled with the real Vistierie API before production use.
+- A Vistierie **routing rule** mapping `purpose=separator` → a Bedrock model
+  (e.g. Sonnet) must exist, or separator runs fail with "no routing rule".
+  This is Vistierie-side config, not HiveMem code.
 
 **Planned (rough order).**
 
-1. Reconcile + stabilize the Vistierie run-creation API contract.
-2. Dedicated split/merge correction UI in `knowledge-ui/`.
-3. Optional barcode-sheet support.
+1. Dedicated split/merge correction UI in `knowledge-ui/`.
+2. Optional barcode-sheet support.
+
+The HiveMem→Vistierie run-creation contract (`POST /agents/{name}/run`,
+`payload` + `completion_webhook` + `completion_webhook_token`, callback by
+`run_id`) has been reconciled against Vistierie's real `RunController`.
 
 The feature is tracked in
 [#33 SP5 — Paperless-style consumption folder watcher](https://github.com/visterion/HiveMem/issues/33).

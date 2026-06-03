@@ -159,7 +159,11 @@ public class ConsumptionService implements SeparationApplier {
             jobCreated = true;
 
             try {
-                separationClient.dispatch(correlationId, digests);
+                String runId = separationClient.dispatch(correlationId, digests);
+                // Store the run id so the completion callback (which carries no correlation id) can
+                // match this job deterministically. If null, the job stays correlatable only via the
+                // reconcile sweep's degrade path.
+                if (runId != null) jobs.attachRunId(correlationId, runId);
             } catch (Exception dispatchErr) {
                 // BUG 2: leave the job 'awaiting' and the file in processing/ with S3 populated.
                 // SeparationReconcileSweep will degrade it later. Nothing is lost.
@@ -178,19 +182,31 @@ public class ConsumptionService implements SeparationApplier {
 
     @Override
     public void apply(SeparationResult result) {
-        var jobOpt = jobs.findAwaiting(result.correlationId());
+        String runId = result.runId();
+        // A non-'done' run or a missing output means Vistierie could not produce boundaries. Leave the
+        // job 'awaiting' so SeparationReconcileSweep degrades it into a single pending document after the
+        // stale window — never lose the batch by marking it failed here.
+        if (!"done".equals(result.status()) || result.output() == null) {
+            log.warn("Separation run {} not usable (status={}); leaving awaiting for reconcile",
+                    runId, result.status());
+            return;
+        }
+        var jobOpt = jobs.findAwaitingByRunId(runId);
         if (jobOpt.isEmpty()) {
-            log.info("No awaiting job for correlation {} (already done?)", result.correlationId());
+            log.info("No awaiting job for run {} (already done?)", runId);
             return;
         }
         SeparationJobRepository.Job job = jobOpt.get();
         try {
             byte[] pdf = seaweed.downloadBytes(job.s3Key());
             int total = job.pageCount();
+            // An empty boundary list is a valid result: the whole stream is one document.
+            List<SeparationResult.Boundary> boundaries =
+                    result.output().boundaries() == null ? List.of() : result.output().boundaries();
             // Keep boundaries and parts aligned: derive the SAME valid, distinct, sorted cut list
             // that BatchSplitter uses, carrying each cut's confidence alongside it.
             TreeMap<Integer, Double> validCuts = new TreeMap<>();
-            for (SeparationResult.Boundary b : result.boundaries()) {
+            for (SeparationResult.Boundary b : boundaries) {
                 if (b.afterPage() >= 1 && b.afterPage() < total) {
                     validCuts.merge(b.afterPage(), b.confidence(), Math::max); // dedupe, keep max conf
                 }
@@ -213,12 +229,13 @@ public class ConsumptionService implements SeparationApplier {
             }
             // Mark done BEFORE the move: sub-docs are already ingested, so a move failure must not
             // flip the job to 'failed'. The source path is now the processing/ staged path.
-            jobs.markDone(result.correlationId());
+            jobs.markDone(job.correlationId());
             tryMoveProcessedTolerant(Path.of(job.sourcePath()));
-            log.info("Applied separation {}: {} documents", result.correlationId(), parts.size());
+            log.info("Applied separation run {} (job {}): {} documents",
+                    runId, job.correlationId(), parts.size());
         } catch (Exception e) {
-            log.warn("apply separation {} failed: {}", result.correlationId(), e.toString());
-            jobs.markFailed(result.correlationId());
+            log.warn("apply separation run {} (job {}) failed: {}", runId, job.correlationId(), e.toString());
+            jobs.markFailed(job.correlationId());
             tryMoveFailed(Path.of(job.sourcePath()));
         }
     }

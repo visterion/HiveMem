@@ -97,15 +97,23 @@ If `hivemem.queen.enabled=true` AND the file is a multi-page PDF:
    `consumption/batch-<correlationId>.pdf`. A row is inserted into
    `consumption_jobs` (status `awaiting`).
 4. **Dispatch to Vistierie.** `VistierieSeparationClient` POSTs to
-   `/agents/document-separator/runs` with the page digests plus a
-   `completion_webhook` pointing back to
-   `POST /vistierie/separation/done` on HiveMem.
+   `/agents/document-separator/run` with a body of
+   `{payload, completion_webhook, completion_webhook_token}` — the page digests
+   and the correlation id ride inside `payload`, and `completion_webhook` points
+   back to `POST /vistierie/separation/done` on HiveMem. Vistierie returns a
+   `run_id`, which HiveMem stores on the job (`vistierie_run_id`); the callback
+   carries no correlation id, so the run id is what links it back.
 5. **Webhook result.** When Vistierie finishes, it calls
    `POST /vistierie/separation/done` (authenticated with
-   `hivemem.queen.separation-webhook-token`). HiveMem:
+   `hivemem.queen.separation-webhook-token`) with the envelope
+   `{run_id, status, output, error, …}`, where the separator agent's
+   `output_schema` shapes `output` as `{boundaries:[{afterPage,confidence}]}`.
+   HiveMem looks up the awaiting job by `run_id` and:
    - Retrieves the batch PDF from SeaweedFS.
-   - Applies the boundaries from `SeparationResult` to split the PDF
-     (`BatchSplitter` using PDFBox).
+   - Applies the boundaries from `output` to split the PDF
+     (`BatchSplitter` using PDFBox). An empty boundary list is a valid result:
+     the whole stream becomes one document. A non-`done` status or missing
+     `output` leaves the job awaiting for the reconcile sweep to degrade.
    - Ingests each part: the first part is always `committed`; subsequent
      parts are `committed` if the boundary confidence ≥ `confidence-threshold`
      (default 0.80), otherwise `pending` (lands in the approval queue).
@@ -180,16 +188,20 @@ the initial dispatch and the sweep — the sweep degrades rather than retries.
 
 ## Known limitations and assumptions
 
-1. **Assumed Vistierie run-creation contract.** `VistierieSeparationClient`
-   calls `POST /agents/{name}/runs` with a body containing `correlation_id`,
-   `input.pages` (the page digest list), and `completion_webhook` (URL + token).
-   This matches the existing `VistierieAgentClient` idiom but must be reconciled
-   with Vistierie's actual run-creation API shape before production use.
+1. **Vistierie run-creation contract (reconciled).** `VistierieSeparationClient`
+   calls `POST /agents/{name}/run` (singular) with
+   `{payload, completion_webhook, completion_webhook_token}`, matching
+   Vistierie's `RunController#trigger`. The correlation id and page digests ride
+   inside `payload`; the callback is correlated by the returned `run_id`
+   (stored as `consumption_jobs.vistierie_run_id`), since Vistierie's completion
+   webhook carries no correlation id of its own.
 
-2. **`model_purpose = "separator"`.** The `document-separator` agent definition
-   sets `model_purpose = "separator"` rather than a hard-coded model ID.
-   Vistierie must map this purpose to a model (intended: Claude Sonnet). If the
-   mapping is absent in Vistierie, dispatches will fail with a 4xx response.
+2. **`model_purpose = "separator"` requires a Vistierie routing rule.** The
+   `document-separator` agent definition sets `model_purpose = "separator"`
+   rather than a hard-coded model ID. Vistierie's `RoutingResolver` needs a
+   routing rule mapping `purpose=separator` → a provider+model (intended:
+   Bedrock Claude Sonnet), or a wildcard rule; otherwise runs fail with
+   "no routing rule". This is Vistierie-side configuration.
 
 3. **No barcode / separator-sheet support.** Boundary detection is purely
    content-based. If your scanner produces separator sheets, they will be

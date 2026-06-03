@@ -99,7 +99,7 @@ public class VistierieWebhookController {
             @RequestHeader(name = "Authorization", required = false) String auth,
             @RequestBody com.hivemem.consumption.SeparationResult payload) {
         requireToken(auth, props.getSeparationWebhookToken());
-        if (payload == null || payload.correlationId() == null) {
+        if (payload == null || payload.runId() == null) {
             return ResponseEntity.badRequest().build();
         }
         com.hivemem.consumption.SeparationApplier applier = separationApplier.getIfAvailable();

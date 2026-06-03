@@ -31,25 +31,35 @@ public class VistierieSeparationClient {
     }
 
     /**
-     * POST /agents/{name}/runs with the page digests + the callback HiveMem expects results on.
+     * Create a run on Vistierie's document-separator agent and return its run id.
      *
-     * NOTE: The endpoint path (/agents/{name}/runs) and request body shape (correlation_id, input.pages,
-     * completion_webhook) are ASSUMED based on the existing VistierieAgentClient idiom and must be
-     * reconciled with Vistierie's real run-creation API before production use.
+     * Matches Vistierie's real run-creation contract (RunController#trigger): POST /agents/{name}/run
+     * with {payload, completion_webhook, completion_webhook_token}. The page digests and a
+     * correlation id ride inside the free-form {@code payload}; Vistierie echoes neither back, so the
+     * returned run id (RunCreatedResponse.run_id) is what HiveMem stores to correlate the callback.
+     *
+     * @return the Vistierie run id, or {@code null} if the response carried none.
      */
-    public void dispatch(UUID correlationId, List<PageDigest> digests) {
+    public String dispatch(UUID correlationId, List<PageDigest> digests) {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("correlation_id", correlationId.toString());
+        payload.put("pages", digests);
+
         Map<String, Object> body = new HashMap<>();
-        body.put("correlation_id", correlationId.toString());
-        body.put("input", Map.of("pages", digests));
-        body.put("completion_webhook", Map.of(
-                "url", callbackBaseUrl + "/vistierie/separation/done",
-                "token", callbackToken));
-        client.post()
-                .uri("/agents/{name}/runs", agentName)
+        body.put("payload", payload);
+        body.put("completion_webhook", callbackBaseUrl + "/vistierie/separation/done");
+        body.put("completion_webhook_token", callbackToken);
+
+        RunCreated created = client.post()
+                .uri("/agents/{name}/run", agentName)
                 .header("Authorization", "Bearer " + tenantToken)
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(body)
                 .retrieve()
-                .toBodilessEntity();
+                .body(RunCreated.class);
+        return created == null ? null : created.run_id();
     }
+
+    /** Subset of Vistierie's RunCreatedResponse (202 Accepted). */
+    record RunCreated(String run_id, String agent_name, int agent_version, String status) {}
 }

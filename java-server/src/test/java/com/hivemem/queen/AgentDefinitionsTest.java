@@ -56,4 +56,16 @@ class AgentDefinitionsTest {
         assertThat(dispatch.get("type")).isEqualTo("subagent");
         assertThat(dispatch.get("target_agent")).isEqualTo("isolated-cell-bee");
     }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void separatorDefinitionHasEmptyToolsAndSeparatorPurpose() {
+        Map<String, Object> sep = new AgentDefinitions(props()).documentSeparator();
+        assertThat(sep.get("name")).isEqualTo("document-separator");
+        assertThat(sep.get("model_purpose")).isEqualTo("separator");
+        assertThat(sep).containsKey("output_schema");
+        // Vistierie's CreateAgentRequest requires a non-null tools list; the separator uses none.
+        List<Map<String, Object>> tools = (List<Map<String, Object>>) sep.get("tools");
+        assertThat(tools).isNotNull().isEmpty();
+    }
 }

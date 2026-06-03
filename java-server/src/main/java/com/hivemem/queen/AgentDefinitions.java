@@ -131,6 +131,7 @@ public class AgentDefinitions {
                 If the whole stream is one document, return {"boundaries":[]}.
                 """);
         def.put("model_purpose", "separator");
+        def.put("tools", List.of());   // required by Vistierie CreateAgentRequest (@NotNull); separator needs none
         def.put("output_schema", outputSchema);
         def.put("max_turns", 5);
         def.put("max_run_seconds", 60);

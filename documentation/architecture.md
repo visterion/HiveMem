@@ -216,8 +216,10 @@ The consumption pipeline is the **first instance of HiveMem initiating a
 Vistierie run** rather than merely registering agents and waiting for Vistierie
 to call back. When a multi-page PDF arrives in the consumption folder,
 `VistierieSeparationClient` POSTs directly to
-`/agents/document-separator/runs`, supplying the page digests and a
-`completion_webhook` URL that Vistierie calls when the separation run finishes.
+`/agents/document-separator/run`, supplying the page digests inside the run
+`payload` and a `completion_webhook` URL that Vistierie calls when the
+separation run finishes. HiveMem stores the returned `run_id` to correlate that
+callback.
 
 This establishes a new request/response pattern on top of the existing
 callback-based integration:
@@ -227,7 +229,7 @@ callback-based integration:
 | Agent registration | PUT/POST `/agents` | HiveMem (startup) |
 | Tool calls during a run | POST `/vistierie/tools/**` | Vistierie (inbound) |
 | Queen completion | POST `/vistierie/runs/done` | Vistierie (inbound) |
-| **Task dispatch (new)** | **POST `/agents/{name}/runs`** | **HiveMem (outbound, on demand)** |
+| **Task dispatch (new)** | **POST `/agents/{name}/run`** | **HiveMem (outbound, on demand)** |
 | Separation result | POST `/vistierie/separation/done` | Vistierie (inbound) |
 
 The intended long-term direction is for **all generative LLM work to live in
