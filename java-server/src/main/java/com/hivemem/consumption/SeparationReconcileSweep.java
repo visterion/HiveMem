@@ -47,8 +47,13 @@ public class SeparationReconcileSweep {
                 attachments.ingest(in, job.originalName(), "application/pdf", job.realm(),
                         null, null, null, "consumption", "pending", "consumption:");
             }
+            // Mark done BEFORE the move: the pending doc is already ingested, so a move failure must
+            // not flip the job back to 'failed'. The source path is the processing/ staged path.
             jobs.markDone(job.correlationId());
-            mover.moveToProcessed(Path.of(job.sourcePath()));
+            try { mover.moveToProcessed(Path.of(job.sourcePath())); }
+            catch (Exception moveErr) {
+                log.warn("Could not move {} to processed/: {}", job.sourcePath(), moveErr.toString());
+            }
             log.info("Degraded separation job {} -> single pending document", job.correlationId());
         } catch (Exception e) {
             log.warn("Degrade failed for job {}: {}", job.correlationId(), e.toString());

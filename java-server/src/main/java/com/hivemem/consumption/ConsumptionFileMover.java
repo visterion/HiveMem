@@ -10,6 +10,7 @@ public class ConsumptionFileMover {
 
     public static final String PROCESSED = "processed";
     public static final String FAILED = "failed";
+    public static final String PROCESSING = "processing";
 
     private final Path root;
     private final AtomicLong counter = new AtomicLong();
@@ -20,6 +21,7 @@ public class ConsumptionFileMover {
 
     public Path moveToProcessed(Path src) throws IOException { return move(src, PROCESSED); }
     public Path moveToFailed(Path src) throws IOException { return move(src, FAILED); }
+    public Path moveToProcessing(Path src) throws IOException { return move(src, PROCESSING); }
 
     private Path move(Path src, String subdir) throws IOException {
         Path targetDir = root.resolve(subdir);

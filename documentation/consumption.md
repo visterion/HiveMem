@@ -62,7 +62,9 @@ supports Scan-to-Network-Folder / SMB):
 (default 10 s). A file is eligible for ingest only after it has been **stable**
 for `stable-seconds` (default 5 s) — meaning its size and mtime were identical
 across two consecutive polls and the mtime is at least `stable-seconds` old.
-Dotfiles (`.*`) and the `processed/` / `failed/` subdirectories are ignored.
+Dotfiles (`.*`) and the `processed/` / `failed/` / `processing/` subdirectories
+are ignored (the watcher's directory scan is non-recursive and skips
+non-regular files).
 
 ### Single-document path (M1)
 
@@ -79,9 +81,15 @@ directly:
 
 If `hivemem.queen.enabled=true` AND the file is a multi-page PDF:
 
+0. **Stage out of the watch path.** The source is moved into `processing/`
+   **before** any work begins. Because the watcher's scan is non-recursive,
+   the file is never re-scanned (and thus never re-dispatched) while in flight.
+   The `consumption_jobs.source_path` records this staged path.
+   If the real page count exceeds `max-pages`, the batch is **rejected**: it is
+   logged and moved to `failed/` (no job, no dispatch) instead of being silently
+   truncated and mis-split. Re-scan in smaller batches or raise `max-pages`.
 1. **Rasterize + OCR.** Each page is rasterized at the configured DPI and run
-   through Tesseract. Up to `max-pages` pages are processed; larger PDFs are
-   truncated at that limit.
+   through Tesseract.
 2. **Build page digests.** Each page is distilled into a `PageDigest`:
    `page` (1-based), `head` (first ~300 OCR chars), `tail` (last ~100 chars),
    `blank` (bool), `hasPageMarker` (`Seite X von Y` / `Page X of Y` found).
@@ -101,14 +109,24 @@ If `hivemem.queen.enabled=true` AND the file is a multi-page PDF:
    - Ingests each part: the first part is always `committed`; subsequent
      parts are `committed` if the boundary confidence ≥ `confidence-threshold`
      (default 0.80), otherwise `pending` (lands in the approval queue).
-   - Marks the job `done` and moves the source file to `processed/`.
+   - Marks the job `done` (before the move), then moves the staged source from
+     `processing/` to `processed/`. A move failure is logged only and does not
+     re-fail the job — the sub-documents are already ingested.
+
+If the dispatch call to Vistierie itself fails (Vistierie unreachable), the job
+is left `awaiting` and the source stays in `processing/` with its batch already
+in SeaweedFS; the reconcile sweep degrades it later. The file is **not** moved
+to `failed/` in that case.
 
 ### File disposition
 
 | Outcome | Destination |
 |---|---|
-| Ingest succeeded | `<dir>/processed/` |
-| Any exception during ingest | `<dir>/failed/` |
+| Single-doc ingest succeeded | `<dir>/processed/` |
+| Multi-page PDF in flight (awaiting separation) | `<dir>/processing/` |
+| Separation applied / degraded | `<dir>/processed/` |
+| Read / single-doc-ingest / separation-prep error | `<dir>/failed/` |
+| Page count > `max-pages` | `<dir>/failed/` |
 
 Collision-safe: if a file with the same name already exists in the target
 subdirectory, a monotonic counter suffix is appended (`scan-1.pdf`,
@@ -130,8 +148,9 @@ the direct path (no split attempted).
 If the Vistierie separation webhook never arrives (Vistierie down, agent
 misconfigured, etc.), `SeparationReconcileSweep` runs every
 `reconcile-interval-ms` (default 5 min) and picks up any `awaiting` job older
-than 10 minutes. It ingests the whole batch PDF as a single `pending` document
-and moves the source file to `processed/`. **Nothing is lost.**
+than 10 minutes. It ingests the whole batch PDF as a single `pending` document,
+marks the job `done`, then moves the staged source from `processing/` to
+`processed/` (a move failure is logged only). **Nothing is lost.**
 
 Re-dispatch is not attempted because per-page digests are not persisted between
 the initial dispatch and the sweep — the sweep degrades rather than retries.
