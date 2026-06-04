@@ -10,6 +10,7 @@ import com.hivemem.write.WriteToolService;
 import org.jooq.DSLContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -39,6 +40,7 @@ public class OcrService {
     private final VisionClient visionClient;
     private final VisionBudgetTracker visionBudget;
 
+    @Autowired
     public OcrService(OcrProperties props,
                       OcrRepository repo,
                       SeaweedFsClient seaweed,
