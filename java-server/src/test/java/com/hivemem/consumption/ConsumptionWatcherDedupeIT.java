@@ -61,7 +61,8 @@ class ConsumptionWatcherDedupeIT extends ConsumptionITSupport {
 
         // Fixed clock far in the future so (now - mtime) >= stableMillis always holds.
         Clock clock = Clock.fixed(Instant.now().plusSeconds(3600), ZoneOffset.UTC);
-        ConsumptionWatcher watcher = new ConsumptionWatcher(cp, svc, clock);
+        // Runnable::run = direct executor so processStaged runs synchronously within poll() (deterministic).
+        ConsumptionWatcher watcher = new ConsumptionWatcher(cp, svc, Runnable::run, clock);
 
         watcher.poll(); // first sighting: records, no dispatch
         watcher.poll(); // stable: dispatch + stage to processing/

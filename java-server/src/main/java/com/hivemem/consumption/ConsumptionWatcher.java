@@ -4,9 +4,11 @@ import java.io.IOException;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Clock;
+import java.util.concurrent.Executor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -19,17 +21,23 @@ public class ConsumptionWatcher {
 
     private final ConsumptionProperties props;
     private final ConsumptionService service;
+    private final Executor executor;
+    private final ConsumptionFileMover mover;
     private final StableFileDetector detector;
     private final Clock clock;
 
     @Autowired
-    public ConsumptionWatcher(ConsumptionProperties props, ConsumptionService service) {
-        this(props, service, Clock.systemUTC());
+    public ConsumptionWatcher(ConsumptionProperties props, ConsumptionService service,
+                              @Qualifier("consumptionExecutor") Executor executor) {
+        this(props, service, executor, Clock.systemUTC());
     }
 
-    ConsumptionWatcher(ConsumptionProperties props, ConsumptionService service, Clock clock) {
+    ConsumptionWatcher(ConsumptionProperties props, ConsumptionService service,
+                       Executor executor, Clock clock) {
         this.props = props;
         this.service = service;
+        this.executor = executor;
+        this.mover = new ConsumptionFileMover(Path.of(props.getDir()));
         this.detector = new StableFileDetector(props.getStableSeconds());
         this.clock = clock;
     }
@@ -47,7 +55,16 @@ public class ConsumptionWatcher {
                 BasicFileAttributes a = Files.readAttributes(p, BasicFileAttributes.class);
                 if (detector.isStable(p, a.size(), a.lastModifiedTime().toMillis(), now)) {
                     detector.forget(p);
-                    service.ingestFile(p);
+                    // Stage out of the watch root BEFORE processing so the next poll cannot re-submit
+                    // it (exactly-once), then hand off to the bounded executor — the poll thread never
+                    // blocks on OCR/dispatch.
+                    try {
+                        Path staged = mover.moveToProcessing(p);
+                        executor.execute(() -> service.processStaged(staged));
+                    } catch (IOException stageErr) {
+                        log.warn("Could not stage {} to processing/: {} (will retry next poll)",
+                                p.getFileName(), stageErr.toString());
+                    }
                 }
             }
         } catch (IOException e) {

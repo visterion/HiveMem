@@ -3,6 +3,7 @@ package com.hivemem.consumption;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
+import java.util.concurrent.Executor;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
@@ -22,6 +23,7 @@ class ConsumptionWatcherWiringTest {
                 .withPropertyValues("hivemem.consumption.enabled=true")
                 .withBean(ConsumptionProperties.class)
                 .withBean(ConsumptionService.class, () -> mock(ConsumptionService.class))
+                .withBean("consumptionExecutor", Executor.class, () -> (Executor) Runnable::run)
                 .withBean(ConsumptionWatcher.class)
                 .run(ctx -> assertThat(ctx)
                         .hasNotFailed()

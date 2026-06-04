@@ -62,34 +62,37 @@ public class ConsumptionService implements SeparationApplier {
         this.separationClient = separationClientProvider.getIfAvailable();
     }
 
-    /** Ingest one stable file. PDFs with >1 page (and queen enabled) go through batch separation;
-     *  everything else is a single committed document. */
-    public void ingestFile(Path file) {
-        String filename = file.getFileName().toString();
+    /** Process one already-staged file (the watcher moved it into processing/ first, which makes it
+     *  invisible to the non-recursive poll → exactly-once). PDFs with >1 page (and queen enabled) go
+     *  through batch separation; everything else is a single committed document. Runs on the consumption
+     *  executor, never the @Scheduled poll thread. Location-agnostic: it reads, processes, and moves the
+     *  file to processed/ or failed/. */
+    public void processStaged(Path staged) {
+        String filename = staged.getFileName().toString();
         byte[] bytes;
         int pageCount;
         boolean splittable;
         try {
-            bytes = Files.readAllBytes(file);  // read fully; stream closed before move
+            bytes = Files.readAllBytes(staged);  // read fully; stream closed before move
             pageCount = PDF.matcher(filename).matches() ? pdfPageCount(bytes) : 1;
             splittable = separationClient != null
                     && PDF.matcher(filename).matches()
                     && pageCount > 1;
         } catch (Exception e) {
             log.warn("Consumption read failed for {}: {}", filename, e.toString());
-            tryMoveFailed(file);
+            tryMoveFailed(staged);
             return;
         }
         if (splittable) {
-            // The separation branch owns its file lifecycle entirely (stages to processing/,
-            // moves to failed/ on its own errors). It must NOT fall through to tryMoveFailed(file).
-            dispatchForSeparation(file, filename, bytes, pageCount);
+            // The separation branch owns the staged file's lifecycle (moves to failed/ on its own
+            // errors, leaves it for reconcile on dispatch failure). It must NOT fall through.
+            separateStaged(staged, filename, bytes, pageCount);
         } else {
             try {
-                ingestSingle(file, filename, bytes);            // M1 behavior
+                ingestSingle(staged, filename, bytes);
             } catch (Exception e) {
                 log.warn("Consumption ingest failed for {}: {}", filename, e.toString());
-                tryMoveFailed(file);
+                tryMoveFailed(staged);
             }
         }
     }
@@ -112,31 +115,19 @@ public class ConsumptionService implements SeparationApplier {
     }
 
     /**
-     * Owns the full file lifecycle for the multi-page-PDF separation path. The source is staged into
-     * {@code processing/} FIRST so the non-recursive watcher never re-scans (and thus never re-dispatches)
-     * it. On its own OCR/upload/create errors it routes the staged file to {@code failed/}. On a dispatch
-     * failure it leaves the job {@code awaiting} + the file in {@code processing/} for the reconcile sweep
-     * to degrade later (graceful when Vistierie is unreachable). It never throws.
+     * Multi-page separation path for an ALREADY-staged file (the watcher moved it to {@code processing/}
+     * before submitting, which keeps the non-recursive poll from re-scanning it). OCR/upload/create errors
+     * route the staged file to {@code failed/}; a dispatch failure leaves the job {@code awaiting} + the
+     * file in {@code processing/} for the reconcile sweep to degrade later. It never throws.
      */
-    private void dispatchForSeparation(Path file, String filename, byte[] bytes, int realPageCount) {
+    private void separateStaged(Path staged, String filename, byte[] bytes, int realPageCount) {
         // BUG 3 guard: rasterizer caps at maxPages, which would silently lump trailing pages into the
         // last document. Reject explicitly (logged) so operators re-scan in smaller batches or raise the cap.
         if (realPageCount > props.getMaxPages()) {
             log.warn("Batch {} has {} pages > max-pages {}; routing to failed/ (re-scan in smaller batches "
                             + "or raise hivemem.consumption.max-pages)",
                     filename, realPageCount, props.getMaxPages());
-            tryMoveFailed(file);
-            return;
-        }
-
-        // BUG 1: move the source out of the watcher's scan path BEFORE doing any work, so the next poll
-        // does not treat it as new and re-dispatch it.
-        Path staged;
-        try {
-            staged = mover.moveToProcessing(file);
-        } catch (IOException io) {
-            // File is still in the watch root; leave it for the next poll to retry.
-            log.warn("Could not stage {} to processing/: {} (will retry next poll)", filename, io.toString());
+            tryMoveFailed(staged);
             return;
         }
 

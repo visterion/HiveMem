@@ -24,7 +24,7 @@ class ConsumptionServiceIT extends ConsumptionITSupport {
         cp.setRealm("documents");
         ConsumptionService svc = buildService(cp);
 
-        svc.ingestFile(file);
+        svc.processStaged(file);
 
         assertFalse(Files.exists(file), "source file should be moved away");
         assertTrue(Files.exists(root.resolve("processed").resolve("note.txt")),

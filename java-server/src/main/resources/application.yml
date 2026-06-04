@@ -98,6 +98,7 @@ hivemem:
     confidence-threshold: ${HIVEMEM_CONSUMPTION_CONFIDENCE:0.80}
     max-dispatch-retries: ${HIVEMEM_CONSUMPTION_MAX_RETRIES:3}
     reconcile-interval-ms: ${HIVEMEM_CONSUMPTION_RECONCILE_MS:300000}
+    worker-threads: ${HIVEMEM_CONSUMPTION_WORKER_THREADS:2}
 
 server:
   port: ${SERVER_PORT:8421}

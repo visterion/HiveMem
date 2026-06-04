@@ -374,9 +374,19 @@ public class WriteToolRepository {
                     createdBy,
                     revisionTimestamp
             );
+            UUID newId = newRow.get("id", UUID.class);
+            // Carry cell↔attachment links to the new revision so the current cell stays linked to its
+            // source attachment(s) — e.g. a scanned PDF whose cell is later revised by OCR. Without this
+            // the OCR'd current revision would lose its link to the original PDF.
+            tx.execute("""
+                    INSERT INTO cell_attachments (cell_id, attachment_id, extraction_source)
+                    SELECT ?, attachment_id, extraction_source
+                    FROM cell_attachments
+                    WHERE cell_id = ?
+                    """, newId, oldId);
             return Map.of(
                     "old_id", oldId.toString(),
-                    "new_id", uuidValue(newRow, "id")
+                    "new_id", newId.toString()
             );
         });
     }

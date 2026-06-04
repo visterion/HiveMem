@@ -15,6 +15,7 @@ public class ConsumptionProperties {
     private int maxPages = 200;
     private double confidenceThreshold = 0.80;   // used in M2
     private int maxDispatchRetries = 3;          // used in M2
+    private int workerThreads = 2;               // bounded executor size for off-thread ingest
 
     public boolean isEnabled() { return enabled; }
     public void setEnabled(boolean v) { this.enabled = v; }
@@ -32,4 +33,6 @@ public class ConsumptionProperties {
     public void setConfidenceThreshold(double v) { this.confidenceThreshold = v; }
     public int getMaxDispatchRetries() { return maxDispatchRetries; }
     public void setMaxDispatchRetries(int v) { this.maxDispatchRetries = v; }
+    public int getWorkerThreads() { return workerThreads; }
+    public void setWorkerThreads(int v) { this.workerThreads = v; }
 }

@@ -178,6 +178,7 @@ the initial dispatch and the sweep — the sweep degrades rather than retries.
 | `confidence-threshold` | `HIVEMEM_CONSUMPTION_CONFIDENCE` | `0.80` | Minimum confidence for a split boundary to produce a `committed` cell. Below this value the part is `pending`. |
 | `max-dispatch-retries` | `HIVEMEM_CONSUMPTION_MAX_RETRIES` | `3` | Reserved; re-dispatch is not implemented (see degradation note). |
 | `reconcile-interval-ms` | `HIVEMEM_CONSUMPTION_RECONCILE_MS` | `300000` | Interval in ms for the stale-job reconcile sweep (default 5 min). |
+| `worker-threads` | `HIVEMEM_CONSUMPTION_WORKER_THREADS` | `2` | Size of the bounded worker pool that runs ingest+OCR. The `@Scheduled` poll thread only detects a stable file, stages it to `processing/`, and submits it to this pool — so multi-page OCR never blocks the poll or other scans. Backpressure (`CallerRunsPolicy`) applies under a burst; nothing is dropped. |
 
 ### New `hivemem.queen.*` keys added by this feature
 
