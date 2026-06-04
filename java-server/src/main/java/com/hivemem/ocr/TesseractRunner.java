@@ -19,7 +19,10 @@ public class TesseractRunner {
                 "-",
                 "-",
                 "-l", languages,
-                "--psm", "3",
+                // psm 1 = automatic page segmentation WITH OSD, so rotated/upside-down scans are
+                // auto-oriented before recognition (osd traineddata ships in the image). psm 3
+                // skipped orientation detection and produced garbage on a 180°-fed page.
+                "--psm", "1",
                 "--oem", "1"
         );
         pb.redirectErrorStream(false);
