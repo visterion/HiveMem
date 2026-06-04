@@ -43,6 +43,20 @@ class BatchSplitterTest {
     }
 
     @Test
+    void assembleBuildsOnePdfPerGroupInGivenOrder() throws Exception {
+        byte[] pdf = pdfWithPages(5);                       // existing helper in the test
+        var parts = new BatchSplitter().assemble(pdf, java.util.List.of(
+                java.util.List.of(1, 5),                    // doc A = pages 1 and 5 (non-contiguous)
+                java.util.List.of(2, 3, 4)));               // doc B = pages 2,3,4
+        org.junit.jupiter.api.Assertions.assertEquals(2, parts.size());
+        try (var a = org.apache.pdfbox.Loader.loadPDF(parts.get(0));
+             var b = org.apache.pdfbox.Loader.loadPDF(parts.get(1))) {
+            org.junit.jupiter.api.Assertions.assertEquals(2, a.getNumberOfPages());
+            org.junit.jupiter.api.Assertions.assertEquals(3, b.getNumberOfPages());
+        }
+    }
+
+    @Test
     void ignoresOutOfRangeAndDuplicateBoundaries() throws Exception {
         byte[] src = pdfWithPages(3);
         List<byte[]> parts = new BatchSplitter().split(src, List.of(0, 1, 1, 3, 9));

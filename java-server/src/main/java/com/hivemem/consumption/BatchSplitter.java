@@ -36,4 +36,25 @@ public class BatchSplitter {
             return out;
         }
     }
+
+    /** Build one PDF per group from arbitrary, ordered 1-based page numbers. Out-of-range/null indices
+     *  are skipped; empty groups are skipped. Page order follows each group's list order. */
+    public List<byte[]> assemble(byte[] pdfBytes, List<List<Integer>> groups) throws IOException {
+        try (PDDocument src = Loader.loadPDF(pdfBytes)) {
+            int total = src.getNumberOfPages();
+            List<byte[]> out = new ArrayList<>();
+            for (List<Integer> group : groups) {
+                List<Integer> valid = new ArrayList<>();
+                for (Integer p : group) if (p != null && p >= 1 && p <= total) valid.add(p);
+                if (valid.isEmpty()) continue;
+                try (PDDocument part = new PDDocument()) {
+                    for (int p : valid) part.importPage(src.getPage(p - 1));
+                    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                    part.save(baos);
+                    out.add(baos.toByteArray());
+                }
+            }
+            return out;
+        }
+    }
 }
