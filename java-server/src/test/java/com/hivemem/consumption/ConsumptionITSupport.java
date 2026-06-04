@@ -142,6 +142,13 @@ abstract class ConsumptionITSupport {
             @Override public VistierieSeparationClient getIfUnique() { return null; }
             @Override public Stream<VistierieSeparationClient> stream() { return Stream.empty(); }
         };
-        return new ConsumptionService(cp, attachments, ocrProps, seaweed, jobRepo, nullProvider);
+        ObjectProvider<VisionMultiClient> nullVisionProvider = new ObjectProvider<>() {
+            @Override public VisionMultiClient getObject(Object... args) { return null; }
+            @Override public VisionMultiClient getObject() { return null; }
+            @Override public VisionMultiClient getIfAvailable() { return null; }
+            @Override public VisionMultiClient getIfUnique() { return null; }
+            @Override public Stream<VisionMultiClient> stream() { return Stream.empty(); }
+        };
+        return new ConsumptionService(cp, attachments, ocrProps, seaweed, jobRepo, nullProvider, nullVisionProvider);
     }
 }

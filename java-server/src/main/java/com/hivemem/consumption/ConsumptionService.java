@@ -44,11 +44,13 @@ public class ConsumptionService implements SeparationApplier {
     private final SeaweedFsClient seaweed;
     private final SeparationJobRepository jobs;
     private final VistierieSeparationClient separationClient; // may be null (queen disabled)
+    private final ReassemblyOrchestrator reassembly;          // may be null (queen disabled)
 
     public ConsumptionService(ConsumptionProperties props, AttachmentService attachments,
                               OcrProperties ocrProps, SeaweedFsClient seaweed,
                               SeparationJobRepository jobs,
-                              ObjectProvider<VistierieSeparationClient> separationClientProvider) {
+                              ObjectProvider<VistierieSeparationClient> separationClientProvider,
+                              ObjectProvider<VisionMultiClient> visionMultiProvider) {
         this.props = props;
         this.attachments = attachments;
         this.mover = new ConsumptionFileMover(Path.of(props.getDir()));
@@ -60,6 +62,11 @@ public class ConsumptionService implements SeparationApplier {
         this.digestBuilder = new PageDigestBuilder();
         this.splitter = new BatchSplitter();
         this.separationClient = separationClientProvider.getIfAvailable();
+        VisionMultiClient visionMultiClient = visionMultiProvider.getIfAvailable();
+        this.reassembly = (visionMultiClient != null)
+                ? new ReassemblyOrchestrator(props, rasterizer, new PageGrouper(visionMultiClient, props),
+                        new PageReassembler(props), splitter, attachments, mover)
+                : null;
     }
 
     /** Process one already-staged file (the watcher moved it into processing/ first, which makes it
@@ -83,7 +90,12 @@ public class ConsumptionService implements SeparationApplier {
             tryMoveFailed(staged);
             return;
         }
-        if (splittable) {
+        if (props.isReassemblyEnabled() && reassembly != null
+                && PDF.matcher(filename).matches() && pageCount > 1) {
+            // Content-based reassembly takes precedence over contiguous separation when enabled.
+            // reassemble() never throws: it owns the staged file's lifecycle and degrades on error.
+            reassembly.reassemble(staged, bytes, pageCount);
+        } else if (splittable) {
             // The separation branch owns the staged file's lifecycle (moves to failed/ on its own
             // errors, leaves it for reconcile on dispatch failure). It must NOT fall through.
             separateStaged(staged, filename, bytes, pageCount);
