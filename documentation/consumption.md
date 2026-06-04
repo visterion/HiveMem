@@ -126,6 +126,45 @@ is left `awaiting` and the source stays in `processing/` with its batch already
 in SeaweedFS; the reconcile sweep degrades it later. The file is **not** moved
 to `failed/` in that case.
 
+### Reassembly mode (non-contiguous pages)
+
+The M2 separation path above assumes a document's pages are **contiguous** — it
+only decides *where to cut* the page stream. That fails when one physical scan
+interleaves several documents whose pages are scattered (e.g. a stack fed out of
+order, or duplex pages landing apart). **Reassembly mode** regroups the pages of
+one batch into individual documents **by content**, even when a document's pages
+are non-contiguous or shuffled.
+
+It is gated behind `hivemem.consumption.reassembly-enabled` (**default off**).
+When off, behavior is exactly today's contiguous separation path. When on, and
+the file is a multi-page PDF with Queen enabled, reassembly takes precedence over
+the contiguous separation path.
+
+How it works (runs off the consumption executor, never throws to the caller):
+
+1. **Rasterize + downscale.** Every page is rendered at `reassembly-render-dpi`
+   (default 150 — lower than OCR DPI, to keep the vision payload small) and
+   base64-encoded.
+2. **Walk in blocks.** Pages are processed in blocks of ≤ `block-size`
+   (default 15, under Bedrock's 20-images-per-request limit). For each block,
+   HiveMem POSTs the block's page images **plus the running document descriptors**
+   (sequential carry-over) to Vistierie `POST /llm/vision-multi` (purpose
+   `reassembly-purpose`, default `separator`; `reassembly-max-tokens` cap). The
+   model returns, per page, which document it belongs to (an existing carried-over
+   id or a new one) with a confidence.
+3. **Reorder + status.** Accumulated assignments become ordered page groups. A
+   group is `committed` if its minimum assignment confidence ≥
+   `reassembly-confidence-threshold` (default **0.5** — aggressive, so most
+   groups commit), otherwise `pending`. Any batch page never assigned becomes its
+   own single-page `pending` document (nothing is dropped).
+4. **Split + ingest.** `BatchSplitter.assemble` builds one PDF per group
+   (arbitrary page order supported), and each is ingested with `source =
+   "consumption:"`. The staged source moves to `processed/`.
+
+**Degrade-safe.** On any error (vision call fails, JSON unparseable, etc.) the
+whole batch is ingested as a single `pending` document and the source is moved to
+`processed/`. Nothing is lost.
+
 ### File disposition
 
 | Outcome | Destination |
@@ -179,6 +218,12 @@ the initial dispatch and the sweep — the sweep degrades rather than retries.
 | `max-dispatch-retries` | `HIVEMEM_CONSUMPTION_MAX_RETRIES` | `3` | Reserved; re-dispatch is not implemented (see degradation note). |
 | `reconcile-interval-ms` | `HIVEMEM_CONSUMPTION_RECONCILE_MS` | `300000` | Interval in ms for the stale-job reconcile sweep (default 5 min). |
 | `worker-threads` | `HIVEMEM_CONSUMPTION_WORKER_THREADS` | `2` | Size of the bounded worker pool that runs ingest+OCR. The `@Scheduled` poll thread only detects a stable file, stages it to `processing/`, and submits it to this pool — so multi-page OCR never blocks the poll or other scans. Backpressure (`CallerRunsPolicy`) applies under a burst; nothing is dropped. |
+| `reassembly-enabled` | `HIVEMEM_CONSUMPTION_REASSEMBLY_ENABLED` | `false` | Master switch for **reassembly mode** (content-based regrouping of non-contiguous pages). When off, the contiguous separation path is used. When on (with Queen + multi-page PDF), it takes precedence. |
+| `block-size` | `HIVEMEM_CONSUMPTION_BLOCK_SIZE` | `15` | Pages sent per `/llm/vision-multi` call. Keep ≤ 20 (Bedrock's images-per-request limit). |
+| `reassembly-confidence-threshold` | `HIVEMEM_CONSUMPTION_REASSEMBLY_CONFIDENCE` | `0.5` | Minimum per-group confidence for a `committed` document; below it the group is `pending`. Aggressive default — most groups commit. |
+| `reassembly-render-dpi` | `HIVEMEM_CONSUMPTION_REASSEMBLY_DPI` | `150` | DPI used to rasterize pages into the vision payload (downscaled vs. OCR DPI to keep requests small). |
+| `reassembly-purpose` | `HIVEMEM_CONSUMPTION_REASSEMBLY_PURPOSE` | `separator` | Vistierie routing purpose for the `/llm/vision-multi` call. Needs a routing rule pointing at a vision-capable model (Haiku works; Sonnet for harder visual grouping). |
+| `reassembly-max-tokens` | `HIVEMEM_CONSUMPTION_REASSEMBLY_MAX_TOKENS` | `4096` | Max output tokens for the grouping response. |
 
 ### New `hivemem.queen.*` keys added by this feature
 
