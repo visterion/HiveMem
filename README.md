@@ -69,7 +69,7 @@ Extended Mind, Forgetting Curve, Zettelkasten, PARA).
 [![GitHub release](https://img.shields.io/github/v/tag/visterion/HiveMem?label=release)](https://github.com/visterion/HiveMem/releases)
 [![GHCR](https://img.shields.io/badge/ghcr.io-visterion%2Fhivemem-blue)](https://github.com/visterion/HiveMem/pkgs/container/hivemem)
 [![Java](https://img.shields.io/badge/java-25-blue)](https://openjdk.org)
-[![Spring Boot](https://img.shields.io/badge/spring%20boot-4.0.5-6DB33F)](https://spring.io/projects/spring-boot)
+[![Spring Boot](https://img.shields.io/badge/spring%20boot-4.0.6-6DB33F)](https://spring.io/projects/spring-boot)
 [![PostgreSQL](https://img.shields.io/badge/postgresql-17-336791)](https://postgresql.org)
 [![Tests](https://img.shields.io/badge/tests-JUnit%20%2B%20Testcontainers-brightgreen)](https://github.com/visterion/HiveMem/actions/workflows/ci.yml)
 [![MCP Tools](https://img.shields.io/badge/MCP%20tools-36-orange)](documentation/tools.md)
@@ -117,7 +117,7 @@ for details on every 🟡 / 🔴 row.
 | Temporal Knowledge Graph | 🟡 Partial | bi-temporal facts and multi-hop traversal ship; **automatic contradiction detection is not yet implemented** |
 | Privacy by Realm — model routing | 🟡 Partial | data segregation by realm works; **per-realm enforcement of "stays on local models" is not yet wired into the LLM call path** |
 | Queen + Bees periodic agent | 🟡 Partial | Queen + isolated-cell-Bee run on Vistierie's agent runtime (cron, subagent dispatch, run/cost audit, kill switch); proposals land as `pending` tunnels via the approval workflow. An admin-only Queen-log UI (`/queen`) shows runs + event timelines and the proposal approval queue. **Still missing: preference UI, further Bee types.** |
-| [Consumption folder — auto document separation](documentation/consumption.md) | 🟡 Partial | Drop scans into a folder; HiveMem auto-ingests and uses a Vistierie LLM agent to detect document boundaries by content (no separator sheets). High-confidence splits → `committed`; low-confidence → `pending` approval queue. **Still missing: Vistierie API contract finalized, split/merge correction UI.** |
+| [Consumption folder — auto document separation](documentation/consumption.md) | ✅ Stable | Drop a stack of mixed scans into a network folder; HiveMem ingests off a bounded worker pool, OCRs each page (auto-oriented), and uses a Vistierie LLM agent to split by content — no separator/barcode sheets. High-confidence splits → `committed`, low-confidence → `pending`. The HiveMem→Vistierie run contract is reconciled; live in production. Reassembly of non-contiguous/shuffled pages is a separate roadmap item. |
 
 ## Documentation
 

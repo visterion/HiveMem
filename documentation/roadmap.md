@@ -67,44 +67,30 @@ remains the sole writer. The feature is gated behind
 The execution model is tracked in
 [#28 Asynchronous Curator](https://github.com/visterion/HiveMem/issues/28).
 
-### Consumption folder — automatic document separation
+### Consumption folder — non-contiguous page reassembly (extension)
 
-**Today.** `ConsumptionWatcher` polls a configured directory every
-`hivemem.consumption.poll-interval`, picks up files that have been
-size+mtime-stable for `stable-seconds`, and ingests them. Single files and
-non-multi-page PDFs are ingested directly as `committed` cells. Multi-page
-PDFs are rasterized, OCR'd per page, and dispatched to the Vistierie
-`document-separator` agent via `POST /agents/document-separator/run`
-(HiveMem-initiated, the first outbound Vistierie task dispatch). The page
-digests + a correlation id ride inside the run `payload`; HiveMem stores the
-`run_id` Vistierie returns and correlates the callback on it. When Vistierie
-calls back on `POST /vistierie/separation/done` (envelope `{run_id, status,
-output, …}`), HiveMem splits the PDF and ingests each part — high-confidence
-boundaries as `committed`, low-confidence boundaries as `pending` (approval
-queue). A non-`done` run or a missing `output` leaves the job awaiting so the
-reconcile sweep degrades it; if Vistierie never responds, that sweep ingests
-the whole batch as a single `pending` document after 10 minutes — nothing is
-lost. The feature is gated behind `hivemem.consumption.enabled=true` (default
-`false`); Queen must also be enabled for auto-split.
+**The core consumption folder shipped and runs in production** (see the README
+Feature Status, ✅): content-based, **contiguous** document separation. It ingests
+off a bounded worker pool, OCRs each page (auto-oriented), and splits multi-page
+batches via the Vistierie `document-separator` agent; the HiveMem→Vistierie
+run-creation contract (`POST /agents/{name}/run`, `payload` + `completion_webhook`
++ `completion_webhook_token`, callback by `run_id`) is reconciled against
+Vistierie's real `RunController`. Low-confidence splits land as `pending`.
 
-**Missing.**
+**Planned extensions (not yet built).**
 
-- No barcode / separator-sheet support (by design; boundaries are content-based only).
-- No split/merge correction UI — low-confidence splits are reviewed via the
-  existing `approve_pending` approval queue, but there is no dedicated UI to
-  re-split or merge parts.
-- A Vistierie **routing rule** mapping `purpose=separator` → a Bedrock model
-  (e.g. Sonnet) must exist, or separator runs fail with "no routing rule".
-  This is Vistierie-side config, not HiveMem code.
+1. **Reassembly of non-contiguous / shuffled pages.** Today separation is
+   contiguous — a document must be a contiguous block in the stack. Content/vision-
+   based regrouping of a document whose pages are scattered across the batch (e.g.
+   page 1 at position 1, page 2 at position 51) is designed but not implemented.
+2. **Split/merge correction UI** in `knowledge-ui/` — low-confidence splits are
+   reviewed via the existing `approve_pending` queue today; a dedicated
+   re-split/merge surface is the review UI for (1).
+3. Optional barcode / separator-sheet support.
 
-**Planned (rough order).**
-
-1. Dedicated split/merge correction UI in `knowledge-ui/`.
-2. Optional barcode-sheet support.
-
-The HiveMem→Vistierie run-creation contract (`POST /agents/{name}/run`,
-`payload` + `completion_webhook` + `completion_webhook_token`, callback by
-`run_id`) has been reconciled against Vistierie's real `RunController`.
+Operational note: a Vistierie routing rule mapping `purpose=separator` → a Bedrock
+model must exist (Vistierie-side config), or separator runs fail with
+"no routing rule".
 
 The feature is tracked in
 [#33 SP5 — Paperless-style consumption folder watcher](https://github.com/visterion/HiveMem/issues/33).

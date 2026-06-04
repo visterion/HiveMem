@@ -18,11 +18,16 @@ search. OCR fixes that structurally.
 2. `ScanDetector` flags the PDF as scan-like when avg chars per page < 50.
 3. The cell is created with the filename as content and tagged `ocr_pending`.
 4. `OcrRequestedEvent` fires after commit. `OcrService` (async) downloads the PDF,
-   rasterizes each page at 300 DPI, runs `tesseract -l deu+eng` per page, and
-   aggregates the text with `[page=N]` markers.
-5. `WriteToolService.reviseCell` writes the OCR text into the cell. The summarizer
-   then takes over (it sees long content + no summary, fires Claude Haiku, writes
-   a summary, and the embedding is recomputed against the summary).
+   rasterizes each page at the configured DPI (`render-dpi`, default 300), runs
+   `tesseract -l deu+eng --psm 1` per page, and aggregates the text with `[page=N]`
+   markers. `--psm 1` enables OSD (orientation & script detection), so rotated or
+   upside-down scans are auto-oriented before recognition (`osd` traineddata ships
+   in the image).
+5. `WriteToolService.reviseCell` writes the OCR text into the cell — and carries the
+   `cell_attachments` link to the new revision, so the OCR'd current cell stays linked
+   to its source PDF. The summarizer then takes over (it sees long content + no
+   summary, fires Claude Haiku, writes a summary, and the embedding is recomputed
+   against the summary).
 
 ## Enabling
 

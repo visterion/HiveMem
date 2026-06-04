@@ -13,7 +13,7 @@ HiveMem exposes **36 MCP tools** across search, knowledge graph, progressive sum
 - **Agent fleet** with approval workflow — agents write pending suggestions, only admins approve
 - **Blueprints** — curated narrative overviews per realm, append-only versioned
 - **References & reading list** — track sources, link to cells, filter by type/status
-- **Spring Boot 4.0.5 + Java 25** — MCP server with jOOQ, Flyway migrations, Caffeine cache
+- **Spring Boot 4.0.6 + Java 25** — MCP server with jOOQ, Flyway migrations, Caffeine cache
 - **Automatic embedding reencoding** — detects model changes at startup, re-encodes all vectors with backup and progress tracking
 - **Comprehensive JUnit + Testcontainers suite** — unit, integration, HTTP end-to-end, performance, security, concurrency
 
