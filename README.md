@@ -51,9 +51,13 @@ schedule, surveys your knowledge, and dispatches specialized worker agents
 realms drifting from their blueprint. Everything risky stays a *proposal*
 that flows through the existing approval workflow; you keep the kill switch.
 
-The schema, agent registry, and approval pipeline are in place today. The
-scheduler, the Bees themselves, the audit table, and the conversation UI
-that teaches the Queen your preferences are not yet built.
+Today the Queen and the isolated-cell Bee already run on the **Vistierie agent
+runtime** — scheduled (cron), dispatched with per-run cost accounting and a
+per-tenant kill switch — and their proposals flow through the approval workflow
+as `pending` tunnels. An admin-only **Queen log** UI (`/queen`) shows run history,
+event timelines, and the proposal queue. Still to come: a conversation UI that
+teaches the Queen your per-realm preferences, and further Bee types (stale-fact,
+duplicate-cell, blueprint-drift).
 
 → **[Roadmap](documentation/roadmap.md)** — what's planned, what's partial,
 and the order of work.
@@ -76,18 +80,18 @@ Extended Mind, Forgetting Curve, Zettelkasten, PARA).
 [![License: Sustainable Use](https://img.shields.io/badge/license-Sustainable%20Use-blue)](https://github.com/visterion/HiveMem/blob/main/LICENSE)
 [![SafeSkill](https://safeskill.dev/api/badge/visterion-hivemem)](https://safeskill.dev/scan/visterion-hivemem)
 
-**Docker images:** [`ghcr.io/visterion/hivemem:main`](https://github.com/visterion/HiveMem/pkgs/container/hivemem) for the rolling `main` branch, plus semver tags such as `ghcr.io/visterion/hivemem:8.1.0` for cut releases.
+**Docker images:** [`ghcr.io/visterion/hivemem:main`](https://github.com/visterion/HiveMem/pkgs/container/hivemem) for the rolling `main` branch, plus semver tags such as `ghcr.io/visterion/hivemem:9.1.5` for cut releases.
 
 ## Highlights
 
 - **[6-Signal Ranked Search](documentation/tools.md#search-signals)** — Semantic similarity, keyword, recency, importance, popularity, and graph proximity — combined into one ranked result.
-- **[Temporal Knowledge Graph](documentation/architecture.md#data-model)** — Facts with `valid_from`/`valid_until`, contradiction detection, and multi-hop graph traversal.
+- **[Temporal Knowledge Graph](documentation/architecture.md#data-model)** — Facts with `valid_from`/`valid_until` and multi-hop graph traversal; query the graph as it stood at any point in time.
 - **[Progressive Summarization](documentation/tools.md#progressive-summarization)** — Four layers per cell: content, summary, key points, and insight. Never lose nuance.
 - **[Long cells stay searchable](documentation/summarizer.md)** — auto-summarizer turns multi-page documents into curated summaries that are embedded for semantic search; cost-capped, opt-in.
 - **[Scanned PDFs become searchable](documentation/ocr.md)** — Tesseract OCR extracts text from scan-only PDFs; combined with the auto-summarizer, even paper-mailed documents are findable by semantic search.
-- **[Consumption folder — auto document separation](documentation/consumption.md)** — Drop a stack of mixed scans into a network folder; HiveMem ingests each file and uses a Vistierie LLM agent to detect document boundaries by content, with no separator or barcode sheets required.
+- **[Consumption folder — auto document separation](documentation/consumption.md)** — Drop a stack of mixed scans into a network folder (SMB); HiveMem OCRs each page and uses a Vistierie LLM agent to split multi-page batches into individual documents **by content** — no separator or barcode sheets. The USP over Paperless-ngx; live in production.
 - **[Document-Type Extraction](documentation/extraction.md)** — invoices, contracts, and other typed documents are auto-classified during summarization; typed facts (vendor, amount, parties, dates) land in the knowledge graph.
-- **[Kroki + Vision](documentation/kroki-vision.md)** — Diagramm-Thumbnails (Mermaid/PUML/Graphviz/D2) und Bildbeschreibung via Claude Haiku, async + opt-in.
+- **[Kroki + Vision](documentation/kroki-vision.md)** — Diagram thumbnails (Mermaid/PlantUML/Graphviz/D2) and image description via Claude Haiku — async, opt-in, budget-capped.
 - **[Append-Only Versioning + Time Machine](documentation/structure.md)** — No data is ever deleted. Query your knowledge at any point in time.
 - **[Agent Fleet + Approval Workflow](documentation/auth.md)** — Agents write pending suggestions; only admins approve. Every write is human-gated.
 - **[Auto-Inject Hook for Claude Code](documentation/hook/)** — Relevant memories injected into every session automatically, before you even ask.
