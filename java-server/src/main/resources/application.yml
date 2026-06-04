@@ -99,6 +99,12 @@ hivemem:
     max-dispatch-retries: ${HIVEMEM_CONSUMPTION_MAX_RETRIES:3}
     reconcile-interval-ms: ${HIVEMEM_CONSUMPTION_RECONCILE_MS:300000}
     worker-threads: ${HIVEMEM_CONSUMPTION_WORKER_THREADS:2}
+    reassembly-enabled: ${HIVEMEM_CONSUMPTION_REASSEMBLY_ENABLED:false}
+    block-size: ${HIVEMEM_CONSUMPTION_BLOCK_SIZE:15}
+    reassembly-confidence-threshold: ${HIVEMEM_CONSUMPTION_REASSEMBLY_CONFIDENCE:0.5}
+    reassembly-render-dpi: ${HIVEMEM_CONSUMPTION_REASSEMBLY_DPI:150}
+    reassembly-purpose: ${HIVEMEM_CONSUMPTION_REASSEMBLY_PURPOSE:separator}
+    reassembly-max-tokens: ${HIVEMEM_CONSUMPTION_REASSEMBLY_MAX_TOKENS:4096}
 
 server:
   port: ${SERVER_PORT:8421}
