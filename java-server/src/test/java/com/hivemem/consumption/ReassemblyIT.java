@@ -67,4 +67,36 @@ class ReassemblyIT extends ConsumptionITSupport {
             assertTrue(s.findAny().isPresent(), "a file must exist under processed/");
         }
     }
+
+    @Test
+    void overMaxPagesBatchIsRoutedToFailedNotReassembled(@TempDir Path root) throws Exception {
+        byte[] pdf = pdfWithPages(3);
+        Path staged = root.resolve("big.pdf");
+        Files.write(staged, pdf);
+
+        ConsumptionProperties cp = new ConsumptionProperties();
+        cp.setRealm("documents");
+        cp.setReassemblyEnabled(true);
+        cp.setMaxPages(2); // batch (3 pages) exceeds the cap
+
+        VisionMultiClient vm = mock(VisionMultiClient.class);
+
+        ReassemblyOrchestrator orch = new ReassemblyOrchestrator(
+                cp, new PdfPageRasterizer(), new PageGrouper(vm, cp), new PageReassembler(cp),
+                new BatchSplitter(), attachments, new ConsumptionFileMover(root));
+
+        orch.reassemble(staged, pdf, 3);
+
+        int cells = dsl.fetchOne("SELECT count(*) FROM cells WHERE source LIKE 'consumption:%'")
+                .get(0, Integer.class);
+        assertEquals(0, cells, "an over-limit batch must not produce any consumption cells");
+
+        // The vision model must never be called for an over-limit batch.
+        org.mockito.Mockito.verifyNoInteractions(vm);
+
+        assertFalse(Files.exists(staged), "staged file must be moved out of the root");
+        try (var s = Files.list(root.resolve("failed"))) {
+            assertTrue(s.findAny().isPresent(), "the batch must be routed to failed/");
+        }
+    }
 }

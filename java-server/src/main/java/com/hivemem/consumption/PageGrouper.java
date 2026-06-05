@@ -34,6 +34,7 @@ public class PageGrouper {
 
         for (JsonNode a : arr) {
             int page = a.path("page").asInt();
+            if (page < 1) throw new IllegalStateException("vision assignment has invalid page number: " + page);
             String docId = a.path("docId").asString(null);
             if (docId == null || docId.isBlank()) {
                 throw new IllegalStateException("vision assignment missing docId: " + a);
@@ -81,7 +82,9 @@ public class PageGrouper {
                 existing.toString().strip(), pageNumbers.toString());
     }
 
-    /** Tolerant parse: strip ```json / ``` fences + whitespace, then read the JSON array. */
+    /** Tolerant parse: strip ```json / ``` fences + whitespace, then read the JSON array. Robust to both
+     *  the multi-line fenced form (```json\n[...]\n```) and the single-line form (```json[...]```) by
+     *  finally narrowing to the substring between the first '[' and last ']'. */
     private JsonNode parse(String text) {
         if (text == null) throw new IllegalStateException("vision returned no text");
         String cleaned = text.strip();
@@ -91,6 +94,10 @@ public class PageGrouper {
             if (cleaned.endsWith("```")) cleaned = cleaned.substring(0, cleaned.length() - 3);
             cleaned = cleaned.strip();
         }
+        // Narrow to the array literal regardless of any remaining fence/prose (handles ```json[...]```).
+        int s = cleaned.indexOf('[');
+        int en = cleaned.lastIndexOf(']');
+        if (s >= 0 && en > s) cleaned = cleaned.substring(s, en + 1);
         try {
             JsonNode node = MAPPER.readTree(cleaned);
             if (!node.isArray()) throw new IllegalStateException("vision output is not a JSON array: " + cleaned);

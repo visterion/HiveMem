@@ -42,6 +42,17 @@ public class ReassemblyOrchestrator {
     /** Reassemble one staged batch. Never throws: on any failure it degrades to one pending document. */
     public void reassemble(Path staged, byte[] pdfBytes, int pageCount) {
         String originalName = staged.getFileName().toString();
+        // maxPages guard (mirrors separateStaged): the rasterizer caps at maxPages, which would silently
+        // drop trailing pages. Reject explicitly so operators re-scan smaller or raise the cap.
+        if (pageCount > props.getMaxPages()) {
+            log.warn("Batch {} has {} pages > max-pages {}; routing to failed/ (re-scan in smaller batches "
+                            + "or raise hivemem.consumption.max-pages)",
+                    originalName, pageCount, props.getMaxPages());
+            try { mover.moveToFailed(staged); }
+            catch (Exception e) { log.error("Could not move {} to failed/: {}", originalName, e.toString()); }
+            return;
+        }
+        boolean anyIngested = false;
         try {
             List<byte[]> pages = rasterizer.rasterize(pdfBytes, props.getReassemblyRenderDpi(), props.getMaxPages());
 
@@ -68,13 +79,24 @@ public class ReassemblyOrchestrator {
                     attachments.ingest(in, partName, "application/pdf", props.getRealm(),
                             null, null, null, "consumption", docs.get(k).status(), "consumption:");
                 }
+                anyIngested = true;
             }
             mover.moveToProcessed(staged);
             log.info("Reassembled {} into {} documents", originalName, parts.size());
         } catch (Exception e) {
-            log.warn("Reassembly failed for {}: {} - degrading to one pending document",
-                    originalName, e.toString());
-            degradeToPending(staged, pdfBytes, originalName);
+            if (anyIngested) {
+                // We already committed at least one sub-document. Re-ingesting the whole batch as one
+                // pending document would duplicate content. Leave the partial result and just retire the
+                // staged file — never both partially-commit AND degrade.
+                log.error("Reassembly partially ingested then failed for {} — leaving partial result, "
+                        + "NOT degrading to avoid duplicates: {}", originalName, e.toString());
+                try { mover.moveToProcessed(staged); }
+                catch (Exception me) { log.warn("Could not move {} to processed/: {}", originalName, me.toString()); }
+            } else {
+                log.warn("Reassembly failed for {}: {} - degrading to one pending document",
+                        originalName, e.toString());
+                degradeToPending(staged, pdfBytes, originalName);
+            }
         }
     }
 
