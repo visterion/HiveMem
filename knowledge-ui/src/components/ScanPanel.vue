@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { useCellStore } from '../stores/cell'
 import { useReaderStore } from '../stores/reader'
 import { useCanvasStore } from '../stores/canvas'
+import { cellLabel } from '../api/cellLabel'
 
 const cellStore = useCellStore()
 const reader = useReaderStore()
@@ -36,7 +37,7 @@ function close() {
   <transition name="slide-r">
     <aside v-if="d" class="scan">
       <header>
-        <strong>{{ d.cell.title }}</strong>
+        <strong>{{ cellLabel(d.cell) }}</strong>
         <v-btn data-testid="scan-panel-close" icon="mdi-close" size="small" variant="text" @click="close" />
       </header>
       <div class="body">
@@ -55,6 +56,9 @@ function close() {
         </section>
         <section v-if="d.cell.insight">
           <div class="label">INSIGHT</div><blockquote>{{ d.cell.insight }}</blockquote>
+        </section>
+        <section v-if="d.cell.content">
+          <div class="label">TEXT</div><pre class="content">{{ d.cell.content }}</pre>
         </section>
         <section v-if="d.tunnels.length">
           <div class="label">TUNNELS ({{ d.tunnels.length }})</div>
@@ -79,6 +83,7 @@ function close() {
 
 <style scoped>
 .scan { position:fixed; top:0; right:0; bottom:0; width:360px; background:#0e0e1c; border-left:1px solid #1a1a24; display:flex; flex-direction:column; z-index:8; }
+.content { white-space:pre-wrap; word-break:break-word; max-height:240px; overflow:auto; font-size:11px; color:#aaa; background:#0a0a14; padding:8px; border-radius:4px; margin:0; }
 header { display:flex; align-items:center; justify-content:space-between; padding:10px 14px; border-bottom:1px solid #1a1a24; gap:8px; }
 header strong { flex:1; font-size:14px; }
 .body { flex:1; overflow-y:auto; padding:10px 14px; font-size:12px; }

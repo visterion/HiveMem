@@ -3,6 +3,7 @@ import { ref, watch } from 'vue'
 import { useApi } from '../../api/useApi'
 import type { Cell } from '../../api/types'
 import { useCellStore } from '../../stores/cell'
+import { cellLabel } from '../../api/cellLabel'
 
 const q = ref('')
 const results = ref<Cell[]>([])
@@ -13,18 +14,38 @@ let timer: number | null = null
 watch(q, v => {
   if (timer) clearTimeout(timer)
   timer = setTimeout(async () => {
+    if (!v) { results.value = []; return }
     loading.value = true
-    try { results.value = await useApi().call<Cell[]>('search', { query: v, limit: 50 }) }
-    finally { loading.value = false }
+    try {
+      // Request content + summary so every result has a real label (cells have no title)
+      // and the detail panel can show the OCR/parsed text.
+      results.value = await useApi().call<Cell[]>('search', {
+        query: v,
+        limit: 50,
+        include: ['content', 'summary', 'created_at']
+      })
+    } finally { loading.value = false }
   }, 180) as unknown as number
 })
+
+function subtitleFor(c: Cell): string {
+  const bits: string[] = [c.realm]
+  if (c.signal) bits.push(c.signal)
+  return bits.join(' · ')
+}
 </script>
 
 <template>
   <v-text-field v-model="q" density="compact" variant="solo-filled" placeholder="Type to search…" autofocus />
   <v-list density="compact">
-    <v-list-item v-for="c in results" :key="c.id" :title="c.title" :subtitle="c.realm + (c.signal ? ` · ${c.signal}` : '')"
-                 @click="cellStore.load(c.id)" />
+    <v-list-item
+      v-for="c in results"
+      :key="c.id"
+      :title="cellLabel(c)"
+      :subtitle="subtitleFor(c)"
+      @click="cellStore.open(c)"
+    />
   </v-list>
   <div v-if="loading" style="color:#666;padding:8px">Searching…</div>
+  <div v-else-if="!results.length && q" style="color:#666;padding:8px">No results.</div>
 </template>
