@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import type { Role } from '../api/types'
 import { useApi, resetApi } from '../api/useApi'
+import { applyBackendDefault } from '../i18n'
 
 export const useAuthStore = defineStore('auth', {
   state: () => ({
@@ -11,9 +12,10 @@ export const useAuthStore = defineStore('auth', {
   actions: {
     async init() {
       const api = useApi()
-      const w = await api.call<{ role: Role; identity: string }>('wake_up')
+      const w = await api.call<{ role: Role; identity: string; default_language?: string }>('wake_up')
       this.role = w.role
       this.identity = w.identity
+      applyBackendDefault(w.default_language)
     },
     async logout() {
       await fetch('/logout', { method: 'POST' })
