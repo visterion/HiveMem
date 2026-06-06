@@ -95,8 +95,17 @@ public class SummarizerService {
             SummaryResult result = anthropic.summarize(snap.content(), profile);
             budget.recordCall(result.inputTokens(), result.outputTokens());
 
-            var reviseResult = writeService.reviseCell(
-                    SYSTEM_PRINCIPAL, cellId, snap.content(), result.summary());
+            if (result.summary() == null || result.summary().isBlank()) {
+                // Loop guard: reviseCell(content, null) would re-tag needs_summary on the new
+                // revision and reschedule the cell forever. Give up on this cell instead.
+                log.warn("Summarizer produced no summary for cell {}; giving up", cellId);
+                repo.removeNeedsSummaryTag(cellId);
+                return;
+            }
+
+            var reviseResult = writeService.reviseCellWithSummary(
+                    SYSTEM_PRINCIPAL, cellId, snap.content(), result.summary(),
+                    result.keyPoints(), result.insight(), result.tags());
 
             UUID newId = extractNewId(reviseResult);
             UUID targetId = newId != null ? newId : cellId;

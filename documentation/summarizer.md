@@ -15,12 +15,26 @@ when one is available, and falls back to the content only for short cells.
 For long cells without a summary, the embedding is left NULL and the cell is tagged
 `needs_summary`. The summarizer picks them up automatically.
 
+## What gets written
+
+Each successful run persists, on a new revision of the cell:
+
+- `summary` — the embedded 1–2 sentence summary
+- `key_points`, `insight`, `tags` — the curated metadata the LLM returns
+- `document_type` — the inferred profile type (invoice / contract / other)
+- extracted facts — written to the knowledge graph (see [extraction](extraction.md))
+
+If the LLM returns no summary, the cell is **not** revised; the `needs_summary` tag is
+cleared so it is not retried in a loop.
+
 ## Enabling
 
-Set the env vars and restart:
+Set the env vars and restart (the summarizer calls Claude via the Vistierie gateway,
+sharing the same base URL / token as the other Vistierie-backed features):
 
     HIVEMEM_SUMMARIZE_ENABLED=true
-    ANTHROPIC_API_KEY=sk-ant-...
+    HIVEMEM_VISTIERIE_BASE_URL=http://vistierie:8090
+    HIVEMEM_VISTIERIE_TOKEN=<tenant token>
 
 That's it. On boot, all existing cells without a summary and with content > 500 chars
 are tagged `needs_summary`. The backfill scheduler picks them up over the next minutes.

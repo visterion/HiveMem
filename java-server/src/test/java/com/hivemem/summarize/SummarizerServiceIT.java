@@ -1,10 +1,9 @@
 package com.hivemem.summarize;
 
-import com.hivemem.auth.AuthPrincipal;
-import com.hivemem.auth.AuthRole;
 import com.hivemem.embedding.EmbeddingClient;
 import com.hivemem.embedding.FixedEmbeddingClient;
-import com.hivemem.extraction.ExtractionProfile;
+import com.hivemem.extraction.ExtractionProfileRegistry;
+import com.hivemem.extraction.ExtractionProperties;
 import com.hivemem.sync.InstanceConfig;
 import com.hivemem.sync.OpLogWriter;
 import com.hivemem.sync.PeerClient;
@@ -28,10 +27,12 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import tools.jackson.databind.ObjectMapper;
 
 import javax.sql.DataSource;
+import java.sql.Array;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.Statement;
+import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 
@@ -58,6 +59,7 @@ class SummarizerServiceIT {
                 .locations("classpath:db/migration").load().migrate();
         DataSource ds = new DriverManagerDataSource(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword());
         dsl = DSL.using(ds, SQLDialect.POSTGRES);
+        dsl.execute("DELETE FROM facts");
         dsl.execute("DELETE FROM cells");
         dsl.execute("DELETE FROM summarize_usage");
         dsl.execute("DELETE FROM ops_log");
@@ -70,35 +72,129 @@ class SummarizerServiceIT {
     @AfterEach
     void tearDown() { mockVistierie.stop(); }
 
+    /**
+     * The summarizer must persist EVERY field the LLM produces — summary, key_points,
+     * insight, tags and facts — not just the summary. (Regression: summarizeOne used to
+     * call reviseCell(content, summary) and silently drop key_points/insight/tags.)
+     */
     @Test
-    void summarizesLongCell_endToEnd() throws Exception {
-        // --- Seed: a long cell with needs_summary tag, no embedding, no summary ---
+    void summarizesLongCell_persistsAllFields() throws Exception {
+        UUID id = seedLongCell();
+
+        String inner = "{"
+                + "\"summary\":\"HUK Beitragsrechnung Wohngebaeude, Jahresbeitrag 222,60 EUR.\","
+                + "\"key_points\":[\"Jahresbeitrag 222,60 EUR ab 21.03.2026\",\"SEPA-Lastschrift\"],"
+                + "\"insight\":\"Wird als Beitragsnachweis vom Finanzamt anerkannt.\","
+                + "\"tags\":[\"versicherung\",\"huk-coburg\"],"
+                + "\"document_type\":\"invoice\","
+                + "\"facts\":[{\"predicate\":\"vendor\",\"object\":\"HUK-COBURG\",\"confidence\":0.9}]"
+                + "}";
+        mockVistierie.stubComplete(inner.replace("\"", "\\\""));
+
+        buildService().summarizeOne(id);
+
+        try (Connection c = conn(); Statement st = c.createStatement();
+             ResultSet rs = st.executeQuery(
+                     "SELECT summary, key_points, insight, tags, document_type "
+                             + "FROM cells WHERE valid_until IS NULL ORDER BY created_at DESC LIMIT 1")) {
+            assertTrue(rs.next(), "Expected a revised, current cell row");
+            assertEquals("HUK Beitragsrechnung Wohngebaeude, Jahresbeitrag 222,60 EUR.", rs.getString("summary"));
+
+            List<String> keyPoints = toList(rs.getArray("key_points"));
+            assertTrue(keyPoints.contains("Jahresbeitrag 222,60 EUR ab 21.03.2026")
+                            && keyPoints.contains("SEPA-Lastschrift"),
+                    "key_points must be persisted, got: " + keyPoints);
+
+            assertEquals("Wird als Beitragsnachweis vom Finanzamt anerkannt.", rs.getString("insight"));
+
+            List<String> tags = toList(rs.getArray("tags"));
+            assertTrue(tags.contains("versicherung") && tags.contains("huk-coburg"),
+                    "LLM tags must be persisted, got: " + tags);
+            assertFalse(tags.contains("needs_summary"), "needs_summary must be cleared, got: " + tags);
+
+            assertEquals("invoice", rs.getString("document_type"));
+        }
+
+        try (Connection c = conn(); Statement st = c.createStatement();
+             ResultSet rs = st.executeQuery(
+                     "SELECT predicate, \"object\" FROM facts WHERE predicate='vendor'")) {
+            assertTrue(rs.next(), "Expected the extracted vendor fact to be persisted");
+            assertEquals("HUK-COBURG", rs.getString("object"));
+        }
+    }
+
+    /**
+     * Loop guard: if the LLM returns no summary, the summarizer must give up (clear the
+     * needs_summary tag) rather than reviseCell(content, null) — which would re-add the
+     * needs_summary tag on the new revision and reschedule the cell forever.
+     */
+    @Test
+    void nullSummary_givesUpWithoutRetagOrNewRevision() throws Exception {
+        UUID id = seedLongCell();
+
+        String inner = "{\"summary\":null,\"key_points\":[],\"insight\":null,"
+                + "\"tags\":[],\"document_type\":\"other\",\"facts\":[]}";
+        mockVistierie.stubComplete(inner.replace("\"", "\\\""));
+
+        buildService().summarizeOne(id);
+
+        try (Connection c = conn(); Statement st = c.createStatement();
+             ResultSet rs = st.executeQuery("SELECT count(*) AS n FROM cells")) {
+            assertTrue(rs.next());
+            assertEquals(1, rs.getInt("n"),
+                    "No new revision must be spawned for a null summary (reviseCell(content,null) would "
+                            + "re-tag needs_summary and reschedule forever)");
+        }
+        try (Connection c = conn(); Statement st = c.createStatement();
+             ResultSet rs = st.executeQuery(
+                     "SELECT summary, valid_until IS NULL AS is_current, "
+                             + "'needs_summary' = ANY(tags) AS has_tag FROM cells WHERE id='" + id + "'")) {
+            assertTrue(rs.next());
+            assertTrue(rs.getBoolean("is_current"), "the original cell stays current (not superseded)");
+            assertNull(rs.getString("summary"), "summary stays null");
+            assertFalse(rs.getBoolean("has_tag"), "needs_summary must be removed (gave up), not re-added");
+        }
+    }
+
+    // --- helpers ---
+
+    private UUID seedLongCell() throws Exception {
         UUID id = UUID.randomUUID();
-        try (Connection c = DriverManager.getConnection(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword());
-             Statement st = c.createStatement()) {
+        try (Connection c = conn(); Statement st = c.createStatement()) {
             String content = "a".repeat(2000);
             st.execute(
                     "INSERT INTO cells (id, content, realm, signal, status, tags, embedding, created_at, valid_from) "
-                            + "VALUES ('" + id + "', '" + content + "', 'test', 'facts', 'committed', "
+                            + "VALUES ('" + id + "', '" + content + "', 'documents', 'facts', 'committed', "
                             + "ARRAY['needs_summary']::text[], NULL, now(), now())");
         }
+        return id;
+    }
 
-        // Vistierie stub: the "text" field contains the JSON that AnthropicSummarizer parses
-        mockVistierie.stubComplete(
-                "{\\\"summary\\\":\\\"Mocked summary about a long cell.\\\",\\\"key_points\\\":[\\\"a\\\"]," +
-                "\\\"insight\\\":\\\"i\\\",\\\"tags\\\":[\\\"x\\\"],\\\"document_type\\\":\\\"other\\\",\\\"facts\\\":[]}");
+    private SummarizerService buildService() {
+        SummarizerProperties props = new SummarizerProperties();
+        props.setEnabled(true);
+        props.setVistierieBaseUrl(mockVistierie.baseUrl());
+        props.setVistierieToken("test-token");
+        props.setModel("claude-haiku-4-5");
+        props.setMaxInputChars(8000);
+        props.setDailyBudgetUsd(10.0);
+        props.setBackfillBatchSize(10);
 
-        // --- Build the service stack ---
+        ExtractionProperties extractionProps = new ExtractionProperties();
+        extractionProps.setEnabled(false); // deterministic fallback profile
+
         SummarizerRepository repo = new SummarizerRepository(dsl);
         WriteToolRepository writeRepo = new WriteToolRepository(dsl);
-
         EmbeddingClient embedding = new FixedEmbeddingClient();
 
         InstanceConfig instanceConfig = new InstanceConfig(dsl);
-        var initMethod = InstanceConfig.class.getDeclaredMethod("initialize");
-        initMethod.setAccessible(true);
-        initMethod.invoke(instanceConfig);
-
+        try {
+            var initMethod = InstanceConfig.class.getDeclaredMethod("initialize");
+            initMethod.setAccessible(true);
+            initMethod.invoke(instanceConfig);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
         OpLogWriter opLogWriter = new OpLogWriter(dsl, instanceConfig, new ObjectMapper());
 
         SyncPeerRepository peerRepo = mock(SyncPeerRepository.class);
@@ -107,58 +203,21 @@ class SummarizerServiceIT {
         PushDispatcher pushDispatcher = new PushDispatcher(peerRepo, syncOpsRepo, peerClient, instanceConfig);
 
         org.springframework.context.ApplicationEventPublisher noopPublisher = e -> {};
-
         WriteToolService writeService = new WriteToolService(
                 writeRepo, embedding, opLogWriter, pushDispatcher, noopPublisher);
 
-        // Build AnthropicSummarizer directly against the mock Vistierie server
-        AnthropicSummarizer anthropic = new AnthropicSummarizer(
-                RestClient.builder(),
-                mockVistierie.baseUrl(),
-                "test-token",
-                "claude-haiku-4-5",
-                8000);
+        return new SummarizerService(
+                props, extractionProps, repo, dsl, RestClient.builder(), writeService,
+                new ExtractionProfileRegistry());
+    }
 
-        SummarizeBudgetTracker budget = new SummarizeBudgetTracker(dsl, 10.00);
+    private Connection conn() throws Exception {
+        return DriverManager.getConnection(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword());
+    }
 
-        // --- Execute the same sequence as SummarizerService.summarizeOne ---
-        var snap = repo.findCellSnapshot(id).orElseThrow(
-                () -> new AssertionError("Cell not found — check status/valid_until conditions"));
-        ExtractionProfile profile = new ExtractionProfile(
-                "other", "p", List.of("topic"), List.of(), null, List.of());
-        var result = anthropic.summarize(snap.content(), profile);
-        budget.recordCall(result.inputTokens(), result.outputTokens());
-        var reviseResult = writeService.reviseCell(
-                new AuthPrincipal("system-summarizer", AuthRole.ADMIN),
-                id, snap.content(), result.summary());
-        repo.removeNeedsSummaryTag(id);
-        Object newIdObj = reviseResult.get("new_id");
-        if (newIdObj != null) {
-            repo.removeNeedsSummaryTag(UUID.fromString(newIdObj.toString()));
-        }
-
-        // --- Assertions ---
-        try (Connection c = DriverManager.getConnection(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword());
-             Statement st = c.createStatement();
-             ResultSet rs = st.executeQuery(
-                     "SELECT summary, embedding IS NOT NULL AS has_embedding, "
-                             + "'needs_summary' = ANY(tags) AS has_needs_summary_tag "
-                             + "FROM cells WHERE summary IS NOT NULL AND valid_until IS NULL "
-                             + "ORDER BY created_at DESC LIMIT 1")) {
-            assertTrue(rs.next(), "Expected a revised cell row with a summary");
-            assertEquals("Mocked summary about a long cell.", rs.getString("summary"));
-            assertTrue(rs.getBoolean("has_embedding"), "Embedding should be present after revise");
-            assertFalse(rs.getBoolean("has_needs_summary_tag"),
-                    "needs_summary tag should be absent on the new revision");
-        }
-
-        // Budget row was recorded — usage comes from mock (inputTokens=10, outputTokens=3)
-        try (Connection c = DriverManager.getConnection(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword());
-             Statement st = c.createStatement();
-             ResultSet rs = st.executeQuery("SELECT total_calls, total_input_tokens FROM summarize_usage")) {
-            assertTrue(rs.next(), "Expected a summarize_usage row");
-            assertEquals(1, rs.getInt("total_calls"));
-            assertEquals(10, rs.getInt("total_input_tokens"));
-        }
+    private static List<String> toList(Array sqlArray) throws Exception {
+        if (sqlArray == null) return List.of();
+        Object[] inner = (Object[]) sqlArray.getArray();
+        return Arrays.stream(inner).map(String::valueOf).toList();
     }
 }
