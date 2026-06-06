@@ -2,6 +2,13 @@ export type Role = 'admin' | 'writer' | 'reader' | 'agent'
 export type Relation = 'related_to' | 'builds_on' | 'contradicts' | 'refines'
 export type CellStatus = 'committed' | 'pending' | 'rejected'
 
+export interface Attachment {
+  id: string
+  mime_type: string
+  original_filename: string
+  size_bytes: number
+}
+
 export interface Cell {
   id: string
   realm: string
@@ -19,6 +26,7 @@ export interface Cell {
   created_at: string
   valid_from: string
   valid_until: string | null
+  attachments?: Attachment[]
 }
 
 export interface Realm { name: string; cell_count: number; signals: Signal[] }
