@@ -30,6 +30,7 @@
     "react-force-graph-2d": "^1.29.1",
     "three": "^0.184.0",
     "vue": "^3.5.32",
+    "vue-i18n": "^11.4.2",
     "vue-router": "^4.4.5",
     "vuetify": "^4.0.5"
   },
