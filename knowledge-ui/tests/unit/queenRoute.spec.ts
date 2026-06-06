@@ -7,12 +7,14 @@ import * as components from 'vuetify/components'
 import * as directives from 'vuetify/directives'
 import { resetApi } from '../../src/api/useApi'
 import QueenRoute from '../../src/pages/QueenRoute.vue'
+import { i18n } from '../../src/i18n'
 
 // VNavigationDrawer needs layout context — wrap in VApp to satisfy it
 const { VApp } = components
 
 describe('QueenRoute', () => {
   beforeEach(() => {
+    i18n.global.locale.value = 'de'
     setActivePinia(createPinia())
     localStorage.setItem('hivemem_mock', 'true')
     resetApi()
@@ -29,13 +31,13 @@ describe('QueenRoute', () => {
     const AppWrapper = defineComponent({
       render: () => h(VApp, () => h(QueenRoute)),
     })
-    const wrapper = mount(AppWrapper, { global: { plugins: [vuetify] } })
+    const wrapper = mount(AppWrapper, { global: { plugins: [vuetify, i18n] } })
     // Advance fake timers past the mock client's latency (up to 200 ms)
     await vi.advanceTimersByTimeAsync(300)
     await flushPromises()
     const text = wrapper.text()
-    expect(text).toContain('Queen activity')
+    expect(text).toContain('Queen-Aktivität')
     expect(text).toContain('isolated-cell-bee')
-    expect(text).toContain('Pending proposals')
+    expect(text).toContain('Offene Vorschläge')
   })
 })
