@@ -248,3 +248,15 @@ The Queen-Log UI lets admins inspect past Queen and Bee runs without leaving Hiv
 5. The approval queue shown alongside run history reuses the existing `pending_approvals` and `approve_pending` tools — no new endpoints or DB tables are required.
 
 On a Vistierie outage, both tools degrade gracefully: `queen_runs` returns `{items:[],total:0,costAvailable:false,unavailable:true}` and `queen_run_detail` returns `{run:{},events:[],unavailable:true}`, allowing the UI to display an appropriate offline notice.
+
+## Language / i18n
+
+The UI is bilingual (German + English), German-first. The startup default language
+comes from a global backend property `hivemem.language` (env `HIVEMEM_LANGUAGE`,
+default `de`), delivered to the SPA in the `wake_up` response as `default_language`.
+The user can switch language in Settings; that choice is stored in `localStorage`
+(`hivemem_locale`) and overrides the backend default on subsequent visits.
+
+The summarizer's output-language default inherits the same global value
+(`hivemem.summarize.language` defaults to `${HIVEMEM_LANGUAGE}`), but keeps its own
+override `HIVEMEM_SUMMARIZE_LANGUAGE`.

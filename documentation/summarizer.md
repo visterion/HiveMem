@@ -74,7 +74,7 @@ Cells throttled by the API:
 | `hivemem.summarize.enabled` | `false` | Master switch |
 | `hivemem.summarize.vistierie-token` (`HIVEMEM_VISTIERIE_TOKEN`) | empty | Tenant token for the Vistierie `/llm/complete` gateway — required to enable |
 | `hivemem.summarize.model` | `claude-haiku-4-5` | Which Claude model |
-| `hivemem.summarize.language` (`HIVEMEM_SUMMARIZE_LANGUAGE`) | `de` | Default output language (ISO 639-1) when the content's language is unclear; source language preserved otherwise |
+| `hivemem.summarize.language` (`HIVEMEM_SUMMARIZE_LANGUAGE`) | `${HIVEMEM_LANGUAGE:de}` *(inherits global)* | Default output language (ISO 639-1) when the content's language is unclear; source language preserved otherwise |
 | `hivemem.summarize.daily-budget-usd` | `1.00` | Hard cost cap per UTC day |
 | `hivemem.summarize.backfill-interval` | `PT5M` | Documentation only — see note below |
 | `hivemem.summarize.backfill-batch-size` | `10` | Cells per backfill run |
@@ -110,8 +110,10 @@ as the cell content** (a German document stays German, an English one stays Engl
 content's language is unclear or too short to tell (e.g. a brief manual `add_cell` note), it
 falls back to the backend default language.
 
-- Configure the default with `HIVEMEM_SUMMARIZE_LANGUAGE` (`hivemem.summarize.language`,
-  ISO 639-1, default `de`).
+- Configure with `HIVEMEM_SUMMARIZE_LANGUAGE` (`hivemem.summarize.language`, ISO 639-1).
+  When unset it inherits the global `HIVEMEM_LANGUAGE` (default `de`), so one knob sets both
+  the UI and the summarizer; set `HIVEMEM_SUMMARIZE_LANGUAGE` to override the summarizer
+  independently of the UI.
 - `document_type` and fact `predicate` keys stay in their controlled English vocabulary; fact
   `object` values are data and are unaffected.
 - Applies to newly written and newly re-summarized cells; existing cells are not reprocessed.

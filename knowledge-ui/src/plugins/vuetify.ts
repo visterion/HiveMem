@@ -7,7 +7,11 @@ import { i18n } from '../i18n'
 
 export const vuetify = createVuetify({
   locale: {
-    adapter: createVueI18nAdapter({ i18n, useI18n })
+    // `i18n as any`: Vuetify's adapter is typed as I18n<any, …, string, …>, which
+    // our typed createI18n instance (narrowed 'de'|'en' locale + message shapes) does
+    // not satisfy. `vue-tsc -b` (the `npm run build` gate) fails on this without the
+    // cast; runtime is unaffected. Known vue-i18n + Vuetify-adapter typing friction.
+    adapter: createVueI18nAdapter({ i18n: i18n as any, useI18n })
   },
   theme: {
     defaultTheme: 'palace',

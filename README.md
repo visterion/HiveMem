@@ -96,6 +96,7 @@ Extended Mind, Forgetting Curve, Zettelkasten, PARA).
 - **[Agent Fleet + Approval Workflow](documentation/auth.md)** — Agents write pending suggestions; only admins approve. Every write is human-gated.
 - **[Auto-Inject Hook for Claude Code](documentation/hook/)** — Relevant memories injected into every session automatically, before you even ask.
 - **[Full instance portability](documentation/backup.md)** — Export the entire HiveMem instance (Postgres + attachments + identity) into one tar.gz, restore it on another host with one command. Mission promise made provable.
+- **Bilingual UI** (German/English, German-first) with a backend-configured default language.
 
 → **[Get started](documentation/getting-started.md)**
 
