@@ -1,5 +1,6 @@
 package com.hivemem.tools.read;
 
+import com.hivemem.attachment.AttachmentRepository;
 import com.hivemem.auth.AuthPrincipal;
 import com.hivemem.cells.CellReadRepository;
 import com.hivemem.embedding.EmbeddingClient;
@@ -28,6 +29,7 @@ public class ReadToolService {
     private final AdminToolService adminToolService;
     private final SearchWeightsProperties searchWeightsProperties;
     private final ConfidenceThresholds confidenceThresholds;
+    private final AttachmentRepository attachmentRepository;
 
     public ReadToolService(
             CellReadRepository cellReadRepository,
@@ -36,7 +38,8 @@ public class ReadToolService {
             EmbeddingClient embeddingClient,
             AdminToolService adminToolService,
             SearchWeightsProperties searchWeightsProperties,
-            ConfidenceThresholds confidenceThresholds
+            ConfidenceThresholds confidenceThresholds,
+            AttachmentRepository attachmentRepository
     ) {
         this.cellReadRepository = cellReadRepository;
         this.kgSearchRepository = kgSearchRepository;
@@ -45,6 +48,7 @@ public class ReadToolService {
         this.adminToolService = adminToolService;
         this.searchWeightsProperties = searchWeightsProperties;
         this.confidenceThresholds = confidenceThresholds;
+        this.attachmentRepository = attachmentRepository;
     }
 
     public Map<String, Object> status() {
@@ -103,8 +107,34 @@ public class ReadToolService {
 
     public Map<String, Object> getCell(AuthPrincipal principal, UUID cellId, CellFieldSelection selection) {
         Optional<Map<String, Object>> cell = cellReadRepository.findCell(cellId, selection);
-        cell.ifPresent(c -> adminToolService.logAccess(cellId, null, principal.name()));
-        return cell.orElse(null);
+        if (cell.isEmpty()) {
+            return null;
+        }
+        adminToolService.logAccess(cellId, null, principal.name());
+        Map<String, Object> result = new LinkedHashMap<>(cell.get());
+        if (selection.includes("attachments")) {
+            result.put("attachments", attachmentsForCell(cellId));
+        }
+        return result;
+    }
+
+    private List<Map<String, Object>> attachmentsForCell(UUID cellId) {
+        try {
+            return attachmentRepository.findByCellId(cellId).stream()
+                    .map(row -> {
+                        Map<String, Object> a = new LinkedHashMap<>();
+                        a.put("id", row.get("id"));
+                        a.put("mime_type", row.get("mime_type"));
+                        a.put("original_filename", row.get("original_filename"));
+                        a.put("size_bytes", row.get("size_bytes"));
+                        return a;
+                    })
+                    .toList();
+        } catch (RuntimeException e) {
+            org.slf4j.LoggerFactory.getLogger(ReadToolService.class)
+                    .warn("Failed to load attachments for cell {}: {}", cellId, e.toString());
+            return List.of();
+        }
     }
 
     public List<Map<String, Object>> traverse(UUID cellId, int maxDepth, String relationFilter) {

@@ -104,7 +104,9 @@ Each search result includes a `confidence_level` field indicating how strongly t
 Thresholds are configurable via `hivemem.search.confidence.high/medium/low` in `application.yml`.
 `score_total` (the raw numeric value) is always present alongside `confidence_level`.
 
-`search` defaults to `summary`, `tags`, `importance`, and `created_at` plus required identity fields (`id`, `realm`, `signal`, `topic`). `get_cell` defaults to `summary`, `key_points`, `insight`, `tags`, `importance`, `source`, and `created_at` plus the same required identity fields. Pass `include` to request a specific subset of optional fields, including `content`.
+`search` defaults to `summary`, `tags`, `importance`, and `created_at` plus required identity fields (`id`, `realm`, `signal`, `topic`). `get_cell` defaults to `summary`, `key_points`, `insight`, `tags`, `importance`, `source`, `actionability`, `status`, `created_at`, and `attachments` plus the same required identity fields. Pass `include` to request a specific subset of optional fields, including `content`.
+
+- `attachments` (get_cell only, on by default): list of the cell's original files, each `{id, mime_type, original_filename, size_bytes}`. Download the bytes at `GET /api/attachments/{id}/content`. Internal storage keys are not exposed.
 
 ## Progressive Summarization
 
