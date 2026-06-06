@@ -1,16 +1,18 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { computed, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useCanvasStore } from '../../stores/canvas'
 import { useUiStore, type SizeMetric } from '../../stores/ui'
 
 const canvas = useCanvasStore()
 const ui = useUiStore()
-const metrics: { v: SizeMetric; label: string }[] = [
-  { v: 'cell_count', label: 'Cell count' },
-  { v: 'content_volume', label: 'Content volume' },
-  { v: 'importance', label: 'Importance-weighted' },
-  { v: 'popularity', label: 'Popularity' }
-]
+const { t } = useI18n()
+const metrics = computed<{ v: SizeMetric; label: string }[]>(() => [
+  { v: 'cell_count', label: t('realms.cellCount') },
+  { v: 'content_volume', label: t('realms.contentVolume') },
+  { v: 'importance', label: t('realms.importance') },
+  { v: 'popularity', label: t('realms.popularity') }
+])
 
 onMounted(() => { if (!canvas.loaded) canvas.loadTopLevel() })
 
@@ -23,14 +25,14 @@ function colorFor(realm: string): string {
 <template>
   <div>
     <v-list density="compact">
-      <v-list-item v-for="r in canvas.realms" :key="r.name" :title="r.name" :subtitle="`${r.cell_count} cells`">
+      <v-list-item v-for="r in canvas.realms" :key="r.name" :title="r.name" :subtitle="t('realms.cells', { n: r.cell_count })">
         <template #prepend>
           <span class="dot" :style="{ background: colorFor(r.name) }" />
         </template>
       </v-list-item>
     </v-list>
     <v-divider class="my-3" />
-    <strong style="font-size:12px;letter-spacing:0.1em">SIZE METRIC</strong>
+    <strong style="font-size:12px;letter-spacing:0.1em">{{ t('realms.sizeMetric') }}</strong>
     <v-radio-group v-model="ui.sizeMetric" density="compact">
       <v-radio v-for="m in metrics" :key="m.v" :label="m.label" :value="m.v" />
     </v-radio-group>

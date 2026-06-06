@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useApi } from '../../api/useApi'
 import type { Cell } from '../../api/types'
 import { useCellStore } from '../../stores/cell'
@@ -9,6 +10,7 @@ const q = ref('')
 const results = ref<Cell[]>([])
 const loading = ref(false)
 const cellStore = useCellStore()
+const { t } = useI18n()
 
 let timer: number | null = null
 watch(q, v => {
@@ -36,7 +38,7 @@ function subtitleFor(c: Cell): string {
 </script>
 
 <template>
-  <v-text-field v-model="q" density="compact" variant="solo-filled" placeholder="Type to search…" autofocus />
+  <v-text-field v-model="q" density="compact" variant="solo-filled" :placeholder="t('search.placeholder')" autofocus />
   <v-list density="compact">
     <v-list-item
       v-for="c in results"
@@ -46,6 +48,6 @@ function subtitleFor(c: Cell): string {
       @click="cellStore.open(c)"
     />
   </v-list>
-  <div v-if="loading" style="color:#666;padding:8px">Searching…</div>
-  <div v-else-if="!results.length && q" style="color:#666;padding:8px">No results.</div>
+  <div v-if="loading" style="color:#666;padding:8px">{{ t('search.searching') }}</div>
+  <div v-else-if="!results.length && q" style="color:#666;padding:8px">{{ t('common.noResults') }}</div>
 </template>

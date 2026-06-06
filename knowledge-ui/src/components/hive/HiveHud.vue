@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 defineProps<{
   cellCount?: number
@@ -8,13 +9,14 @@ defineProps<{
 }>()
 
 const q = ref('')
+const { t } = useI18n()
 </script>
 
 <template>
   <div class="hive-hud">
     <div class="hive-hud__logo">HiveMem</div>
     <div class="hive-hud__stats">
-      {{ cellCount ?? 0 }} cells · {{ factCount ?? 0 }} facts · {{ realmCount ?? 0 }} realms
+      {{ t('search.stats', { cells: cellCount ?? 0, facts: factCount ?? 0, realms: realmCount ?? 0 }) }}
     </div>
     <div class="hive-hud__search">
       <v-text-field
@@ -22,10 +24,10 @@ const q = ref('')
         variant="solo-filled"
         density="compact"
         rounded="lg"
-        placeholder="Search…"
+        :placeholder="t('search.hudPlaceholder')"
         hide-details
         disabled
-        title="Coming soon"
+        :title="t('search.comingSoon')"
         prepend-inner-icon="mdi-magnify"
         class="hive-hud__field"
       />
