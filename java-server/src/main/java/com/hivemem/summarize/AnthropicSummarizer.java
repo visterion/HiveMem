@@ -44,6 +44,7 @@ public class AnthropicSummarizer {
 
     private final RestClient client;
     private final String tenantToken;
+    private final String agentName;
     private final String model;
     private final int maxInputChars;
 
@@ -59,6 +60,7 @@ public class AnthropicSummarizer {
                 .requestFactory(rf)
                 .build();
         this.tenantToken = props.getVistierieToken();
+        this.agentName = props.getAgentName();
         this.model = props.getModel();
         this.maxInputChars = props.getMaxInputChars();
     }
@@ -68,12 +70,13 @@ public class AnthropicSummarizer {
      * SimpleClientHttpRequestFactory (HTTP/1.1) so WireMock-standalone works correctly.
      */
     AnthropicSummarizer(RestClient.Builder builder, String baseUrl,
-                        String tenantToken, String model, int maxInputChars) {
+                        String tenantToken, String agentName, String model, int maxInputChars) {
         SimpleClientHttpRequestFactory rf = new SimpleClientHttpRequestFactory();
         rf.setConnectTimeout(30_000);
         rf.setReadTimeout(30_000);
         this.client = builder.baseUrl(baseUrl).requestFactory(rf).build();
         this.tenantToken = tenantToken;
+        this.agentName = agentName;
         this.model = model;
         this.maxInputChars = maxInputChars;
     }
@@ -91,13 +94,16 @@ public class AnthropicSummarizer {
                 + "Optional facts (emit if present): "
                 + String.join(", ", profile.optionalFacts());
 
+        // Vistierie /llm/complete contract: agent_name (a registered agent with an operational
+        // budget) is required; the system prompt is a top-level field (Anthropic rejects a
+        // role:"system" entry inside messages), so messages carries the user turn only.
         Map<String, Object> body = Map.of(
-                "tenant", "hivemem",
+                "agent_name", agentName,
                 "purpose", "summarize_cell",
                 "realm", profile.type(),
                 "model", model,
+                "system", systemPrompt,
                 "messages", List.of(
-                        Map.of("role", "system", "content", systemPrompt),
                         Map.of("role", "user", "content", input)
                 ),
                 "max_tokens", 800

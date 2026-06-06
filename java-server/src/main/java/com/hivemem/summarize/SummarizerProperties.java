@@ -12,6 +12,13 @@ public class SummarizerProperties {
     private boolean enabled = false;
     private String vistierieBaseUrl = "http://vistierie:8090";
     private String vistierieToken = "";
+    /**
+     * Registered Vistierie agent used for summarize completions. /llm/complete requires a
+     * known agent_name with an operational budget; defaults to the document-separator agent
+     * the Queen bootstrap provisions (reused here — its model_purpose is ignored for
+     * /llm/complete, which routes on the per-request purpose/model).
+     */
+    private String agentName = "document-separator";
     private String model = "claude-haiku-4-5";
     private double dailyBudgetUsd = 1.00;
     private Duration backfillInterval = Duration.ofMinutes(5);
@@ -26,6 +33,8 @@ public class SummarizerProperties {
     public void setVistierieBaseUrl(String v) { this.vistierieBaseUrl = v; }
     public String getVistierieToken() { return vistierieToken; }
     public void setVistierieToken(String v) { this.vistierieToken = v; }
+    public String getAgentName() { return agentName; }
+    public void setAgentName(String v) { this.agentName = v; }
     public String getModel() { return model; }
     public void setModel(String v) { this.model = v; }
     public double getDailyBudgetUsd() { return dailyBudgetUsd; }

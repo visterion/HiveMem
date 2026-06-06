@@ -59,6 +59,7 @@ hivemem:
     enabled: ${HIVEMEM_SUMMARIZE_ENABLED:false}
     vistierie-base-url: ${HIVEMEM_VISTIERIE_BASE_URL:http://vistierie:8090}
     vistierie-token: ${HIVEMEM_VISTIERIE_TOKEN:}
+    agent-name: ${HIVEMEM_SUMMARIZE_AGENT:document-separator}
     model: ${HIVEMEM_SUMMARIZE_MODEL:claude-haiku-4-5}
     daily-budget-usd: ${HIVEMEM_SUMMARIZE_DAILY_BUDGET:1.00}
     backfill-interval: ${HIVEMEM_SUMMARIZE_BACKFILL_INTERVAL:PT5M}

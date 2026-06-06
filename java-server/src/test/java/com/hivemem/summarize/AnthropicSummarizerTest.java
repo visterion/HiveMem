@@ -6,9 +6,14 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.client.RestClient;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 import java.util.List;
 
+import static com.github.tomakehurst.wiremock.client.WireMock.findAll;
+import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
+import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class AnthropicSummarizerTest {
@@ -30,6 +35,7 @@ class AnthropicSummarizerTest {
                 RestClient.builder(),
                 mock.baseUrl(),
                 "test-token",
+                "document-separator",
                 "claude-haiku-4-5",
                 8000);
     }
@@ -52,6 +58,29 @@ class AnthropicSummarizerTest {
         assertThat(r.tags()).containsExactly("widgets", "red");
         assertThat(r.inputTokens()).isEqualTo(10);
         assertThat(r.outputTokens()).isEqualTo(3);
+    }
+
+    @Test
+    void sendsVistierieCompleteContract() {
+        // Regression: the request used to send {"tenant":...} with a role:"system" entry inside
+        // messages, which Vistierie's /llm/complete rejects with 400 (agent_name @NotBlank) and
+        // Anthropic rejects (system must be top-level).
+        mock.stubComplete("{\\\"summary\\\":\\\"s\\\",\\\"key_points\\\":[],\\\"insight\\\":null,\\\"tags\\\":[],\\\"facts\\\":[]}");
+
+        summarizer.summarize("the user content", minimalProfile());
+
+        var requests = findAll(postRequestedFor(urlEqualTo("/llm/complete")));
+        assertThat(requests).hasSize(1);
+        JsonNode body = new ObjectMapper().readTree(requests.get(0).getBodyAsString());
+
+        assertThat(body.path("agent_name").asText()).isEqualTo("document-separator");
+        assertThat(body.has("tenant")).as("must not send the rejected 'tenant' field").isFalse();
+        assertThat(body.path("system").asText()).contains("HiveMem");
+        assertThat(body.path("messages").size()).as("only the user turn in messages").isEqualTo(1);
+        assertThat(body.path("messages").get(0).path("role").asText()).isEqualTo("user");
+        assertThat(body.path("messages").get(0).path("content").asText()).isEqualTo("the user content");
+        assertThat(body.path("model").asText()).isEqualTo("claude-haiku-4-5");
+        assertThat(body.path("max_tokens").asInt()).isEqualTo(800);
     }
 
     @Test
