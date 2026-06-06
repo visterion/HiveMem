@@ -15,6 +15,7 @@ spring:
     sql-dialect: POSTGRES
 
 hivemem:
+  language: ${HIVEMEM_LANGUAGE:de}
   embedding:
     base-url: ${HIVEMEM_EMBEDDING_URL:http://localhost:8081}
     timeout: ${HIVEMEM_EMBEDDING_TIMEOUT:PT5S}
@@ -61,7 +62,7 @@ hivemem:
     vistierie-token: ${HIVEMEM_VISTIERIE_TOKEN:}
     agent-name: ${HIVEMEM_SUMMARIZE_AGENT:document-separator}
     model: ${HIVEMEM_SUMMARIZE_MODEL:claude-haiku-4-5}
-    language: ${HIVEMEM_SUMMARIZE_LANGUAGE:de}
+    language: ${HIVEMEM_SUMMARIZE_LANGUAGE:${HIVEMEM_LANGUAGE:de}}
     daily-budget-usd: ${HIVEMEM_SUMMARIZE_DAILY_BUDGET:1.00}
     backfill-interval: ${HIVEMEM_SUMMARIZE_BACKFILL_INTERVAL:PT5M}
     backfill-batch-size: ${HIVEMEM_SUMMARIZE_BATCH:10}
