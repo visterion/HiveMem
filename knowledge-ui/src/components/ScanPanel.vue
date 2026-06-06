@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useCellStore } from '../stores/cell'
 import { useReaderStore } from '../stores/reader'
 import { useCanvasStore } from '../stores/canvas'
@@ -8,6 +9,7 @@ import { cellLabel } from '../api/cellLabel'
 const cellStore = useCellStore()
 const reader = useReaderStore()
 const canvas = useCanvasStore()
+const { t } = useI18n()
 const d = computed(() => cellStore.current)
 
 function openReader() { if (d.value) reader.openReader(d.value.cell.id) }
@@ -48,34 +50,34 @@ function close() {
           <span class="imp">{{ '★'.repeat(d.cell.importance) }}</span>
         </div>
         <section v-if="d.cell.summary">
-          <div class="label">SUMMARY</div><p>{{ d.cell.summary }}</p>
+          <div class="label">{{ t('reader.summary') }}</div><p>{{ d.cell.summary }}</p>
         </section>
         <section v-if="d.cell.key_points?.length">
-          <div class="label">KEY POINTS</div>
+          <div class="label">{{ t('reader.keyPoints') }}</div>
           <ul><li v-for="k in d.cell.key_points" :key="k">{{ k }}</li></ul>
         </section>
         <section v-if="d.cell.insight">
-          <div class="label">INSIGHT</div><blockquote>{{ d.cell.insight }}</blockquote>
+          <div class="label">{{ t('reader.insight') }}</div><blockquote>{{ d.cell.insight }}</blockquote>
         </section>
         <section v-if="d.cell.content">
-          <div class="label">TEXT</div><pre class="content">{{ d.cell.content }}</pre>
+          <div class="label">{{ t('reader.text') }}</div><pre class="content">{{ d.cell.content }}</pre>
         </section>
         <section v-if="d.tunnels.length">
-          <div class="label">TUNNELS ({{ d.tunnels.length }})</div>
-          <div v-for="t in d.tunnels" :key="t.id" class="tunnel"
-               @click="jumpTo(t.to_cell === d.cell.id ? t.from_cell : t.to_cell)">
-            <span :class="['dot', t.relation]" />
-            <span class="rel">{{ t.relation }}</span>
-            <span class="note">{{ t.note || '' }}</span>
+          <div class="label">{{ t('reader.tunnels', { n: d.tunnels.length }) }}</div>
+          <div v-for="tunnel in d.tunnels" :key="tunnel.id" class="tunnel"
+               @click="jumpTo(tunnel.to_cell === d.cell.id ? tunnel.from_cell : tunnel.to_cell)">
+            <span :class="['dot', tunnel.relation]" />
+            <span class="rel">{{ tunnel.relation }}</span>
+            <span class="note">{{ tunnel.note || '' }}</span>
           </div>
         </section>
         <section v-if="d.facts.length">
-          <div class="label">FACTS ({{ d.facts.length }})</div>
+          <div class="label">{{ t('reader.facts', { n: d.facts.length }) }}</div>
           <div v-for="f in d.facts" :key="f.id" class="fact">
             <span class="pred">{{ f.predicate }}</span> → {{ f.object }}
           </div>
         </section>
-        <v-btn block color="primary" class="mt-3" @click="openReader">Open reader</v-btn>
+        <v-btn block color="primary" class="mt-3" @click="openReader">{{ t('reader.openReader') }}</v-btn>
       </div>
     </aside>
   </transition>

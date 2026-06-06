@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useReaderStore } from '../stores/reader'
 import { useCellStore } from '../stores/cell'
 import MarkdownTab from './readers/MarkdownTab.vue'
@@ -10,6 +11,7 @@ import { buildAttachmentTabs } from './readers/attachmentTabs'
 
 const reader = useReaderStore()
 const cellStore = useCellStore()
+const { t } = useI18n()
 
 const attachments = computed(() => buildAttachmentTabs(cellStore.current?.cell.attachments))
 
@@ -28,11 +30,11 @@ watch(() => reader.open && cellStore.currentId, (id) => {
       <header>
         <v-btn icon="mdi-arrow-left" variant="text" @click="reader.close()" />
         <v-tabs v-model="reader.activeTab" density="compact" color="primary">
-          <v-tab value="markdown">Markdown</v-tab>
+          <v-tab value="markdown">{{ t('reader.markdown') }}</v-tab>
           <v-tab v-for="a in attachments" :key="a.id" :value="a.id">{{ a.title }}</v-tab>
         </v-tabs>
         <v-spacer />
-        <v-btn icon="mdi-pencil" variant="text" disabled title="Editor — SP4" />
+        <v-btn icon="mdi-pencil" variant="text" disabled :title="t('reader.editorTooltip')" />
       </header>
       <main class="reader-body">
         <MarkdownTab v-if="reader.activeTab === 'markdown'" :content="cellStore.current.cell.content" />
@@ -40,7 +42,7 @@ watch(() => reader.open && cellStore.currentId, (id) => {
         <ImageTab v-else-if="kindOf(reader.activeTab) === 'image'" :url="urlOf(reader.activeTab)" />
         <EmlTab v-else-if="kindOf(reader.activeTab) === 'eml'" :url="urlOf(reader.activeTab)" />
         <div v-else-if="kindOf(reader.activeTab) === 'other'" class="download-fallback">
-          <a :href="urlOf(reader.activeTab)" download>Datei herunterladen</a>
+          <a :href="urlOf(reader.activeTab)" download>{{ t('reader.download') }}</a>
         </div>
       </main>
     </div>
