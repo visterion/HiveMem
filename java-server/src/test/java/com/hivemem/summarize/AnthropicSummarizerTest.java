@@ -6,15 +6,18 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.HttpClientErrorException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 import java.util.List;
+import java.util.Map;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.findAll;
 import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class AnthropicSummarizerTest {
 
@@ -117,6 +120,55 @@ class AnthropicSummarizerTest {
         assertThat(r.summary()).isEqualTo("Fenced summary");
         assertThat(r.keyPoints()).containsExactly("kp");
         assertThat(r.tags()).containsExactly("x");
+    }
+
+    @Test
+    void summarizeSatisfiesStrictVistierieContract() {
+        // Regression guard: the original mock accepted ANY request body, so four contract bugs
+        // (tenant instead of agent_name, role:system inside messages, …) shipped to prod
+        // undetected. A strict stub enforces Vistierie's /llm/complete contract: it returns 200
+        // ONLY when agent_name+purpose are non-blank, system is top-level, messages is present,
+        // and NO message carries role:system. The real summarizer must satisfy all of it.
+        mock.stubCompleteStrict(
+                "{\\\"summary\\\":\\\"s\\\",\\\"key_points\\\":[],\\\"insight\\\":null,\\\"tags\\\":[],\\\"facts\\\":[]}");
+
+        SummaryResult r = summarizer.summarize("real content", minimalProfile());
+
+        assertThat(r.summary()).isEqualTo("s");
+    }
+
+    @Test
+    void strictStubRejectsLegacyTenantContractShape() {
+        // Proves the strict stub has teeth: the pre-9.2.4 body shape (tenant + a role:system
+        // entry inside messages, no top-level system) is rejected with 400 — exactly the failure
+        // prod returned. Without this, summarizeSatisfiesStrictVistierieContract could pass against
+        // a permissive stub and prove nothing.
+        mock.stubCompleteStrict(
+                "{\\\"summary\\\":\\\"s\\\",\\\"key_points\\\":[],\\\"insight\\\":null,\\\"tags\\\":[],\\\"facts\\\":[]}");
+
+        // Force HTTP/1.1 (SimpleClientHttpRequestFactory) — WireMock-standalone mishandles the
+        // JDK HttpClient's HTTP/2, surfacing RST_STREAM instead of the 400 (same reason the
+        // production test ctor pins this factory).
+        RestClient raw = RestClient.builder()
+                .baseUrl(mock.baseUrl())
+                .requestFactory(new org.springframework.http.client.SimpleClientHttpRequestFactory())
+                .build();
+        Map<String, Object> legacyBody = Map.of(
+                "tenant", "some-tenant",
+                "purpose", "summarize_cell",
+                "messages", List.of(
+                        Map.of("role", "system", "content", "you are a summarizer"),
+                        Map.of("role", "user", "content", "the content")));
+
+        assertThatThrownBy(() -> raw.post()
+                .uri("/llm/complete")
+                .header("content-type", "application/json")
+                .body(legacyBody)
+                .retrieve()
+                .toBodilessEntity())
+                .isInstanceOf(HttpClientErrorException.class)
+                .satisfies(e -> assertThat(((HttpClientErrorException) e).getStatusCode().value())
+                        .isEqualTo(400));
     }
 
     @Test

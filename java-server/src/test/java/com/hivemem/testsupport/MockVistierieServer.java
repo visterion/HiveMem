@@ -22,6 +22,42 @@ public class MockVistierieServer {
                 """.formatted(text))));
     }
 
+    /**
+     * Like {@link #stubComplete} but enforces Vistierie's real /llm/complete contract, so a
+     * malformed request fails the way prod did instead of being silently accepted. Returns 200 +
+     * the canned text ONLY when the request has a non-blank agent_name and purpose, a top-level
+     * system prompt, and a messages array with NO role:"system" entry (Anthropic requires system
+     * top-level). Any other shape — e.g. the pre-9.2.4 {tenant, messages:[{role:system}]} body —
+     * gets 400, mirroring Vistierie's @NotBlank/Anthropic rejection.
+     */
+    public void stubCompleteStrict(String text) {
+        // Highest precedence: a system role inside messages is rejected (Anthropic contract).
+        stubFor(post(urlEqualTo("/llm/complete")).atPriority(1)
+                .withRequestBody(matchingJsonPath("$.messages[?(@.role == 'system')]"))
+                .willReturn(aResponse().withStatus(400)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"error\":\"system role must be a top-level field, not a message\"}")));
+        // Valid contract: non-blank agent_name + purpose, top-level system, messages present.
+        stubFor(post(urlEqualTo("/llm/complete")).atPriority(2)
+                .withRequestBody(matchingJsonPath("$.agent_name", matching(".+")))
+                .withRequestBody(matchingJsonPath("$.purpose", matching(".+")))
+                .withRequestBody(matchingJsonPath("$.system"))
+                .withRequestBody(matchingJsonPath("$.messages"))
+                .willReturn(okJson("""
+                        {"text": "%s",
+                         "stop_reason":"end_turn",
+                         "usage":{"inputTokens":10,"outputTokens":3,
+                                  "cacheCreationInputTokens":0,"cacheReadInputTokens":0},
+                         "provider":"anthropic","model":"claude-haiku-4-5",
+                         "cost_micros":0,"llm_call_id":"X"}
+                        """.formatted(text))));
+        // Anything else (e.g. missing agent_name) is a contract violation → 400.
+        stubFor(post(urlEqualTo("/llm/complete")).atPriority(10)
+                .willReturn(aResponse().withStatus(400)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"error\":\"agent_name and messages are required\"}")));
+    }
+
     public void stubVision(String text) {
         stubFor(post(urlEqualTo("/llm/vision")).willReturn(okJson("""
                 {"text":"%s","stop_reason":"end_turn",
