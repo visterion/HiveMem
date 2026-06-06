@@ -52,4 +52,15 @@ describe('cell store ensureAttachments', () => {
     expect(spy).not.toHaveBeenCalled()
     spy.mockRestore()
   })
+
+  it('leaves attachments undefined when the fetch fails', async () => {
+    const store = useCellStore()
+    await store.open(bareCell('c3'))
+
+    const spy = vi.spyOn(MockApiClient.prototype, 'call').mockRejectedValue(new Error('network'))
+    await store.ensureAttachments('c3')
+
+    expect(store.current?.cell.attachments).toBeUndefined()
+    spy.mockRestore()
+  })
 })
