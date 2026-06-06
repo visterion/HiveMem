@@ -5,6 +5,7 @@ import com.hivemem.auth.AuthRole;
 import com.hivemem.cells.CellReadRepository;
 import com.hivemem.embedding.EmbeddingClient;
 import com.hivemem.embedding.FixedEmbeddingClient;
+import com.hivemem.attachment.AttachmentRepository;
 import com.hivemem.tools.read.ReadToolService;
 import com.hivemem.write.AdminToolRepository;
 import com.hivemem.write.AdminToolService;
@@ -191,6 +192,7 @@ class GraphProximityFunctionTest {
             WriteToolService.class,
             WriteToolRepository.class,
             ReadToolService.class,
+            AttachmentRepository.class,
             SearchWeightsProperties.class,
             ConfidenceThresholds.class,
             CellReadRepository.class,

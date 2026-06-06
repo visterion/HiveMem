@@ -9,6 +9,7 @@ import com.hivemem.search.CellSearchRepository;
 import com.hivemem.search.ConfidenceThresholds;
 import com.hivemem.search.KgSearchRepository;
 import com.hivemem.search.SearchWeightsProperties;
+import com.hivemem.attachment.AttachmentRepository;
 import com.hivemem.tools.read.ReadToolService;
 import com.hivemem.write.WriteToolRepository;
 import com.hivemem.write.AdminToolRepository;
@@ -333,6 +334,7 @@ class GraphSearchIntegrationTest {
             WriteToolService.class,
             WriteToolRepository.class,
             ReadToolService.class,
+            AttachmentRepository.class,
             SearchWeightsProperties.class,
             ConfidenceThresholds.class,
             CellReadRepository.class,
