@@ -1,21 +1,25 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
 import { useReaderStore } from '../stores/reader'
 import { useCellStore } from '../stores/cell'
 import MarkdownTab from './readers/MarkdownTab.vue'
 import PdfTab from './readers/PdfTab.vue'
 import EmlTab from './readers/EmlTab.vue'
+import ImageTab from './readers/ImageTab.vue'
+import { buildAttachmentTabs } from './readers/attachmentTabs'
 
 const reader = useReaderStore()
 const cellStore = useCellStore()
 
-const attachments = computed(() => {
-  // Populated later from cell references; empty in SP1 v1
-  return [] as { id: string; title: string; url: string; kind: 'pdf' | 'eml' }[]
-})
+const attachments = computed(() => buildAttachmentTabs(cellStore.current?.cell.attachments))
 
 function kindOf(tab: string) { return attachments.value.find(a => a.id === tab)?.kind }
 function urlOf(tab: string) { return attachments.value.find(a => a.id === tab)?.url ?? '' }
+
+// When the reader opens for a cell, make sure its attachments are loaded.
+watch(() => reader.open && cellStore.currentId, (id) => {
+  if (reader.open && typeof id === 'string') cellStore.ensureAttachments(id)
+}, { immediate: true })
 </script>
 
 <template>
@@ -33,7 +37,11 @@ function urlOf(tab: string) { return attachments.value.find(a => a.id === tab)?.
       <main class="reader-body">
         <MarkdownTab v-if="reader.activeTab === 'markdown'" :content="cellStore.current.cell.content" />
         <PdfTab v-else-if="kindOf(reader.activeTab) === 'pdf'" :url="urlOf(reader.activeTab)" />
+        <ImageTab v-else-if="kindOf(reader.activeTab) === 'image'" :url="urlOf(reader.activeTab)" />
         <EmlTab v-else-if="kindOf(reader.activeTab) === 'eml'" :url="urlOf(reader.activeTab)" />
+        <div v-else-if="kindOf(reader.activeTab) === 'other'" class="download-fallback">
+          <a :href="urlOf(reader.activeTab)" download>Datei herunterladen</a>
+        </div>
       </main>
     </div>
   </v-dialog>
@@ -43,4 +51,6 @@ function urlOf(tab: string) { return attachments.value.find(a => a.id === tab)?.
 .reader-shell { position:fixed; inset:0; background:#0a0a14; display:flex; flex-direction:column; }
 header { display:flex; align-items:center; padding:6px 10px; background:#12121e; border-bottom:1px solid #1a1a24; }
 .reader-body { flex:1; overflow-y:auto; padding:0 20px; }
+.download-fallback { padding: 40px; text-align: center; }
+.download-fallback a { color: #8ab4f8; }
 </style>
