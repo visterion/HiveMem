@@ -10,6 +10,8 @@ import com.hivemem.search.ConfidenceThresholds;
 import com.hivemem.search.KgSearchRepository;
 import com.hivemem.search.SearchWeightsProperties;
 import com.hivemem.write.AdminToolService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.time.OffsetDateTime;
@@ -21,6 +23,8 @@ import java.util.LinkedHashMap;
 
 @Service
 public class ReadToolService {
+
+    private static final Logger log = LoggerFactory.getLogger(ReadToolService.class);
 
     private final CellReadRepository cellReadRepository;
     private final KgSearchRepository kgSearchRepository;
@@ -131,8 +135,7 @@ public class ReadToolService {
                     })
                     .toList();
         } catch (RuntimeException e) {
-            org.slf4j.LoggerFactory.getLogger(ReadToolService.class)
-                    .warn("Failed to load attachments for cell {}: {}", cellId, e.toString());
+            log.warn("Failed to load attachments for cell {}", cellId, e);
             return List.of();
         }
     }

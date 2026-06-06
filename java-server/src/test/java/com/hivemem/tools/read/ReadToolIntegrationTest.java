@@ -343,6 +343,9 @@ class ReadToolIntegrationTest {
         assertThat(a.path("size_bytes").asLong()).isEqualTo(84213L);
         assertThat(a.has("s3_key_original")).isFalse();
         assertThat(a.has("file_hash")).isFalse();
+        assertThat(a.has("s3_key_thumbnail")).isFalse();
+        assertThat(a.has("uploaded_by")).isFalse();
+        assertThat(a.has("created_at")).isFalse();
     }
 
     @Test
@@ -1154,6 +1157,13 @@ class ReadToolIntegrationTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error.code").value(-32602))
                 .andExpect(jsonPath("$.error.message").value("Missing agent"));
+    }
+
+    @Test
+    void searchRejectsAttachmentsIncludeField() {
+        org.junit.jupiter.api.Assertions.assertThrows(
+                IllegalArgumentException.class,
+                () -> CellFieldSelection.forSearch(java.util.List.of("attachments")));
     }
 
     private void seedStatusRows() {
