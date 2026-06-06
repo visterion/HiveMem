@@ -10,8 +10,10 @@ import ScanPanel from '../components/ScanPanel.vue'
 import Reader from '../components/Reader.vue'
 import { useCanvasStore } from '../stores/canvas'
 import { useKeybindings } from '../composables/keybindings'
+import { useI18n } from 'vue-i18n'
 
 const canvas = useCanvasStore()
+const { t } = useI18n()
 
 onMounted(() => {
   if (!canvas.loaded) canvas.loadTopLevel()
@@ -22,12 +24,12 @@ useKeybindings()
 <template>
   <div class="home-root">
     <IconRail />
-    <SlidePanel id="search" title="Search"><SearchPanel /></SlidePanel>
-    <SlidePanel id="realms" title="Realms"><RealmsPanel /></SlidePanel>
-    <SlidePanel id="settings" title="Settings"><SettingsPanel /></SlidePanel>
+    <SlidePanel id="search" :title="t('nav.search')"><SearchPanel /></SlidePanel>
+    <SlidePanel id="realms" :title="t('nav.realms')"><RealmsPanel /></SlidePanel>
+    <SlidePanel id="settings" :title="t('nav.settings')"><SettingsPanel /></SlidePanel>
     <main class="canvas-slot">
       <SphereCanvas v-if="canvas.loaded" />
-      <div v-else class="splash">Loading…</div>
+      <div v-else class="splash">{{ t('common.loading') }}</div>
     </main>
     <ScanPanel />
     <Reader />

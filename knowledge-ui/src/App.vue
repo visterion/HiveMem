@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useAuthStore } from './stores/auth'
 import { useUiStore } from './stores/ui'
 import { useCanvasStore } from './stores/canvas'
 
+const { t } = useI18n()
 const auth = useAuthStore()
 const ui = useUiStore()
 const canvas = useCanvasStore()
@@ -21,12 +23,12 @@ onMounted(async () => {
   <v-app>
     <v-main>
       <router-view v-if="auth.isAuthenticated" />
-      <div v-else class="splash">Connecting…</div>
+      <div v-else class="splash">{{ t('common.connecting') }}</div>
     </v-main>
     <v-snackbar v-if="ui.toast" :color="ui.toast.kind" :model-value="!!ui.toast" timeout="8000">
       {{ ui.toast.text }}
       <template #actions>
-        <v-btn variant="text" @click="canvas.loadTopLevel(); ui.toast = null">Reload</v-btn>
+        <v-btn variant="text" @click="canvas.loadTopLevel(); ui.toast = null">{{ t('common.reload') }}</v-btn>
       </template>
     </v-snackbar>
   </v-app>
