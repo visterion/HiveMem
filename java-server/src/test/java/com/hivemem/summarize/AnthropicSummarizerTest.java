@@ -37,7 +37,8 @@ class AnthropicSummarizerTest {
                 "test-token",
                 "document-separator",
                 "claude-haiku-4-5",
-                8000);
+                8000,
+                4096);
     }
 
     @AfterEach
@@ -80,7 +81,7 @@ class AnthropicSummarizerTest {
         assertThat(body.path("messages").get(0).path("role").asText()).isEqualTo("user");
         assertThat(body.path("messages").get(0).path("content").asText()).isEqualTo("the user content");
         assertThat(body.path("model").asText()).isEqualTo("claude-haiku-4-5");
-        assertThat(body.path("max_tokens").asInt()).isEqualTo(800);
+        assertThat(body.path("max_tokens").asInt()).isEqualTo(4096);
     }
 
     @Test

@@ -66,6 +66,7 @@ hivemem:
     backfill-batch-size: ${HIVEMEM_SUMMARIZE_BATCH:10}
     call-timeout-seconds: ${HIVEMEM_SUMMARIZE_TIMEOUT:30}
     max-input-chars: ${HIVEMEM_SUMMARIZE_MAX_INPUT:8000}
+    max-output-tokens: ${HIVEMEM_SUMMARIZE_MAX_OUTPUT:4096}
     summary-threshold-chars: ${HIVEMEM_SUMMARIZE_THRESHOLD:500}
   queen:
     enabled: ${HIVEMEM_QUEEN_ENABLED:false}

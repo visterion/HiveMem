@@ -47,6 +47,7 @@ public class AnthropicSummarizer {
     private final String agentName;
     private final String model;
     private final int maxInputChars;
+    private final int maxOutputTokens;
 
     /**
      * Production constructor — called by SummarizerService via SummarizerProperties.
@@ -63,6 +64,7 @@ public class AnthropicSummarizer {
         this.agentName = props.getAgentName();
         this.model = props.getModel();
         this.maxInputChars = props.getMaxInputChars();
+        this.maxOutputTokens = props.getMaxOutputTokens();
     }
 
     /**
@@ -70,7 +72,8 @@ public class AnthropicSummarizer {
      * SimpleClientHttpRequestFactory (HTTP/1.1) so WireMock-standalone works correctly.
      */
     AnthropicSummarizer(RestClient.Builder builder, String baseUrl,
-                        String tenantToken, String agentName, String model, int maxInputChars) {
+                        String tenantToken, String agentName, String model,
+                        int maxInputChars, int maxOutputTokens) {
         SimpleClientHttpRequestFactory rf = new SimpleClientHttpRequestFactory();
         rf.setConnectTimeout(30_000);
         rf.setReadTimeout(30_000);
@@ -79,6 +82,7 @@ public class AnthropicSummarizer {
         this.agentName = agentName;
         this.model = model;
         this.maxInputChars = maxInputChars;
+        this.maxOutputTokens = maxOutputTokens;
     }
 
     // Public method signature is unchanged — callers are unaffected.
@@ -106,7 +110,7 @@ public class AnthropicSummarizer {
                 "messages", List.of(
                         Map.of("role", "user", "content", input)
                 ),
-                "max_tokens", 800
+                "max_tokens", maxOutputTokens
         );
 
         JsonNode resp = client.post()
