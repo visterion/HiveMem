@@ -72,8 +72,9 @@ Cells throttled by the API:
 | Property | Default | Purpose |
 |----------|---------|---------|
 | `hivemem.summarize.enabled` | `false` | Master switch |
-| `hivemem.summarize.anthropic-api-key` | empty | Required to enable |
-| `hivemem.summarize.model` | `claude-haiku-4-5-20251001` | Which Claude model |
+| `hivemem.summarize.vistierie-token` (`HIVEMEM_VISTIERIE_TOKEN`) | empty | Tenant token for the Vistierie `/llm/complete` gateway — required to enable |
+| `hivemem.summarize.model` | `claude-haiku-4-5` | Which Claude model |
+| `hivemem.summarize.language` (`HIVEMEM_SUMMARIZE_LANGUAGE`) | `de` | Default output language (ISO 639-1) when the content's language is unclear; source language preserved otherwise |
 | `hivemem.summarize.daily-budget-usd` | `1.00` | Hard cost cap per UTC day |
 | `hivemem.summarize.backfill-interval` | `PT5M` | Documentation only — see note below |
 | `hivemem.summarize.backfill-batch-size` | `10` | Cells per backfill run |
