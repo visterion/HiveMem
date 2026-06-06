@@ -56,6 +56,18 @@ export const useCellStore = defineStore('cell', {
         this.currentId = id
       } finally { this.loading = false }
     },
+    // Attachments are not carried by search rows (used by open()) and are only
+    // needed when the reader is shown, so fetch them lazily via get_cell (which
+    // returns them by default) and merge into the cached entry. Idempotent.
+    async ensureAttachments(id: string) {
+      const entry = this.cache.get(id)
+      if (!entry || entry.cell.attachments !== undefined) return
+      const full = await useApi().call<Cell>('get_cell', { cell_id: id }).catch(() => null)
+      const current = this.cache.get(id)
+      if (full && current) {
+        current.cell.attachments = full.attachments ?? []
+      }
+    },
     store(id: string, entry: CellEntry) {
       this.cache.set(id, entry)
       if (this.cache.size > 50) {
