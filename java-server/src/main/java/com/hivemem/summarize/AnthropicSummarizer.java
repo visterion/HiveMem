@@ -48,6 +48,7 @@ public class AnthropicSummarizer {
     private final String model;
     private final int maxInputChars;
     private final int maxOutputTokens;
+    private final String defaultLanguage;
 
     /**
      * Production constructor — called by SummarizerService via SummarizerProperties.
@@ -65,6 +66,7 @@ public class AnthropicSummarizer {
         this.model = props.getModel();
         this.maxInputChars = props.getMaxInputChars();
         this.maxOutputTokens = props.getMaxOutputTokens();
+        this.defaultLanguage = props.getLanguage();
     }
 
     /**
@@ -73,7 +75,7 @@ public class AnthropicSummarizer {
      */
     AnthropicSummarizer(RestClient.Builder builder, String baseUrl,
                         String tenantToken, String agentName, String model,
-                        int maxInputChars, int maxOutputTokens) {
+                        int maxInputChars, int maxOutputTokens, String defaultLanguage) {
         SimpleClientHttpRequestFactory rf = new SimpleClientHttpRequestFactory();
         rf.setConnectTimeout(30_000);
         rf.setReadTimeout(30_000);
@@ -83,6 +85,7 @@ public class AnthropicSummarizer {
         this.model = model;
         this.maxInputChars = maxInputChars;
         this.maxOutputTokens = maxOutputTokens;
+        this.defaultLanguage = defaultLanguage;
     }
 
     // Public method signature is unchanged — callers are unaffected.
@@ -97,6 +100,13 @@ public class AnthropicSummarizer {
                 + String.join(", ", profile.requiredFacts()) + "\n"
                 + "Optional facts (emit if present): "
                 + String.join(", ", profile.optionalFacts());
+
+        systemPrompt = systemPrompt + "\n\nLanguage:\n"
+                + "- Write \"summary\", \"key_points\" and \"insight\" in the SAME LANGUAGE as the cell content below.\n"
+                + "- If the content's language is unclear or too short to determine, write them in "
+                + languageName(defaultLanguage) + ".\n"
+                + "- \"tags\" use the same language as the content (lowercase, kebab-case).\n"
+                + "- \"document_type\" and fact \"predicate\" keys stay in English as specified above.";
 
         // Vistierie /llm/complete contract: agent_name (a registered agent with an operational
         // budget) is required; the system prompt is a top-level field (Anthropic rejects a
@@ -150,6 +160,20 @@ public class AnthropicSummarizer {
 
         return new SummaryResult(summary, keyPoints, insight, tags,
                 documentType, facts, inputTokens, outputTokens);
+    }
+
+    /**
+     * Maps an ISO 639-1 language code to the English language name used in the (English) system
+     * prompt. Unknown values pass through unchanged so an unmapped code or an already-spelled
+     * name still yields a usable instruction.
+     */
+    static String languageName(String code) {
+        if (code == null) return "German";
+        return switch (code.trim().toLowerCase()) {
+            case "de" -> "German";
+            case "en" -> "English";
+            default -> code;
+        };
     }
 
     /**

@@ -102,6 +102,19 @@ Phase 1. Realm-scoped routing comes with the planned Provider-Abstraction featur
 (e.g., `legal`, `medical`), keep the summarizer disabled until Item I lands —
 or only enable it on a separate HiveMem instance for the realms that may use it.
 
+## Language
+
+The summarizer writes `summary`, `key_points`, `insight`, and `tags` in the **same language
+as the cell content** (a German document stays German, an English one stays English). When the
+content's language is unclear or too short to tell (e.g. a brief manual `add_cell` note), it
+falls back to the backend default language.
+
+- Configure the default with `HIVEMEM_SUMMARIZE_LANGUAGE` (`hivemem.summarize.language`,
+  ISO 639-1, default `de`).
+- `document_type` and fact `predicate` keys stay in their controlled English vocabulary; fact
+  `object` values are data and are unaffected.
+- Applies to newly written and newly re-summarized cells; existing cells are not reprocessed.
+
 ## Verwandte Pipeline-Schritte
 
 Siehe [Document-Type Extraction](extraction.md) — Profile-basierte Fakten-Extraktion läuft im selben Anthropic-Call wie der Summarizer.

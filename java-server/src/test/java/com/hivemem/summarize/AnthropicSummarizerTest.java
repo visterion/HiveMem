@@ -41,7 +41,8 @@ class AnthropicSummarizerTest {
                 "document-separator",
                 "claude-haiku-4-5",
                 8000,
-                4096);
+                4096,
+                "de");
     }
 
     @AfterEach
@@ -169,6 +170,43 @@ class AnthropicSummarizerTest {
                 .isInstanceOf(HttpClientErrorException.class)
                 .satisfies(e -> assertThat(((HttpClientErrorException) e).getStatusCode().value())
                         .isEqualTo(400));
+    }
+
+    @Test
+    void systemPromptCarriesLanguageRuleWithDefault() {
+        mock.stubComplete("{\\\"summary\\\":\\\"s\\\",\\\"key_points\\\":[],\\\"insight\\\":null,\\\"tags\\\":[],\\\"facts\\\":[]}");
+
+        summarizer.summarize("ein deutscher Satz", minimalProfile());
+
+        var requests = findAll(postRequestedFor(urlEqualTo("/llm/complete")));
+        assertThat(requests).hasSize(1);
+        JsonNode body = new ObjectMapper().readTree(requests.get(0).getBodyAsString());
+        String system = body.path("system").asText();
+        assertThat(system).contains("SAME LANGUAGE as the cell content");
+        assertThat(system).contains("German");
+    }
+
+    @Test
+    void defaultLanguageIsConfigurable() {
+        AnthropicSummarizer english = new AnthropicSummarizer(
+                RestClient.builder(), mock.baseUrl(), "test-token",
+                "document-separator", "claude-haiku-4-5", 8000, 4096, "en");
+        mock.stubComplete("{\\\"summary\\\":\\\"s\\\",\\\"key_points\\\":[],\\\"insight\\\":null,\\\"tags\\\":[],\\\"facts\\\":[]}");
+
+        english.summarize("any content", minimalProfile());
+
+        var requests = findAll(postRequestedFor(urlEqualTo("/llm/complete")));
+        assertThat(requests).hasSize(1);
+        JsonNode body = new ObjectMapper().readTree(requests.get(0).getBodyAsString());
+        assertThat(body.path("system").asText()).contains("English");
+    }
+
+    @Test
+    void languageNameMapsCodesToEnglishNames() {
+        assertThat(AnthropicSummarizer.languageName("de")).isEqualTo("German");
+        assertThat(AnthropicSummarizer.languageName("en")).isEqualTo("English");
+        assertThat(AnthropicSummarizer.languageName("fr")).isEqualTo("fr");
+        assertThat(AnthropicSummarizer.languageName("German")).isEqualTo("German");
     }
 
     @Test

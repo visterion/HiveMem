@@ -20,6 +20,9 @@ public class SummarizerProperties {
      */
     private String agentName = "document-separator";
     private String model = "claude-haiku-4-5";
+    /** Backend default output language (ISO 639-1) for the summarizer when the content's
+     *  language is unclear; preserved source language otherwise. */
+    private String language = "de";
     private double dailyBudgetUsd = 1.00;
     private Duration backfillInterval = Duration.ofMinutes(5);
     private int backfillBatchSize = 10;
@@ -40,6 +43,8 @@ public class SummarizerProperties {
     public void setAgentName(String v) { this.agentName = v; }
     public String getModel() { return model; }
     public void setModel(String v) { this.model = v; }
+    public String getLanguage() { return language; }
+    public void setLanguage(String v) { this.language = v; }
     public double getDailyBudgetUsd() { return dailyBudgetUsd; }
     public void setDailyBudgetUsd(double v) { this.dailyBudgetUsd = v; }
     public Duration getBackfillInterval() { return backfillInterval; }
