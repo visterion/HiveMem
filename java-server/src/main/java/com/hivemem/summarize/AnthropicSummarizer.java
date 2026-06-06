@@ -127,7 +127,7 @@ public class AnthropicSummarizer {
 
         JsonNode parsed;
         try {
-            parsed = MAPPER.readTree(text);
+            parsed = MAPPER.readTree(stripJsonFences(text));
         } catch (Exception e) {
             throw new IllegalStateException("Failed to parse summarizer JSON: " + text, e);
         }
@@ -146,6 +146,24 @@ public class AnthropicSummarizer {
 
         return new SummaryResult(summary, keyPoints, insight, tags,
                 documentType, facts, inputTokens, outputTokens);
+    }
+
+    /**
+     * Tolerant: strip ```json / ``` fences and narrow to the {...} object, so a fenced or
+     * prose-wrapped LLM response still parses. Mirrors PageGrouper's tolerant array parse.
+     */
+    static String stripJsonFences(String text) {
+        String cleaned = text.strip();
+        if (cleaned.startsWith("```")) {
+            int firstNl = cleaned.indexOf('\n');
+            if (firstNl >= 0) cleaned = cleaned.substring(firstNl + 1);
+            if (cleaned.endsWith("```")) cleaned = cleaned.substring(0, cleaned.length() - 3);
+            cleaned = cleaned.strip();
+        }
+        int s = cleaned.indexOf('{');
+        int e = cleaned.lastIndexOf('}');
+        if (s >= 0 && e > s) cleaned = cleaned.substring(s, e + 1);
+        return cleaned;
     }
 
     private static List<String> asStringList(JsonNode node) {

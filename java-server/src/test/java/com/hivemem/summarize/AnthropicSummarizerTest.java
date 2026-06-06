@@ -105,6 +105,20 @@ class AnthropicSummarizerTest {
     }
 
     @Test
+    void parsesMarkdownFencedJsonResponse() {
+        // LLMs frequently wrap JSON in ```json … ``` despite the prompt; the summarizer must
+        // tolerate it (regression: readTree on the fenced text threw "Failed to parse").
+        mock.stubComplete("```json\\n{\\\"summary\\\":\\\"Fenced summary\\\",\\\"key_points\\\":[\\\"kp\\\"]," +
+                "\\\"insight\\\":null,\\\"tags\\\":[\\\"x\\\"],\\\"facts\\\":[]}\\n```");
+
+        SummaryResult r = summarizer.summarize("content", minimalProfile());
+
+        assertThat(r.summary()).isEqualTo("Fenced summary");
+        assertThat(r.keyPoints()).containsExactly("kp");
+        assertThat(r.tags()).containsExactly("x");
+    }
+
+    @Test
     void summarizeWithProfileTreatsMissingFactsAsEmpty() {
         mock.stubComplete(
                 "{\\\"summary\\\":\\\"x\\\",\\\"key_points\\\":[],\\\"insight\\\":null,\\\"tags\\\":[]}");
