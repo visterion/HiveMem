@@ -11,6 +11,7 @@ import com.hivemem.search.ConfidenceThresholds;
 import com.hivemem.search.SearchWeightsProperties;
 import com.hivemem.tools.read.CellFieldSelection;
 import com.hivemem.attachment.AttachmentRepository;
+import com.hivemem.search.FacetRepository;
 import com.hivemem.tools.read.ReadToolService;
 import com.hivemem.write.AdminToolRepository;
 import com.hivemem.write.AdminToolService;
@@ -584,6 +585,7 @@ class ProgressiveSummarizationIntegrationTest {
             WriteToolService.class,
             WriteToolRepository.class,
             ReadToolService.class,
+            FacetRepository.class,
             AttachmentRepository.class,
             SearchWeightsProperties.class,
             ConfidenceThresholds.class,

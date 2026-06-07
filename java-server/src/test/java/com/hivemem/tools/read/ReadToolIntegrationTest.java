@@ -113,12 +113,13 @@ class ReadToolIntegrationTest {
                 .andExpect(jsonPath("$.result.tools[6].name").value("quick_facts"))
                 .andExpect(jsonPath("$.result.tools[7].name").value("time_machine"))
                 .andExpect(jsonPath("$.result.tools[8].name").value("history"))
-                .andExpect(jsonPath("$.result.tools[9].name").value("pending_approvals"))
-                .andExpect(jsonPath("$.result.tools[10].name").value("reading_list"))
-                .andExpect(jsonPath("$.result.tools[11].name").value("list_agents"))
-                .andExpect(jsonPath("$.result.tools[12].name").value("diary_read"))
-                .andExpect(jsonPath("$.result.tools[13].name").value("get_blueprint"))
-                .andExpect(jsonPath("$.result.tools[14].name").value("wake_up"));
+                .andExpect(jsonPath("$.result.tools[9].name").value("facet_count"))
+                .andExpect(jsonPath("$.result.tools[10].name").value("pending_approvals"))
+                .andExpect(jsonPath("$.result.tools[11].name").value("reading_list"))
+                .andExpect(jsonPath("$.result.tools[12].name").value("list_agents"))
+                .andExpect(jsonPath("$.result.tools[13].name").value("diary_read"))
+                .andExpect(jsonPath("$.result.tools[14].name").value("get_blueprint"))
+                .andExpect(jsonPath("$.result.tools[15].name").value("wake_up"));
     }
 
     @Test

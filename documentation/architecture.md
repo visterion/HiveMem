@@ -8,7 +8,7 @@ graph TB
         Auth["AuthFilter<br/><i>Token auth + role check + rate limit</i>"]
         ToolGate["ToolPermissionService<br/><i>Filter tools/list by role</i>"]
         Identity["Identity Injection<br/><i>created_by from token</i>"]
-        MCP["McpController<br/>:8421<br/><i>36 tools, Streamable HTTP</i>"]
+        MCP["McpController<br/>:8421<br/><i>37 tools, Streamable HTTP</i>"]
     end
 
     EmbSvc["External Embeddings Service<br/><i>HTTP API</i>"]
@@ -111,6 +111,7 @@ erDiagram
         TEXT mime_type
         TEXT original_filename
         BIGINT size_bytes
+        INTEGER page_count
         TEXT s3_key_original
         TEXT s3_key_thumbnail
         TEXT uploaded_by
@@ -138,7 +139,7 @@ erDiagram
 
 ### Attachment ingestion
 
-Each file upload (via `upload_attachment` or `POST /api/attachments`) automatically creates a new `pending` Cell. The cell content is set to the text extracted from the file; if no text could be extracted, the original filename is used as a fallback. The Classifier agent picks up `pending` cells asynchronously and enriches them with summary, key points, insight, and tags. The link between the attachment and its extraction cell is recorded in `cell_attachments` with `extraction_source = true`. If the caller also supplies an existing `cell_id`, a `related_to` tunnel is created between the new extraction Cell and the supplied cell.
+Each file upload (via `upload_attachment` or `POST /api/attachments`) automatically creates a new `pending` Cell. For PDF files, the page count is determined at ingest (via Apache PDFBox) and stored in `attachments.page_count` (INTEGER, `null` for non-PDF types). This field is exposed in the `get_cell` `attachments[]` list, `get_attachment_info`, and `list_attachments` responses. The cell content is set to the text extracted from the file; if no text could be extracted, the original filename is used as a fallback. The Classifier agent picks up `pending` cells asynchronously and enriches them with summary, key points, insight, and tags. The link between the attachment and its extraction cell is recorded in `cell_attachments` with `extraction_source = true`. If the caller also supplies an existing `cell_id`, a `related_to` tunnel is created between the new extraction Cell and the supplied cell.
 
 ## Security & Capability Matrix
 
@@ -146,7 +147,7 @@ Every HiveMem tool is mapped to a specific role to ensure least privilege. Write
 
 | Category | Tools | Access Role | Data Flow | HITL Required? | Description |
 |---|---|---|---|---|---|
-| **Search** | `search`, `search_kg`, `quick_facts`, `time_machine` | `reader` | Read Only | No | 6-signal semantic & keyword search. |
+| **Search** | `search`, `search_kg`, `quick_facts`, `time_machine`, `facet_count` | `reader` | Read Only | No | 6-signal semantic & keyword search. `search` supports optional `tags` (match-ANY array) and `status` filters. `facet_count` returns aggregate document counts grouped by `tag`/`status`/`realm`/`year`/`signal`. |
 | **Read** | `status`, `get_cell`, `list`, `traverse`, `wake_up`, `get_blueprint`, `history`, `pending_approvals`, `reading_list`, `list_agents`, `diary_read`, `list_attachments`, `get_attachment_info` | `reader` | Read Only | No | Navigation and context retrieval. |
 | **Write** | `add_cell`, `kg_add`, `kg_invalidate`, `revise_cell`, `revise_fact`, `reclassify_cell`, `update_identity`, `update_blueprint`, `upload_attachment` | `agent` | Propose Change | Yes (for Agents) | Append-only knowledge capture. |
 | **Tunnels** | `add_tunnel`, `remove_tunnel` | `agent` | Link Discovery | Yes | Cell-to-cell semantic linking. |
@@ -165,6 +166,10 @@ Every HiveMem tool is mapped to a specific role to ensure least privilege. Write
 | `HIVEMEM_EMBEDDING_URL` | `http://localhost:8081` | URL of the external embeddings service |
 | `HIVEMEM_EMBEDDING_TIMEOUT` | `PT5S` | HTTP timeout for embedding requests (ISO 8601 duration) |
 | `SERVER_PORT` | `8421` | Port for the MCP server |
+
+### `ranked_search` PostgreSQL function
+
+The `ranked_search` stored function powers the `search` tool. It is **not** managed by Flyway; instead it is recreated on every startup by `EmbeddingMigrationService` from an in-code template. This is intentional — the function signature must stay in sync with the embedding vector dimension, which can change between deployments. As of SP-C1 the function accepts the optional parameters `p_tags TEXT[]` (match-ANY array overlap filter) and `p_status TEXT` (filter by cell status, default `committed`).
 
 ## Security & Compliance
 
