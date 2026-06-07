@@ -1,47 +1,76 @@
 <script setup lang="ts">
-import { useUiStore } from '../../stores/ui'
+import { useRoute, useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '../../stores/auth'
-import { useRouter } from 'vue-router'
+import HmIcon from './HmIcon.vue'
 
-const ui = useUiStore()
-const auth = useAuthStore()
+const route = useRoute()
 const router = useRouter()
+const { t } = useI18n()
+const auth = useAuthStore()
 
-const items: { id: Exclude<typeof ui.activePanel, null>; icon: string; role?: 'admin' }[] = [
-  { id: 'search',   icon: 'mdi-magnify' },
-  { id: 'realms',   icon: 'mdi-star-four-points-outline' },
-  { id: 'reading',  icon: 'mdi-book-open-variant' },
-  { id: 'stats',    icon: 'mdi-chart-donut', role: 'admin' },
-  { id: 'history',  icon: 'mdi-history' },
-  { id: 'settings', icon: 'mdi-cog' }
+interface NavItem { name: string; icon: string; role?: string }
+const primary: NavItem[] = [
+  { name: 'search', icon: 'search' },
+  { name: 'hive', icon: 'reader' },
+  { name: 'graph', icon: 'graph' },
+  { name: 'realms', icon: 'realms' },
+  { name: 'photos', icon: 'photos' },
+  { name: 'scans', icon: 'scans' },
+  { name: 'timemachine', icon: 'history' },
 ]
-
-function visible(it: typeof items[number]) { return !it.role || auth.role === it.role }
+const bottom: NavItem[] = [
+  { name: 'queen', icon: 'queen', role: 'admin' },
+  { name: 'settings', icon: 'settings' },
+]
+function visible(it: NavItem) { return !it.role || auth.role === it.role }
+function go(name: string) { router.push({ name }) }
+function isActive(name: string) { return route.name === name }
 </script>
 
 <template>
   <div class="rail">
-    <div class="logo">H</div>
-    <template v-for="it in items" :key="it.id">
-      <v-btn
-        v-if="visible(it)"
-        :icon="it.icon"
-        variant="text"
-        :color="ui.activePanel === it.id ? 'primary' : undefined"
-        @click="ui.togglePanel(it.id)"
-      />
-    </template>
-    <div class="spacer" />
-    <v-btn icon="mdi-graph-outline" variant="text" @click="router.push('/graph')" />
-    <v-btn icon="mdi-rotate-3d-variant" variant="text" @click="router.push('/cinema')" />
-    <v-btn v-if="auth.role === 'admin'" icon="mdi-crown" variant="text" @click="router.push('/queen')" />
+    <div class="logo"><span class="hex" /><b>H</b></div>
+    <div class="rail-group">
+      <template v-for="it in primary" :key="it.name">
+        <button v-if="visible(it)"
+                :class="['rail-btn', { active: isActive(it.name) }]" @click="go(it.name)">
+          <HmIcon :name="it.icon" :size="21" />
+          <span class="rail-tip">{{ t('nav.' + it.name) }}</span>
+        </button>
+      </template>
+    </div>
+    <div class="rail-spacer" />
+    <div class="rail-group">
+      <template v-for="it in bottom" :key="it.name">
+        <button v-if="visible(it)"
+                :class="['rail-btn', { active: isActive(it.name) }]" @click="go(it.name)">
+          <HmIcon :name="it.icon" :size="21" />
+          <span class="rail-tip">{{ t('nav.' + it.name) }}</span>
+        </button>
+      </template>
+    </div>
   </div>
 </template>
 
 <style scoped>
-.rail { position:fixed; top:0; left:0; bottom:0; width:56px; background:#0b0b15; border-right:1px solid #1a1a24;
-       display:flex; flex-direction:column; align-items:center; padding-top:8px; gap:4px; z-index:10; }
-.logo { width:32px; height:32px; border-radius:8px; background:#4dc4ff; color:#050510;
-        display:grid; place-items:center; font-weight:bold; margin-bottom:8px; }
-.spacer { flex:1; }
+.rail { grid-column:1; background:var(--bg-1); border-right:1px solid var(--line);
+  display:flex; flex-direction:column; align-items:center; padding:14px 0 12px; gap:4px; z-index:30; }
+.logo { width:40px; height:44px; margin-bottom:14px; display:grid; place-items:center; color:var(--bg-0); position:relative; }
+.logo .hex { position:absolute; inset:0; background:linear-gradient(155deg,var(--honey-bright),var(--honey-deep));
+  clip-path:polygon(50% 0,100% 25%,100% 75%,50% 100%,0 75%,0 25%); box-shadow:0 0 22px -4px var(--honey-glow); }
+.logo b { position:relative; font-family:var(--font-display); font-weight:700; font-size:20px; }
+.rail-group { display:flex; flex-direction:column; gap:4px; align-items:center; }
+.rail-spacer { flex:1; }
+.rail-btn { width:46px; height:42px; border-radius:11px; display:grid; place-items:center; color:var(--text-2);
+  position:relative; transition:color .15s, background .15s; background:none; border:none; cursor:pointer; }
+.rail-btn:hover { color:var(--text-0); background:var(--bg-3); }
+.rail-btn.active { color:var(--honey); background:var(--honey-dim); }
+.rail-btn.active::before { content:''; position:absolute; left:-14px; top:50%; transform:translateY(-50%);
+  width:3px; height:20px; border-radius:3px; background:var(--honey); box-shadow:0 0 10px var(--honey-glow); }
+.rail-tip { position:absolute; left:calc(100% + 12px); top:50%; transform:translateY(-50%) translateX(-4px);
+  background:var(--bg-3); color:var(--text-0); border:1px solid var(--line-2); padding:5px 10px; border-radius:8px;
+  font-size:12.5px; white-space:nowrap; opacity:0; pointer-events:none; transition:opacity .14s, transform .14s;
+  z-index:60; box-shadow:var(--shadow-1); }
+.rail-btn:hover .rail-tip { opacity:1; transform:translateY(-50%) translateX(0); }
 </style>
