@@ -2,6 +2,7 @@
 import { computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useScansStore } from '../../stores/scans'
+import type { FacetKey } from '../../stores/scans'
 import FacetGroup from './FacetGroup.vue'
 import HmIcon from '../shell/HmIcon.vue'
 
@@ -17,13 +18,31 @@ const totalDocs = computed(() => {
 })
 
 function onToggle(field: string, value: string) {
-  store.toggleFacet(field as any, value)
+  store.toggleFacet(field as FacetKey, value)
   store.reload().catch(() => {})
 }
 
 function selectView(id: string) {
   store.setSavedView(id)
   store.reload().catch(() => {})
+}
+
+async function onSaveView() {
+  const name = window.prompt(t('scans.saveViewPrompt'))
+  if (!name?.trim()) return
+  // Serialize current facets to a plain filter object
+  const filter: Partial<Record<FacetKey, string[]>> = {}
+  const keys: FacetKey[] = ['tag', 'status', 'realm', 'year', 'signal', 'correspondent']
+  for (const k of keys) {
+    const vals = [...store.facets[k]]
+    if (vals.length) filter[k] = vals
+  }
+  await store.saveView(name.trim(), filter)
+}
+
+async function onDeleteView(id: string, e: MouseEvent) {
+  e.stopPropagation()
+  await store.deleteView(id)
 }
 
 onMounted(() => {
@@ -41,7 +60,13 @@ onMounted(() => {
     </div>
     <div class="panel-body">
       <!-- Saved views section -->
-      <div class="facet-title">{{ t('scans.savedViews') }}</div>
+      <div class="sv-header">
+        <div class="facet-title">{{ t('scans.savedViews') }}</div>
+        <button class="sv-save-btn" :title="t('scans.saveView')" @click="onSaveView">
+          <HmIcon name="sparkle" :size="13" />
+          {{ t('scans.saveView') }}
+        </button>
+      </div>
 
       <!-- All docs row -->
       <button
@@ -62,6 +87,9 @@ onMounted(() => {
       >
         <span class="sv-icon"><HmIcon name="sparkle" :size="15" /></span>
         <span class="sv-name">{{ v.name }}</span>
+        <span class="sv-del" :title="t('scans.deleteView')" @click="onDeleteView(v.id, $event)">
+          <HmIcon name="close" :size="11" />
+        </span>
       </button>
 
       <div class="facet-div" />
@@ -103,6 +131,14 @@ onMounted(() => {
         field="signal"
         :options="store.facetCounts.signal || []"
         :selected="store.facets.signal"
+        @toggle="onToggle"
+      />
+      <FacetGroup
+        :title="t('scans.correspondent')"
+        field="correspondent"
+        :options="store.facetCounts.correspondent || []"
+        :selected="store.facets.correspondent"
+        :max="8"
         @toggle="onToggle"
       />
     </div>
@@ -201,6 +237,13 @@ onMounted(() => {
   margin: 12px 6px;
 }
 
+.sv-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-right: 4px;
+}
+
 .facet-title {
   font-size: 11px;
   letter-spacing: 0.1em;
@@ -209,4 +252,33 @@ onMounted(() => {
   font-weight: 600;
   padding: 6px 10px 8px;
 }
+
+.sv-save-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--honey-dim, rgba(240,180,40,.10));
+  color: var(--honey, #e5a000);
+  border: 1px solid var(--honey-dim, rgba(240,180,40,.2));
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s;
+}
+.sv-save-btn:hover { background: var(--honey-dim, rgba(240,180,40,.18)); }
+
+.sv-del {
+  flex: none;
+  display: flex;
+  align-items: center;
+  color: var(--text-3, #777);
+  border-radius: 4px;
+  padding: 1px;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.sv-row:hover .sv-del { opacity: 1; }
+.sv-del:hover { color: var(--danger, #ff4444); background: var(--bg-3); }
 </style>

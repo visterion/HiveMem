@@ -5,10 +5,12 @@ import DocDetail from '../../src/components/scans/DocDetail.vue'
 import { i18n } from '../../src/i18n'
 import { resetApi } from '../../src/api/useApi'
 import { useReaderStore } from '../../src/stores/reader'
+import { useScansStore } from '../../src/stores/scans'
 
 const row: any = { id:'d1', realm:'documents', signal:'facts', topic:null, summary:'Mietvertrag 2025',
   tags:['contract','ocr_pending'], importance:2, status:'pending', created_at:'2025-03-01T00:00:00Z',
-  attachment_id:'att-d1', mime_type:'application/pdf', page_count:3, has_thumbnail:true }
+  attachment_id:'att-d1', mime_type:'application/pdf', page_count:3, has_thumbnail:true,
+  confidence: 0.75, correspondent: 'Finanzamt Berlin' }
 
 describe('DocDetail', () => {
   beforeEach(() => { setActivePinia(createPinia()); i18n.global.locale.value='de'
@@ -25,5 +27,49 @@ describe('DocDetail', () => {
     const reader = useReaderStore()
     await w.find('[data-test="open-original"]').trigger('click')
     expect(reader.cellId === 'd1' || reader.open === true).toBe(true)
+  })
+
+  it('renders confidence bar when d.confidence is set', async () => {
+    const w = mount(DocDetail, { props: { d: row, q: '' }, global: { plugins: [i18n] } })
+    await vi.advanceTimersByTimeAsync(400); await flushPromises()
+    expect(w.find('[data-test="confidence-bar"]').exists()).toBe(true)
+    expect(w.text()).toContain('75%')
+  })
+
+  it('does not render confidence bar when d.confidence is null', async () => {
+    const noConf = { ...row, confidence: null }
+    const w = mount(DocDetail, { props: { d: noConf, q: '' }, global: { plugins: [i18n] } })
+    await vi.advanceTimersByTimeAsync(400); await flushPromises()
+    expect(w.find('[data-test="confidence-bar"]').exists()).toBe(false)
+  })
+
+  it('shows correspondent from d.correspondent in meta grid', async () => {
+    const w = mount(DocDetail, { props: { d: row, q: '' }, global: { plugins: [i18n] } })
+    await vi.advanceTimersByTimeAsync(400); await flushPromises()
+    expect(w.text()).toContain('Finanzamt Berlin')
+  })
+
+  it('addTag calls scans.editTags and updates cellTags', async () => {
+    const w = mount(DocDetail, { props: { d: row, q: '' }, global: { plugins: [i18n] } })
+    await vi.advanceTimersByTimeAsync(400); await flushPromises()
+    const s = useScansStore()
+    const editSpy = vi.spyOn(s, 'editTags').mockResolvedValue()
+    vi.stubGlobal('prompt', () => 'newtag')
+    await w.find('.dm-tag-add').trigger('click')
+    await flushPromises()
+    expect(editSpy).toHaveBeenCalledWith('d1', ['newtag'], [])
+    vi.unstubAllGlobals()
+  })
+
+  it('removeTag (×) calls scans.editTags with remove and updates cellTags', async () => {
+    const w = mount(DocDetail, { props: { d: row, q: '' }, global: { plugins: [i18n] } })
+    await vi.advanceTimersByTimeAsync(400); await flushPromises()
+    const s = useScansStore()
+    const editSpy = vi.spyOn(s, 'editTags').mockResolvedValue()
+    // click the × on the first tag
+    await w.findAll('.dm-tag-del')[0].trigger('click')
+    await flushPromises()
+    expect(editSpy).toHaveBeenCalledWith('d1', [], expect.arrayContaining([expect.any(String)]))
+    vi.unstubAllGlobals()
   })
 })

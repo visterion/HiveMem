@@ -26,4 +26,46 @@ describe('ScansResults', () => {
     await flushPromises()
     expect(w.find('.bulkbar').exists()).toBe(true)
   })
+
+  it('bulk Tag button calls store.bulkTag when prompted', async () => {
+    const vuetify = createVuetify({ components, directives })
+    const w = mount(ScansResults, { global: { plugins: [i18n, vuetify] } })
+    await vi.advanceTimersByTimeAsync(500); await flushPromises()
+    const s = useScansStore()
+    s.toggleSelect(s.results[0].id)
+    await flushPromises()
+
+    const bulkTagSpy = vi.spyOn(s, 'bulkTag').mockResolvedValue()
+    vi.stubGlobal('prompt', () => 'invoice,contract')
+    await w.findAll('.bulk-btn')[0].trigger('click')
+    await flushPromises()
+    expect(bulkTagSpy).toHaveBeenCalledWith(['invoice', 'contract'])
+    vi.unstubAllGlobals()
+  })
+
+  it('bulk Realm button calls store.bulkReclassify when prompted', async () => {
+    const vuetify = createVuetify({ components, directives })
+    const w = mount(ScansResults, { global: { plugins: [i18n, vuetify] } })
+    await vi.advanceTimersByTimeAsync(500); await flushPromises()
+    const s = useScansStore()
+    s.toggleSelect(s.results[0].id)
+    await flushPromises()
+
+    const reclassSpy = vi.spyOn(s, 'bulkReclassify').mockResolvedValue()
+    vi.stubGlobal('prompt', () => 'archive')
+    await w.findAll('.bulk-btn')[1].trigger('click')
+    await flushPromises()
+    expect(reclassSpy).toHaveBeenCalledWith('archive')
+    vi.unstubAllGlobals()
+  })
+
+  it('correspondent facet chips appear in filter chips when set', async () => {
+    const vuetify = createVuetify({ components, directives })
+    const w = mount(ScansResults, { global: { plugins: [i18n, vuetify] } })
+    await vi.advanceTimersByTimeAsync(500); await flushPromises()
+    const s = useScansStore()
+    s.facets.correspondent.add('Finanzamt')
+    await flushPromises()
+    expect(w.text()).toContain('Finanzamt')
+  })
 })

@@ -49,6 +49,19 @@ async function onApprove() {
   store.reload()
 }
 
+async function onBulkTag() {
+  const raw = window.prompt(t('scans.bulkTagPrompt'))
+  if (!raw?.trim()) return
+  const tags = raw.split(',').map(s => s.trim()).filter(Boolean)
+  if (tags.length) await store.bulkTag(tags)
+}
+
+async function onBulkRealm() {
+  const realm = window.prompt(t('scans.bulkRealmPrompt'))
+  if (!realm?.trim()) return
+  await store.bulkReclassify(realm.trim())
+}
+
 const openDoc = computed(() =>
   store.results.find(d => d.id === store.openId)
   || store.filtered.find(d => d.id === store.openId)
@@ -56,7 +69,7 @@ const openDoc = computed(() =>
 )
 
 // All facet keys that can have active values
-const FACET_KEYS: FacetKey[] = ['tag', 'status', 'realm', 'year', 'signal']
+const FACET_KEYS: FacetKey[] = ['tag', 'status', 'realm', 'year', 'signal', 'correspondent']
 
 onMounted(() => { store.reload() })
 </script>
@@ -165,10 +178,10 @@ onMounted(() => { store.reload() })
         {{ store.selection.size }} {{ t('scans.selected') }}
       </span>
       <div class="bulk-actions">
-        <button class="bulk-btn" disabled :title="'SP-C2'">
+        <button class="bulk-btn" @click="onBulkTag">
           {{ t('scans.tag') }}
         </button>
-        <button class="bulk-btn" disabled :title="'SP-C2'">
+        <button class="bulk-btn" @click="onBulkRealm">
           {{ t('scans.realm') }}
         </button>
         <button class="bulk-btn approve" @click="onApprove">

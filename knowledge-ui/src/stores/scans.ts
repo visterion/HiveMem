@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { useApi } from '../api/useApi'
-import type { DocumentRow, FacetCounts } from '../api/types'
+import type { DocumentRow, FacetCounts, SavedSearch } from '../api/types'
 
 export type FacetKey = 'tag' | 'status' | 'realm' | 'year' | 'signal' | 'correspondent'
 export interface SavedView { id: string; name: string; icon?: string; filter: Partial<Record<FacetKey, string[]>> }
@@ -130,7 +130,7 @@ export const useScansStore = defineStore('scans', {
     // ── Saved views via server tools (replaces localStorage) ────────────────
     async loadSavedViews() {
       const api = useApi()
-      const rows = await api.call<Array<{ id: string; name: string; filter: Record<string, unknown> }>>('list_saved_searches')
+      const rows = await api.call<SavedSearch[]>('list_saved_searches')
       this.savedViews = rows.map(r => ({
         id: r.id,
         name: r.name,
@@ -161,7 +161,9 @@ export const useScansStore = defineStore('scans', {
       const api = useApi()
       const cell_ids = [...this.selection]
       if (!cell_ids.length) return
-      await api.call('bulk_tag', { cell_ids, add_tags: addTags, remove_tags: removeTags })
+      const add_tags = addTags?.length ? addTags : undefined
+      const remove_tags = removeTags?.length ? removeTags : undefined
+      await api.call('bulk_tag', { cell_ids, add_tags, remove_tags })
       await this.reload()
     },
     async bulkReclassify(realm?: string, signal?: string, topic?: string) {

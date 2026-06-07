@@ -19,6 +19,8 @@ const content = ref('')
 const cellTags = ref<string[]>(props.d.tags ?? [])
 const similar = ref<DocumentRow[]>([])
 const tab = ref<'ocr' | 'similar' | 'corr'>('ocr')
+const correspondent = ref<string | null>(props.d.correspondent ?? null)
+const confidence = computed(() => props.d.confidence ?? null)
 
 // ── DOC_STATES map ───────────────────────────────────────────────────────────
 interface StateEntry { label: string; tone: string }
@@ -98,6 +100,32 @@ async function loadCell(id: string) {
   } catch {
     similar.value = []
   }
+  // Load correspondent from quick_facts (best-effort)
+  if (props.d.correspondent) {
+    correspondent.value = props.d.correspondent
+  } else {
+    try {
+      const facts = await useApi().call<Record<string, string>>('quick_facts', { cell_id: id })
+      correspondent.value = facts?.vendor ?? facts?.party ?? null
+    } catch {
+      correspondent.value = null
+    }
+  }
+}
+
+// ── Tag editing ───────────────────────────────────────────────────────────────
+async function addTag() {
+  const raw = window.prompt(t('scans.addTagPrompt'))
+  if (!raw?.trim()) return
+  const newTags = raw.split(',').map(s => s.trim()).filter(Boolean)
+  if (!newTags.length) return
+  await scans.editTags(props.d.id, newTags, [])
+  cellTags.value = [...new Set([...cellTags.value, ...newTags])]
+}
+
+async function removeTag(tag: string) {
+  await scans.editTags(props.d.id, [], [tag])
+  cellTags.value = cellTags.value.filter(t => t !== tag)
 }
 
 onMounted(() => loadCell(props.d.id))
@@ -157,7 +185,19 @@ async function approve() {
         <h2 class="dm-title">{{ cellLabel(d) }}</h2>
 
         <!-- Correspondent -->
-        <div class="dm-correspondent">{{ d.topic || '—' }}</div>
+        <div class="dm-correspondent">{{ correspondent || d.topic || '—' }}</div>
+
+        <!-- Confidence bar -->
+        <div v-if="confidence !== null" class="conf-row" data-test="confidence-bar">
+          <span class="conf-label">{{ t('scans.confidence') }}</span>
+          <div class="conf-track">
+            <div
+              class="conf-fill"
+              :style="{ width: (confidence * 100).toFixed(0) + '%' }"
+            />
+          </div>
+          <span class="conf-pct">{{ (confidence * 100).toFixed(0) }}%</span>
+        </div>
 
         <!-- Meta grid -->
         <div class="meta-grid">
@@ -177,7 +217,7 @@ async function approve() {
           <span class="mg-val">—</span>
 
           <span class="mg-label">{{ t('scans.correspondent') }}</span>
-          <span class="mg-val">—</span>
+          <span class="mg-val">{{ correspondent || '—' }}</span>
         </div>
 
         <!-- State pipeline -->
@@ -190,9 +230,22 @@ async function approve() {
           >{{ s.label }}</span>
         </div>
 
-        <!-- Tags -->
+        <!-- Tags (editable) -->
         <div class="dm-tags">
-          <span v-for="tag in cellTags" :key="tag" class="dm-tag">{{ tag }}</span>
+          <span
+            v-for="tag in cellTags"
+            :key="tag"
+            class="dm-tag dm-tag-editable"
+          >
+            {{ tag }}
+            <button class="dm-tag-del" :title="t('scans.clearAll')" @click="removeTag(tag)">
+              <HmIcon name="close" :size="9" />
+            </button>
+          </span>
+          <button class="dm-tag-add" :title="t('scans.addTag')" @click="addTag">
+            <HmIcon name="sparkle" :size="11" />
+            {{ t('scans.addTag') }}
+          </button>
         </div>
 
         <!-- Tabs -->
@@ -394,11 +447,49 @@ async function approve() {
   background: transparent;
 }
 
+/* Confidence bar */
+.conf-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.conf-label {
+  color: var(--text-3, #777);
+  white-space: nowrap;
+  min-width: 60px;
+}
+
+.conf-track {
+  flex: 1;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--bg-3, rgba(255,255,255,.08));
+  overflow: hidden;
+}
+
+.conf-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--honey, #e5a000);
+  transition: width 0.3s;
+}
+
+.conf-pct {
+  color: var(--honey, #e5a000);
+  font-family: var(--font-mono, monospace);
+  font-size: 10.5px;
+  min-width: 32px;
+  text-align: right;
+}
+
 /* Tags */
 .dm-tags {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
+  align-items: center;
 }
 
 .dm-tag {
@@ -408,6 +499,41 @@ async function approve() {
   background: var(--bg-3, rgba(255,255,255,.06));
   color: var(--text-2, #aaa);
 }
+
+.dm-tag-editable {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding-right: 4px;
+}
+
+.dm-tag-del {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-3, #777);
+  display: flex;
+  align-items: center;
+  padding: 0;
+  border-radius: 2px;
+  transition: color 0.1s;
+}
+.dm-tag-del:hover { color: var(--danger, #ff4444); }
+
+.dm-tag-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 5px;
+  background: var(--honey-dim, rgba(240,180,40,.08));
+  color: var(--honey, #e5a000);
+  border: 1px dashed var(--honey-dim, rgba(240,180,40,.3));
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.dm-tag-add:hover { background: var(--honey-dim, rgba(240,180,40,.16)); }
 
 /* Tabs */
 .tabs {
