@@ -14,6 +14,8 @@ CREATE OR REPLACE FUNCTION ranked_search(
     p_weight_importance REAL DEFAULT 0.15,
     p_weight_popularity REAL DEFAULT 0.15,
     p_weight_graph_proximity REAL DEFAULT 0.10,
+    p_tags TEXT[] DEFAULT NULL,
+    p_status TEXT DEFAULT NULL,
     p_relation_weights JSONB DEFAULT
         '{"builds_on":1.0,"refines":0.8,"related_to":0.6,"contradicts":0.4}'::jsonb,
     p_graph_max_depth INT DEFAULT 2
@@ -31,12 +33,13 @@ LANGUAGE SQL STABLE AS $$
         SELECT c.id
         FROM cells c
         WHERE (c.valid_until IS NULL OR c.valid_until > now())
-          AND c.status = 'committed'
+          AND c.status = COALESCE(p_status, 'committed')
           AND c.embedding IS NOT NULL
           AND query_embedding IS NOT NULL
           AND (p_realm IS NULL OR c.realm = p_realm)
           AND (p_signal IS NULL OR c.signal = p_signal)
           AND (p_topic IS NULL OR c.topic = p_topic)
+          AND (p_tags IS NULL OR c.tags && p_tags)
         ORDER BY (c.embedding::vector({{DIM}})) <=> query_embedding
         LIMIT 200
     ),
@@ -44,12 +47,13 @@ LANGUAGE SQL STABLE AS $$
         SELECT c.id
         FROM cells c
         WHERE (c.valid_until IS NULL OR c.valid_until > now())
-          AND c.status = 'committed'
+          AND c.status = COALESCE(p_status, 'committed')
           AND query_text IS NOT NULL AND query_text != ''
           AND c.tsv @@ plainto_tsquery('simple', query_text)
           AND (p_realm IS NULL OR c.realm = p_realm)
           AND (p_signal IS NULL OR c.signal = p_signal)
           AND (p_topic IS NULL OR c.topic = p_topic)
+          AND (p_tags IS NULL OR c.tags && p_tags)
         LIMIT 200
     ),
     candidates AS (
