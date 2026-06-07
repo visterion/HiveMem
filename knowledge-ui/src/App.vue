@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useAuthStore } from './stores/auth'
 import { useUiStore } from './stores/ui'
 import { useCanvasStore } from './stores/canvas'
+import AppShell from './components/shell/AppShell.vue'
 
 const { t } = useI18n()
 const auth = useAuthStore()
@@ -11,18 +12,14 @@ const ui = useUiStore()
 const canvas = useCanvasStore()
 
 onMounted(async () => {
-  try {
-    await auth.init()
-  } catch {
-    // httpClient redirects to /login on 401; other errors leave the splash screen
-  }
+  try { await auth.init() } catch { /* httpClient redirects to /login on 401 */ }
 })
 </script>
 
 <template>
   <v-app>
     <v-main>
-      <router-view v-if="auth.isAuthenticated" />
+      <AppShell v-if="auth.isAuthenticated" />
       <div v-else class="splash">{{ t('common.connecting') }}</div>
     </v-main>
     <v-snackbar v-if="ui.toast" :color="ui.toast.kind" :model-value="!!ui.toast" timeout="8000">
@@ -35,5 +32,5 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.splash { display:flex; align-items:center; justify-content:center; height:100vh; color:#4dc4ff; }
+.splash { display:flex; align-items:center; justify-content:center; height:100vh; color:var(--honey); }
 </style>
