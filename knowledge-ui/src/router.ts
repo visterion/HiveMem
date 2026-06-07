@@ -1,8 +1,12 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
 const routes = [
-  { path: '/', name: 'search', component: () => import('./pages/ComingSoon.vue'),
-    meta: { title: 'nav.search', icon: 'search', full: false } },
+  { path: '/', name: 'search', meta: { title: 'nav.search', icon: 'search', full: false },
+    components: {
+      default: () => import('./components/knowledge/KnowledgeReader.vue'),
+      panel: () => import('./components/knowledge/SearchPanel.vue'),
+      inspector: () => import('./components/knowledge/CellInspector.vue'),
+    } },
   { path: '/hive', name: 'hive', component: () => import('./pages/HomeRoute.vue'),
     meta: { title: 'nav.hive', icon: 'reader', full: true } },
   { path: '/graph', name: 'graph', component: () => import('./pages/GraphRoute.vue'),
