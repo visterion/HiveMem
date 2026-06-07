@@ -110,9 +110,10 @@ describe('graph route', () => {
     })
     await nextTick()
 
-    expect(wrapper.find('aside.panel').exists()).toBe(true)
-    expect(wrapper.find('header strong').text()).toBe('Suche')
-    expect(wrapper.find('main.graph-slot').text()).toBe('Lädt…')
+    // Rail/side-panels are owned by AppShell now (SP-A); this route is just the
+    // graph stage. While the canvas store is not loaded it shows the loading splash.
+    expect(wrapper.find('.graph-stage').exists()).toBe(true)
+    expect(wrapper.find('.splash').text()).toBe('Lädt…')
     expect(createRoot).not.toHaveBeenCalled()
     expect(loadTopLevel).toHaveBeenCalledTimes(1)
   })
