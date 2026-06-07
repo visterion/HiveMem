@@ -17,7 +17,7 @@ const routes = [
     meta: { title: 'nav.timemachine', icon: 'history', full: true } },
   { path: '/queen', name: 'queen', component: () => import('./pages/QueenRoute.vue'),
     meta: { title: 'nav.queen', icon: 'queen', full: true, role: 'admin' } },
-  { path: '/settings', name: 'settings', component: () => import('./pages/ComingSoon.vue'),
+  { path: '/settings', name: 'settings', component: () => import('./pages/SettingsRoute.vue'),
     meta: { title: 'nav.settings', icon: 'settings', full: false } },
   { path: '/cinema', name: 'cinema', component: () => import('./pages/CinemaRoute.vue'),
     meta: { title: 'nav.hive', icon: 'cinema', full: true } },
