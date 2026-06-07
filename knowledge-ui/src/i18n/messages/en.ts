@@ -78,5 +78,13 @@ export default {
   },
   keybindings: {
     hints: 'Cmd+K search · Esc back · Enter reader'
-  }
+  },
+  inspector: {
+    cell: 'Cell', signals: 'Signals', metadata: 'Metadata', source: 'Source', openDoc: 'Open document', showGraph: 'Show in graph',
+    sig_semantic: 'Semantic', sig_keyword: 'Keyword', sig_recency: 'Recency', sig_importance: 'Importance', sig_popularity: 'Popularity', sig_graph_proximity: 'Graph proximity',
+    type: 'Type', importance: 'Importance', validFrom: 'Valid from', validUntil: 'Valid until', present: 'present',
+  },
+  knowledge: {
+    selectCell: 'Select a cell', selectCellSub: 'Pick a result on the left to read it.', results: 'results', allTypes: 'All',
+  },
 }

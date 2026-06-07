@@ -78,5 +78,13 @@ export default {
   },
   keybindings: {
     hints: 'Cmd+K Suche · Esc zurück · Enter Reader'
-  }
+  },
+  inspector: {
+    cell: 'Zelle', signals: 'Signale', metadata: 'Metadaten', source: 'Quelle', openDoc: 'Beleg öffnen', showGraph: 'Im Graph zeigen',
+    sig_semantic: 'Semantisch', sig_keyword: 'Keyword', sig_recency: 'Aktualität', sig_importance: 'Wichtigkeit', sig_popularity: 'Popularität', sig_graph_proximity: 'Graph-Nähe',
+    type: 'Typ', importance: 'Wichtigkeit', validFrom: 'Gültig ab', validUntil: 'Gültig bis', present: 'heute',
+  },
+  knowledge: {
+    selectCell: 'Zelle wählen', selectCellSub: 'Wähle links einen Treffer, um ihn zu lesen.', results: 'Treffer', allTypes: 'Alle',
+  },
 }
