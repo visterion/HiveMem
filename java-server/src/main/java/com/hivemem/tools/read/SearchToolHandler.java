@@ -8,6 +8,8 @@ import com.hivemem.write.WriteArgumentParser;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 @Component
@@ -50,6 +52,8 @@ public class SearchToolHandler implements ToolHandler {
                 .optionalNumber("weight_importance", "Importance weight (default 0.15)")
                 .optionalNumber("weight_popularity", "Popularity weight (default 0.15)")
                 .optionalNumber("weight_graph_proximity", "Graph proximity weight (default 0.10)")
+                .optionalStringList("tags", "Filter to cells that have ALL of the given tags")
+                .optionalString("status", "Restrict to a status: committed | pending | rejected (default committed)")
                 .build();
     }
 
@@ -67,6 +71,14 @@ public class SearchToolHandler implements ToolHandler {
         double weightImportance = optionalWeight(arguments, "weight_importance", 0.15d);
         double weightPopularity = optionalWeight(arguments, "weight_popularity", 0.15d);
         double weightGraphProximity = optionalWeight(arguments, "weight_graph_proximity", 0.10d);
+        String status = WriteArgumentParser.optionalText(arguments, "status");
+        List<String> tags = null;
+        if (arguments != null && arguments.hasNonNull("tags") && arguments.get("tags").isArray()) {
+            tags = new ArrayList<>();
+            for (JsonNode element : arguments.get("tags")) {
+                tags.add(element.asText());
+            }
+        }
         return readToolService.search(
                 query,
                 limit,
@@ -79,7 +91,9 @@ public class SearchToolHandler implements ToolHandler {
                 weightRecency,
                 weightImportance,
                 weightPopularity,
-                weightGraphProximity
+                weightGraphProximity,
+                tags,
+                status
         );
     }
 

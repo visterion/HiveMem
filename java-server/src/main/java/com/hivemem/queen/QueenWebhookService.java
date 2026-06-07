@@ -70,7 +70,7 @@ public class QueenWebhookService {
 
         List<Float> emb = embedding.encodeQuery(text);
         List<RankedRow> rows = search.rankedSearch(emb, text, null, null, null, limit + 1,
-                0.30, 0.15, 0.15, 0.15, 0.15, 0.10);
+                0.30, 0.15, 0.15, 0.15, 0.15, 0.10, null, null);
 
         List<Map<String, Object>> candidates = new ArrayList<>();
         for (RankedRow r : rows) {

@@ -87,13 +87,15 @@ public class ReadToolService {
             double weightRecency,
             double weightImportance,
             double weightPopularity,
-            double weightGraphProximity
+            double weightGraphProximity,
+            List<String> tags,
+            String status
     ) {
         List<Float> queryVector = embeddingClient.encodeQuery(query);
         List<CellSearchRepository.RankedRow> rows = cellSearchRepository.rankedSearch(
                 queryVector, query, realm, signal, topic, limit,
                 weightSemantic, weightKeyword, weightRecency, weightImportance, weightPopularity,
-                weightGraphProximity
+                weightGraphProximity, tags, status
         );
         return rows.stream()
                 .map(row -> projectRow(row, selection,

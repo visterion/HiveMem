@@ -121,7 +121,9 @@ class CellSearchRepositoryGraphTest {
                 0.15,
                 0.15,
                 0.15,
-                0.10
+                0.10,
+                null,
+                null
         );
 
         assertThat(rows).isNotEmpty();
