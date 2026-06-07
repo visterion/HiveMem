@@ -1,10 +1,10 @@
 # Tools
 
-HiveMem exposes **37 MCP tools** across search, knowledge graph, progressive summarization, agent fleet, references, attachments, and admin. Large file uploads can also use the REST endpoint (`POST /api/attachments`) — see [Attachments](#attachments).
+HiveMem exposes **45 MCP tools** across search, knowledge graph, progressive summarization, agent fleet, references, attachments, saved searches, tag management, and admin. Large file uploads can also use the REST endpoint (`POST /api/attachments`) — see [Attachments](#attachments).
 
 ## Feature Overview
 
-- **37 MCP tools** across search, knowledge graph, progressive summarization, agent fleet, references, attachments, and admin
+- **45 MCP tools** across search, knowledge graph, progressive summarization, agent fleet, references, attachments, saved searches, tag management, and admin
 - **6-signal ranked search** — semantic similarity + keyword match + recency + importance + popularity + graph proximity
 - **Append-only versioning** — never lose history, revise with parent_id chains, point-in-time queries
 - **Progressive summarization** — content, summary, key_points, insight per cell
@@ -19,12 +19,12 @@ HiveMem exposes **37 MCP tools** across search, knowledge graph, progressive sum
 
 ## Tool List
 
-**Read (20):**
+**Read (21):**
 
 1. `status`: System overview and counts.
 2. `search`: Semantic similarity + keyword search; returns metadata by default and supports `include` for optional fields. Optional params: `tags` (string array — match-ANY overlap filter), `status` (`committed`|`pending`|`rejected`, default `committed`).
 3. `search_kg`: Knowledge graph triple lookup.
-4. `get_cell`: Read a single knowledge item (logs access automatically); supports `include` for optional fields including content.
+4. `get_cell`: Read a single knowledge item (logs access automatically); supports `include` for optional fields including `content` and `confidence` (per-document average confidence of active facts, nullable `real`; pass `include=['confidence']` to request it).
 5. `list`: Navigate the Realm→Signal→Topic→Cell hierarchy (omit all params for realms; add `realm` for signals; add `realm`+`signal` for topics; add `realm`+`signal`+`topic` for cells).
 6. `traverse`: Recursive graph traversal.
 7. `quick_facts`: Context-aware facts about an entity.
@@ -38,11 +38,12 @@ HiveMem exposes **37 MCP tools** across search, knowledge graph, progressive sum
 15. `diary_read`: Read agent diary entries.
 16. `list_attachments`: List all file attachments linked to a cell (metadata only, no file content).
 17. `get_attachment_info`: Get metadata for a single attachment by ID. Return fields include `cell_id` (UUID of the extraction cell), `content_uri` (`hivemem://attachments/{id}/content`), `thumbnail_uri` (`hivemem://attachments/{id}/thumbnail` or null), and `page_count` (INTEGER for PDFs, `null` for other types). Download via `GET /api/attachments/{id}/content`.
-18. `facet_count`: Aggregate document counts grouped by one or more cell fields. Required param: `fields` (array of one or more of `tag`, `status`, `realm`, `year`, `signal`). Optional filters: `realm`, `signal`, `topic`, `status` (`committed`|`pending`|`rejected`), `query` (full-text/semantic), `tags` (match-ANY), `limit` (max values per field, default 50). Returns `{field: [{value, count}, …]}` for each requested field.
+18. `facet_count`: Aggregate document counts grouped by one or more cell fields. Required param: `fields` (array of one or more of `tag`, `status`, `realm`, `year`, `signal`, or `fact:<predicate>` — e.g. `fact:vendor`, `fact:party`). Optional filters: `realm`, `signal`, `topic`, `status` (`committed`|`pending`|`rejected`), `query` (full-text/semantic), `tags` (match-ANY), `limit` (max values per field, default 10, max 100). Returns `{field: [{value, count}, …]}` for each requested field. Allowed `fact:<predicate>` values: `vendor`, `party`, `amount_total`, `value_per_period`, `document_date`, `due_date`, `invoice_number`, `contract_number`.
 19. `queen_runs` *(admin only)*: List recent Queen/Bee agent runs from Vistierie. Optional args: `limit` (1–200, default 50), `offset` (0+, default 0). Returns `{items:[{id,agent,trigger,status,startedAt,finishedAt,durationMs,llmCalls,costMicros}], total, costAvailable}`; on Vistierie outage returns `{items:[],total:0,costAvailable:false,unavailable:true}`. Cost fields (`llmCalls`, `costMicros`) are populated only when `HIVEMEM_QUEEN_VISTIERIE_ADMIN_TOKEN` is configured.
 20. `queen_run_detail` *(admin only)*: Fetch full detail for a single Queen/Bee run. Required arg: `run_id` (string). Returns `{run:{...}, events:[{type,...}]}` (run metadata + Vistierie event timeline); on outage returns `{run:{},events:[],unavailable:true}`.
+21. `list_saved_searches`: Return all active saved searches belonging to the calling user (`id`, `name`, `filter`, `created_at`). No params required. Use `save_search` to create and `delete_saved_search` to remove.
 
-**Write (15):**
+**Write (22):**
 
 20. `add_cell`: Store a cell with content, summary, key points, and insight; optional `dedupe_threshold` runs an embedding-based dedupe gate in one call.
 21. `add_tunnel`: Link two cells together.
@@ -59,11 +60,17 @@ HiveMem exposes **37 MCP tools** across search, knowledge graph, progressive sum
 32. `update_blueprint`: Update realm narrative.
 33. `reclassify_cell`: Move a cell to a different realm/signal/topic in-place without creating a new revision. Leaves content, embeddings, tunnels, facts, and references untouched. Use for taxonomy migrations.
 34. `upload_attachment`: Upload a file attachment (Base64-encoded). Required params: `realm` (target realm), `data` (Base64 payload), `filename`. Optional: `signal`, `topic`, `cell_id` (existing cell — creates a `related_to` tunnel). Always creates a new `pending` Cell whose content is the extracted text (or the filename if no text could be extracted); the Classifier agent enriches the cell asynchronously. Stores original in SeaweedFS, generates JPEG thumbnail at ingest. Returns `{ attachment_id, cell_id, mime_type, size_bytes, has_thumbnail }`. For large files (>~10 MB) prefer `POST /api/attachments` (multipart) — see [Attachments](#attachments).
+35. `save_search`: Persist the current Scans filter as a named saved search for the calling user. Required param: `name` (human-readable label). Optional: `filter` (JSON object describing the filter state, serialized by the UI; defaults to `{}`). Upserts by name — if a saved search with the same name already exists for this user it is replaced.
+36. `delete_saved_search`: Soft-delete a saved search by `id` (UUID). Only the owner can delete their own saved searches. Returns `{id, deleted}`.
+37. `add_tags`: Add one or more tags to a cell (idempotent union — already-present tags are ignored). Required params: `cell_id` (UUID), `tags` (string array). Returns `{updated: 1}` when the cell was found, `{updated: 0}` if not found or already closed.
+38. `remove_tags`: Remove one or more tags from a cell (idempotent — tags not present are ignored). Required params: `cell_id` (UUID), `tags` (string array). Returns `{updated: 1}` when the cell was found, `{updated: 0}` if not found or already closed.
+39. `bulk_tag`: Add and/or remove tags on multiple cells in a single transaction. Required param: `cell_ids` (UUID array). Optional: `add_tags` (string array), `remove_tags` (string array). At least one of `add_tags` or `remove_tags` must be provided. Operations are idempotent. Returns `{updated: N}` with the number of cells processed.
+40. `bulk_reclassify`: Reclassify multiple cells in-place (realm/signal/topic) in a single transaction. Required param: `cell_ids` (UUID array). Optional: `realm`, `signal` (`facts`|`events`|`discoveries`|`preferences`|`advice`), `topic`. At least one of realm/signal/topic must be provided. Returns `{updated: N}` with the number of cells processed.
 
 **Admin (2):**
 
-35. `approve_pending`: Admin tool to batch approve or reject agent writes.
-36. `health`: Monitor DB and service state.
+41. `approve_pending`: Admin tool to batch approve or reject agent writes.
+42. `health`: Monitor DB and service state.
 
 ## Attachments
 
@@ -121,3 +128,30 @@ Every cell supports four progressive fields:
 | `insight` | Personal conclusion / implication |
 
 Plus `actionability` (actionable / reference / someday / archive) and `importance` (1-5).
+
+## Saved Searches
+
+The `save_search` / `list_saved_searches` / `delete_saved_search` trio lets the UI persist named filter presets for the Scans explorer.
+
+| Tool | Permission | Behaviour |
+|---|---|---|
+| `save_search` | writer | Upsert a named search (by `name` per owner). `filter` is a free-form JSON object; defaults to `{}`. |
+| `list_saved_searches` | reader | Return all active saved searches for the calling user (`id`, `name`, `filter`, `created_at`). |
+| `delete_saved_search` | writer | Soft-delete by `id` (sets `valid_until`). Only the owner can delete. Returns `{id, deleted}`. |
+
+Saved searches are stored in the `saved_searches` table (see [Architecture](architecture.md#data-model)).
+
+## Fact-Based Facets
+
+`facet_count` supports `fact:<predicate>` fields in addition to the standard cell fields. A `fact:<predicate>` facet counts distinct `object` values of active facts with the given predicate that are linked to cells matching the current filters.
+
+**Allow-listed predicates:** `vendor`, `party`, `amount_total`, `value_per_period`, `document_date`, `due_date`, `invoice_number`, `contract_number`.
+
+Example request: `fields: ["fact:vendor", "tag"]` returns both vendor-fact buckets and tag buckets for the filtered document set.
+
+## Per-Document Confidence
+
+`get_cell` and `list_documents` expose a nullable `confidence` field (a `real` in `[0, 1]`) representing the average confidence of all **active** facts linked to the cell (via `source_id`). It is `null` when the cell has no active facts.
+
+- **`get_cell`**: opt-in via `include=['confidence']`.
+- **`list_documents`**: `confidence` is always present in each row (nullable).
