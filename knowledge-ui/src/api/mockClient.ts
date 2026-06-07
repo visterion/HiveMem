@@ -1,5 +1,5 @@
 import { palace as mockPalace } from '../data/mock'
-import type { ApiClient, HiveEvent, Cell, Realm, Signal, Tunnel, Fact, StatusSummary, Reference } from './types'
+import type { ApiClient, HiveEvent, Cell, Realm, Signal, Tunnel, Fact, StatusSummary, Reference, SearchResult } from './types'
 
 interface MockConfig { latencyMs?: [number, number]; eventInterval?: number }
 
@@ -91,12 +91,20 @@ export class MockApiClient implements ApiClient {
     return mockPalace.realms
   }
 
-  private search(args: { query?: string; limit?: number }): Cell[] {
+  private search(args: { query?: string; limit?: number }): SearchResult[] {
     const q = (args.query || '').toLowerCase()
     const all = q
       ? mockPalace.cells.filter(c => c.title.toLowerCase().includes(q) || c.content.toLowerCase().includes(q))
       : mockPalace.cells
-    return all.slice(0, args.limit ?? 100)
+    const SIGS = ['semantic', 'keyword', 'recency', 'importance', 'popularity', 'graph_proximity'] as const
+    return all.slice(0, args.limit ?? 100).map((cell, i) => {
+      const base = Math.max(0.1, 0.92 - i * 0.05)
+      const scores: Record<string, number> = {}
+      for (const s of SIGS) {
+        scores['score_' + s] = Math.max(0, Math.min(1, base - 0.08 + ((i + s.length) % 4) * 0.06))
+      }
+      return { ...cell, ...scores, score_total: base, confidence_level: base > 0.6 ? 'HIGH' : 'MEDIUM' } as SearchResult
+    })
   }
 
   private getCell(args: { cell_id: string }): Cell {

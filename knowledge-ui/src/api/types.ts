@@ -29,6 +29,17 @@ export interface Cell {
   attachments?: Attachment[]
 }
 
+export interface SearchResult extends Cell {
+  score_total: number
+  score_semantic: number
+  score_keyword: number
+  score_recency: number
+  score_importance: number
+  score_popularity: number
+  score_graph_proximity: number
+  confidence_level?: string
+}
+
 export interface Realm { name: string; cell_count: number; signals: Signal[] }
 export interface Signal { name: string; cell_count: number; topics: Topic[] }
 export interface Topic { name: string; cell_count: number }
