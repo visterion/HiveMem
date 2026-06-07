@@ -28,4 +28,18 @@ describe('AppShell', () => {
     expect(w.find('.routed').text()).toBe('STAGE')
     expect(w.find('.stage').classes()).toContain('full')
   })
+
+  it('renders named panel + inspector components for a route that declares them', async () => {
+    const Panel = defineComponent({ render: () => h('div', { class: 'mock-panel' }, 'PANEL') })
+    const Insp = defineComponent({ render: () => h('div', { class: 'mock-insp' }, 'INSP') })
+    const router = createRouter({ history: createMemoryHistory(),
+      routes: [{ path: '/', name: 'search', components: { default: Stage, panel: Panel, inspector: Insp }, meta: { title: 'nav.search', full: false } }] })
+    router.push('/'); await router.isReady()
+    const vuetify = createVuetify({ components, directives })
+    const w = mount(AppShell, { global: { plugins: [router, i18n, vuetify] } })
+    await flushPromises()
+    expect(w.find('.mock-panel').exists()).toBe(true)
+    expect(w.find('.mock-insp').exists()).toBe(true)
+    expect(w.find('.routed').exists()).toBe(true) // default stage still renders
+  })
 })

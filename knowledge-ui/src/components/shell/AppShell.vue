@@ -14,6 +14,7 @@ const full = computed(() => !!route.meta?.full)
   <div class="app">
     <IconRail />
     <div class="view-wrap">
+      <router-view name="panel" />
       <div :class="['stage', { full }]">
         <div class="hexfield" />
         <TopBar />
@@ -21,6 +22,7 @@ const full = computed(() => !!route.meta?.full)
           <router-view />
         </div>
       </div>
+      <router-view name="inspector" />
     </div>
     <TweaksPanel />
     <Reader />
