@@ -16,27 +16,135 @@ describe('scans store', () => {
     expect(s.results.length).toBeGreaterThan(0)
     expect(s.results[0]).toHaveProperty('tags')
   })
+
+  it('load() rows include confidence field', async () => {
+    const s = useScansStore()
+    const p = s.load(); await vi.advanceTimersByTimeAsync(300); await p
+    expect(s.results.length).toBeGreaterThan(0)
+    expect(s.results[0]).toHaveProperty('confidence')
+    expect(typeof s.results[0].confidence === 'number' || s.results[0].confidence === null).toBe(true)
+  })
+
   it('setQuery + load() runs the search path', async () => {
     const s = useScansStore()
     s.setQuery('a')
     const p = s.load(); await vi.advanceTimersByTimeAsync(300); await p
     expect(Array.isArray(s.results)).toBe(true)
   })
+
   it('toggleFacet updates the facet set', () => {
     const s = useScansStore()
     s.toggleFacet('tag','contract'); expect(s.facets.tag.has('contract')).toBe(true)
     s.toggleFacet('tag','contract'); expect(s.facets.tag.has('contract')).toBe(false)
   })
-  it('loadFacets() populates facetCounts', async () => {
+
+  it('loadFacets() populates facetCounts with correspondent merged from fact:vendor+fact:party', async () => {
     const s = useScansStore()
     const p = s.loadFacets(); await vi.advanceTimersByTimeAsync(300); await p
     expect(s.facetCounts).toHaveProperty('tag')
+    // correspondent facet should be present since mock data has vendor/party entries
+    expect(s.facetCounts).toHaveProperty('correspondent')
+    const corrFacet = s.facetCounts['correspondent']
+    expect(Array.isArray(corrFacet)).toBe(true)
+    expect(corrFacet.length).toBeGreaterThan(0)
+    // Raw fact: keys should NOT appear in facetCounts
+    expect(s.facetCounts).not.toHaveProperty('fact:vendor')
+    expect(s.facetCounts).not.toHaveProperty('fact:party')
   })
-  it('saved views round-trip through localStorage', () => {
+
+  it('correspondent facet values are sum-merged (no duplicates by value)', async () => {
     const s = useScansStore()
-    s.saveView('Steuer 2025', { tag: ['contract'] })
+    const p = s.loadFacets(); await vi.advanceTimersByTimeAsync(300); await p
+    const corrFacet = s.facetCounts['correspondent'] ?? []
+    // No duplicate values
+    const values = corrFacet.map((f: any) => f.value)
+    expect(values.length).toBe(new Set(values).size)
+  })
+
+  it('filtered getter respects correspondent facet selection', async () => {
+    const s = useScansStore()
+    const lp = s.load(); await vi.advanceTimersByTimeAsync(300); await lp
+    // Find a document that has a correspondent
+    const withCorr = s.results.find(r => r.correspondent)
+    if (!withCorr || !withCorr.correspondent) return // skip if none in filtered set
+
+    s.toggleFacet('correspondent', withCorr.correspondent)
+    const filtered = s.filtered
+    expect(filtered.every(d => d.correspondent === withCorr.correspondent)).toBe(true)
+    expect(filtered.length).toBeGreaterThan(0)
+  })
+
+  // ── Saved views via server tools (localStorage replaced) ────────────────────
+  it('saveView + loadSavedViews round-trips via server (not localStorage)', async () => {
+    const s = useScansStore()
+    // saveView calls save_search (1 round-trip) then loadSavedViews/list_saved_searches (1 round-trip) — advance enough
+    const p1 = s.saveView('Steuer 2025', { tag: ['contract'] })
+    await vi.advanceTimersByTimeAsync(600); await p1
+
     expect(s.savedViews.some(v => v.name === 'Steuer 2025')).toBe(true)
-    const s2 = useScansStore(); s2.loadSavedViews()
-    expect(s2.savedViews.some(v => v.name === 'Steuer 2025')).toBe(true)
+    // localStorage must NOT be used — verify it is empty
+    expect(localStorage.getItem('hivemem_scans_views')).toBeNull()
+  })
+
+  it('loadSavedViews loads from server and populates savedViews', async () => {
+    const s = useScansStore()
+    // First save (save_search + list_saved_searches)
+    const p1 = s.saveView('Contracts', { tag: ['contract'] })
+    await vi.advanceTimersByTimeAsync(600); await p1
+
+    // Reset store state and reload from server
+    s.savedViews = []
+    const p2 = s.loadSavedViews(); await vi.advanceTimersByTimeAsync(300); await p2
+    expect(s.savedViews.some(v => v.name === 'Contracts')).toBe(true)
+  })
+
+  it('deleteView removes saved view from server', async () => {
+    const s = useScansStore()
+    const p1 = s.saveView('ToDelete', { tag: ['other'] })
+    await vi.advanceTimersByTimeAsync(600); await p1
+    expect(s.savedViews.some(v => v.name === 'ToDelete')).toBe(true)
+
+    const toDelete = s.savedViews.find(v => v.name === 'ToDelete')!
+    // deleteView calls delete_saved_search then loadSavedViews — need 2 round-trips
+    const p2 = s.deleteView(toDelete.id); await vi.advanceTimersByTimeAsync(600); await p2
+    expect(s.savedViews.some(v => v.name === 'ToDelete')).toBe(false)
+  })
+
+  it('editTags calls add_tags/remove_tags then reloads', async () => {
+    const s = useScansStore()
+    // Pre-load results
+    const p0 = s.load(); await vi.advanceTimersByTimeAsync(300); await p0
+
+    const p1 = s.editTags('doc-contract-001', ['reviewed'], [])
+    await vi.advanceTimersByTimeAsync(600); await p1
+    // After reload, the tag should appear on the row
+    const updated = s.results.find(r => r.id === 'doc-contract-001')
+    expect(updated?.tags).toContain('reviewed')
+  })
+
+  it('bulkTag calls bulk_tag then reloads', async () => {
+    const s = useScansStore()
+    const p0 = s.load(); await vi.advanceTimersByTimeAsync(300); await p0
+
+    s.toggleSelect('doc-invoice-001')
+    const p1 = s.bulkTag(['archived'], [])
+    await vi.advanceTimersByTimeAsync(600); await p1
+
+    const updated = s.results.find(r => r.id === 'doc-invoice-001')
+    expect(updated?.tags).toContain('archived')
+  })
+
+  it('bulkReclassify calls bulk_reclassify then clears selection + reloads', async () => {
+    const s = useScansStore()
+    const p0 = s.load(); await vi.advanceTimersByTimeAsync(300); await p0
+
+    s.toggleSelect('doc-other-001')
+    expect(s.selection.size).toBe(1)
+
+    const p1 = s.bulkReclassify('documents', 'archive')
+    await vi.advanceTimersByTimeAsync(600); await p1
+
+    // Selection cleared
+    expect(s.selection.size).toBe(0)
   })
 })

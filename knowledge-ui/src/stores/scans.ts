@@ -2,15 +2,15 @@ import { defineStore } from 'pinia'
 import { useApi } from '../api/useApi'
 import type { DocumentRow, FacetCounts } from '../api/types'
 
-export type FacetKey = 'tag' | 'status' | 'realm' | 'year' | 'signal'
+export type FacetKey = 'tag' | 'status' | 'realm' | 'year' | 'signal' | 'correspondent'
 export interface SavedView { id: string; name: string; icon?: string; filter: Partial<Record<FacetKey, string[]>> }
 
 const REALM = 'documents'
-const VIEWS_KEY = 'hivemem_scans_views'
-const FACET_FIELDS: FacetKey[] = ['tag', 'status', 'realm', 'year', 'signal']
+/** Standard server-side facet fields (no correspondent — that's derived client-side) */
+const SERVER_FACET_FIELDS = ['tag', 'status', 'realm', 'year', 'signal'] as const
 
 function emptyFacets(): Record<FacetKey, Set<string>> {
-  return { tag: new Set(), status: new Set(), realm: new Set(), year: new Set(), signal: new Set() }
+  return { tag: new Set(), status: new Set(), realm: new Set(), year: new Set(), signal: new Set(), correspondent: new Set() }
 }
 
 export const useScansStore = defineStore('scans', {
@@ -29,17 +29,23 @@ export const useScansStore = defineStore('scans', {
     savedViews: [] as SavedView[],
   }),
   getters: {
-    // year/realm/signal refine the loaded page client-side (server-side filtering for these is a later phase)
+    /**
+     * Client-side refinement:
+     * - year / realm / signal: server returns all; refine locally
+     * - correspondent: filter against the `correspondent` field on DocumentRow (derived from fact:vendor/party)
+     */
     filtered(s): DocumentRow[] {
       return s.results.filter(d => {
         if (s.facets.year.size && !s.facets.year.has((d.created_at || '').slice(0, 4))) return false
         if (s.facets.realm.size && !s.facets.realm.has(d.realm)) return false
         if (s.facets.signal.size && !(d.signal && s.facets.signal.has(d.signal))) return false
+        if (s.facets.correspondent.size && !(d.correspondent && s.facets.correspondent.has(d.correspondent))) return false
         return true
       })
     },
     activeCount(s): number {
-      return FACET_FIELDS.reduce((n, k) => n + s.facets[k].size, 0)
+      const keys: FacetKey[] = ['tag', 'status', 'realm', 'year', 'signal', 'correspondent']
+      return keys.reduce((n, k) => n + s.facets[k].size, 0)
     },
   },
   actions: {
@@ -69,11 +75,36 @@ export const useScansStore = defineStore('scans', {
     },
     async loadFacets() {
       const api = useApi()
-      const args: Record<string, unknown> = { realm: REALM, fields: FACET_FIELDS }
+      const args: Record<string, unknown> = {
+        realm: REALM,
+        fields: [...SERVER_FACET_FIELDS, 'fact:vendor', 'fact:party'],
+      }
       if (this.query.trim()) args.query = this.query
       const tags = [...this.facets.tag]; if (tags.length) args.tags = tags
       const status = this.facets.status.size ? [...this.facets.status][0] : undefined; if (status) args.status = status
-      this.facetCounts = await api.call<FacetCounts>('facet_count', args)
+      const raw = await api.call<FacetCounts>('facet_count', args)
+
+      // Merge fact:vendor + fact:party into a synthetic 'correspondent' facet.
+      // Counts are summed by value (deduplicated: same entity appearing in both
+      // vendor and party for different docs is summed — expected to be rare in practice).
+      const corrMap = new Map<string, number>()
+      for (const entry of (raw['fact:vendor'] ?? [])) {
+        corrMap.set(entry.value, (corrMap.get(entry.value) ?? 0) + entry.count)
+      }
+      for (const entry of (raw['fact:party'] ?? [])) {
+        corrMap.set(entry.value, (corrMap.get(entry.value) ?? 0) + entry.count)
+      }
+      const correspondentFacet = [...corrMap.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .map(([value, count]) => ({ value, count }))
+
+      // Expose standard facets + correspondent; drop the raw fact: keys
+      const merged: FacetCounts = {}
+      for (const k of SERVER_FACET_FIELDS) {
+        if (raw[k]) merged[k] = raw[k]
+      }
+      if (correspondentFacet.length) merged['correspondent'] = correspondentFacet
+      this.facetCounts = merged
     },
     async reload() { await Promise.all([this.load(), this.loadFacets()]) },
     setQuery(q: string) { this.query = q },
@@ -89,23 +120,60 @@ export const useScansStore = defineStore('scans', {
       this.facets = emptyFacets()
       if (id !== 'all') {
         const v = this.savedViews.find(x => x.id === id)
-        if (v) for (const k of Object.keys(v.filter) as FacetKey[]) this.facets[k] = new Set(v.filter[k])
+        if (v) for (const k of Object.keys(v.filter) as FacetKey[]) {
+          const vals = v.filter[k]
+          if (vals) this.facets[k] = new Set(vals)
+        }
       }
     },
-    loadSavedViews() {
-      try { this.savedViews = JSON.parse(localStorage.getItem(VIEWS_KEY) || '[]') } catch { this.savedViews = [] }
+
+    // ── Saved views via server tools (replaces localStorage) ────────────────
+    async loadSavedViews() {
+      const api = useApi()
+      const rows = await api.call<Array<{ id: string; name: string; filter: Record<string, unknown> }>>('list_saved_searches')
+      this.savedViews = rows.map(r => ({
+        id: r.id,
+        name: r.name,
+        filter: r.filter as Partial<Record<FacetKey, string[]>>,
+      }))
     },
-    saveView(name: string, filter: Partial<Record<FacetKey, string[]>>) {
-      this.loadSavedViews()
-      const id = 'v-' + name.toLowerCase().replace(/\s+/g, '-')
-      this.savedViews = [...this.savedViews.filter(v => v.id !== id), { id, name, filter }]
-      localStorage.setItem(VIEWS_KEY, JSON.stringify(this.savedViews))
+    async saveView(name: string, filter: Partial<Record<FacetKey, string[]>>) {
+      const api = useApi()
+      await api.call('save_search', { name, filter })
+      await this.loadSavedViews()
     },
-    deleteView(id: string) {
-      this.loadSavedViews()
-      this.savedViews = this.savedViews.filter(v => v.id !== id)
-      localStorage.setItem(VIEWS_KEY, JSON.stringify(this.savedViews))
+    async deleteView(id: string) {
+      const api = useApi()
+      await api.call('delete_saved_search', { id })
+      await this.loadSavedViews()
     },
+
+    // ── Tag editing ──────────────────────────────────────────────────────────
+    async editTags(cellId: string, add: string[], remove: string[]) {
+      const api = useApi()
+      if (add.length) await api.call('add_tags', { cell_id: cellId, tags: add })
+      if (remove.length) await api.call('remove_tags', { cell_id: cellId, tags: remove })
+      await this.reload()
+    },
+
+    // ── Bulk actions ─────────────────────────────────────────────────────────
+    async bulkTag(addTags?: string[], removeTags?: string[]) {
+      const api = useApi()
+      const cell_ids = [...this.selection]
+      if (!cell_ids.length) return
+      await api.call('bulk_tag', { cell_ids, add_tags: addTags, remove_tags: removeTags })
+      await this.reload()
+    },
+    async bulkReclassify(realm?: string, signal?: string, topic?: string) {
+      const api = useApi()
+      const cell_ids = [...this.selection]
+      if (!cell_ids.length) return
+      await api.call('bulk_reclassify', { cell_ids, realm, signal, topic })
+      this.clearSelection()
+      await this.reload()
+    },
+
+    // ── Selection ────────────────────────────────────────────────────────────
     toggleSelect(id: string) { this.selection.has(id) ? this.selection.delete(id) : this.selection.add(id) },
     clearSelection() { this.selection = new Set() },
     open(id: string) { this.openId = id },

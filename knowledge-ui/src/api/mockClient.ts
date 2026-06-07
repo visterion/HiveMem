@@ -1,9 +1,19 @@
 import { palace as mockPalace } from '../data/mock'
-import type { ApiClient, HiveEvent, Cell, Realm, Signal, Tunnel, Fact, StatusSummary, Reference, SearchResult, DocumentRow, FacetValue } from './types'
+import type { ApiClient, HiveEvent, Cell, Realm, Signal, Tunnel, Fact, StatusSummary, Reference, SearchResult, DocumentRow, FacetValue, SavedSearch } from './types'
 
 interface MockConfig { latencyMs?: [number, number]; eventInterval?: number }
 
 type Handler = (args: any) => unknown
+
+// Synthesized vendor/party data keyed by cell id (for fact:* facet simulation)
+const MOCK_CELL_FACTS: Record<string, { vendor?: string; party?: string }> = {
+  'doc-contract-001': { vendor: 'Acme Corp' },
+  'doc-invoice-001':  { vendor: 'CloudProvider GmbH' },
+  'doc-contract-002': { party: 'Beta Partners' },
+  'doc-invoice-002':  { vendor: 'Design Tools AG' },
+  'doc-contract-003': { vendor: 'Munich Datacenter GmbH' },
+  'doc-receipt-001':  { party: 'Conference Org Berlin' },
+}
 
 export class MockApiClient implements ApiClient {
   private config: Required<MockConfig>
@@ -16,6 +26,10 @@ export class MockApiClient implements ApiClient {
   private streamDelivered = new Set<string>()
   private streamTunnelQueue: Tunnel[] = []
   private streamInitialized = false
+
+  // In-memory saved searches (upsert by owner+name)
+  private savedSearches: Array<SavedSearch & { owner: string }> = []
+  private savedSearchCounter = 1
 
   constructor(config: MockConfig = {}) {
     this.config = { latencyMs: [50, 200], eventInterval: 15000, ...config }
@@ -42,6 +56,13 @@ export class MockApiClient implements ApiClient {
       history: () => [],
       list_documents: (a: any) => this.listDocuments(a),
       facet_count: (a: any) => this.facetCount(a),
+      save_search: (a: any) => this.saveSearch(a),
+      list_saved_searches: () => this.listSavedSearches(),
+      delete_saved_search: (a: any) => this.deleteSavedSearch(a),
+      add_tags: (a: any) => this.addTags(a),
+      remove_tags: (a: any) => this.removeTags(a),
+      bulk_tag: (a: any) => this.bulkTag(a),
+      bulk_reclassify: (a: any) => this.bulkReclassify(a),
     }
   }
 
@@ -154,6 +175,10 @@ export class MockApiClient implements ApiClient {
     // Map to DocumentRow — synthesize attachment fields for ~half the docs
     return cells.map((c, i): DocumentRow => {
       const hasAtt = i % 2 === 0
+      // Synthesize a confidence score (0–1) from the cell index as a deterministic mock
+      const confidence = parseFloat((0.55 + ((c.id.charCodeAt(c.id.length - 1) % 10) * 0.04)).toFixed(2))
+      const facts = MOCK_CELL_FACTS[c.id]
+      const correspondent = facts?.vendor ?? facts?.party ?? null
       return {
         id: c.id,
         realm: c.realm,
@@ -168,6 +193,8 @@ export class MockApiClient implements ApiClient {
         mime_type: hasAtt ? 'application/pdf' : null,
         page_count: hasAtt ? (1 + (c.id.charCodeAt(c.id.length - 1) % 4)) : null,
         has_thumbnail: hasAtt,
+        confidence,
+        correspondent,
       }
     })
   }
@@ -206,12 +233,92 @@ export class MockApiClient implements ApiClient {
           const y = (c.created_at ?? '').slice(0, 4) || 'unknown'
           counts.set(y, (counts.get(y) ?? 0) + 1)
         }
+      } else if (field.startsWith('fact:')) {
+        const predicate = field.slice(5) as 'vendor' | 'party' | string
+        for (const c of cells) {
+          const cellFacts = MOCK_CELL_FACTS[c.id]
+          if (!cellFacts) continue
+          let val: string | undefined
+          if (predicate === 'vendor') val = cellFacts.vendor
+          else if (predicate === 'party') val = cellFacts.party
+          // other predicates (amount_total, etc.) are not seeded — skip
+          if (val) counts.set(val, (counts.get(val) ?? 0) + 1)
+        }
       }
       result[field] = [...counts.entries()]
         .sort((a, b) => b[1] - a[1])
         .map(([value, count]) => ({ value, count }))
     }
     return result
+  }
+
+  private saveSearch(args: { name: string; filter: Record<string, unknown> }): SavedSearch & { owner: string } {
+    const owner = 'mock-user'
+    const existing = this.savedSearches.findIndex(s => s.owner === owner && s.name === args.name)
+    const row = {
+      id: existing >= 0 ? this.savedSearches[existing].id : 'ss-' + (this.savedSearchCounter++),
+      owner,
+      name: args.name,
+      filter: args.filter,
+      created_at: new Date().toISOString(),
+    }
+    if (existing >= 0) this.savedSearches[existing] = row
+    else this.savedSearches.push(row)
+    return row
+  }
+
+  private listSavedSearches(): Array<SavedSearch & { owner: string }> {
+    return this.savedSearches.filter(s => s.owner === 'mock-user')
+  }
+
+  private deleteSavedSearch(args: { id: string }): { id: string; deleted: boolean } {
+    const before = this.savedSearches.length
+    this.savedSearches = this.savedSearches.filter(s => s.id !== args.id)
+    return { id: args.id, deleted: this.savedSearches.length < before }
+  }
+
+  private addTags(args: { cell_id: string; tags: string[] }): { updated: number } {
+    const c = mockPalace.cells.find(x => x.id === args.cell_id)
+    if (!c) return { updated: 0 }
+    const current = new Set(c.tags ?? [])
+    for (const t of args.tags) current.add(t)
+    c.tags = [...current]
+    return { updated: 1 }
+  }
+
+  private removeTags(args: { cell_id: string; tags: string[] }): { updated: number } {
+    const c = mockPalace.cells.find(x => x.id === args.cell_id)
+    if (!c) return { updated: 0 }
+    const remove = new Set(args.tags)
+    c.tags = (c.tags ?? []).filter(t => !remove.has(t))
+    return { updated: 1 }
+  }
+
+  private bulkTag(args: { cell_ids: string[]; add_tags?: string[]; remove_tags?: string[] }): { updated: number } {
+    let updated = 0
+    for (const id of args.cell_ids) {
+      const c = mockPalace.cells.find(x => x.id === id)
+      if (!c) continue
+      const current = new Set(c.tags ?? [])
+      for (const t of args.add_tags ?? []) current.add(t)
+      const remove = new Set(args.remove_tags ?? [])
+      c.tags = [...current].filter(t => !remove.has(t))
+      updated++
+    }
+    return { updated }
+  }
+
+  private bulkReclassify(args: { cell_ids: string[]; realm?: string; signal?: string; topic?: string }): { updated: number } {
+    let updated = 0
+    for (const id of args.cell_ids) {
+      const c = mockPalace.cells.find(x => x.id === id)
+      if (!c) continue
+      if (args.realm !== undefined) c.realm = args.realm
+      if (args.signal !== undefined) (c as any).signal = args.signal
+      if (args.topic !== undefined) (c as any).topic = args.topic
+      updated++
+    }
+    return { updated }
   }
 
   private getCell(args: { cell_id: string }): Cell {

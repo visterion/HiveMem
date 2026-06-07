@@ -146,7 +146,17 @@ export interface DocumentRow {
   mime_type?: string | null
   page_count?: number | null
   has_thumbnail?: boolean
+  confidence?: number | null
+  /** Derived client-side from fact:vendor / fact:party */
+  correspondent?: string | null
 }
 
 export interface FacetValue { value: string; count: number }
 export type FacetCounts = Record<string, FacetValue[]>
+
+export interface SavedSearch {
+  id: string
+  name: string
+  filter: Record<string, unknown>
+  created_at?: string
+}
