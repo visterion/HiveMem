@@ -86,6 +86,26 @@ public class WriteToolRepository {
         return result;
     }
 
+    public int addTags(UUID id, List<String> tags) {
+        String[] tagArray = tags == null ? new String[0] : tags.toArray(String[]::new);
+        return dslContext.execute("""
+                UPDATE cells
+                SET tags = (SELECT array_agg(DISTINCT t) FROM unnest(array_cat(tags, ?::text[])) t)
+                WHERE id = ?
+                  AND valid_until IS NULL
+                """, tagArray, id);
+    }
+
+    public int removeTags(UUID id, List<String> tags) {
+        String[] tagArray = tags == null ? new String[0] : tags.toArray(String[]::new);
+        return dslContext.execute("""
+                UPDATE cells
+                SET tags = array(SELECT t FROM unnest(tags) t WHERE t <> ALL(?::text[]))
+                WHERE id = ?
+                  AND valid_until IS NULL
+                """, tagArray, id);
+    }
+
     public void tagNeedsSummary(UUID id) {
         dslContext.execute(
                 "UPDATE cells SET tags = "

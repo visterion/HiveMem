@@ -59,7 +59,11 @@ public class ToolPermissionService {
             "update_blueprint",
             "upload_attachment",
             "save_search",
-            "delete_saved_search"
+            "delete_saved_search",
+            "add_tags",
+            "remove_tags",
+            "bulk_tag",
+            "bulk_reclassify"
     );
 
     private static final Set<String> ADMIN_TOOLS = tools(

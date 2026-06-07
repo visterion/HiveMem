@@ -309,6 +309,70 @@ public class WriteToolService {
         return result;
     }
 
+    @Transactional
+    public Map<String, Object> addTags(AuthPrincipal principal, UUID cellId, List<String> tags) {
+        int updated = writeToolRepository.addTags(cellId, tags);
+        Map<String, Object> opPayload = new java.util.LinkedHashMap<>();
+        opPayload.put("cell_id", cellId.toString());
+        opPayload.put("tags", tags);
+        opPayload.put("agent_id", principal.name());
+        UUID opId = opLogWriter.append("add_tags", opPayload);
+        pushDispatcher.dispatch(opId);
+        return Map.of("updated", updated);
+    }
+
+    @Transactional
+    public Map<String, Object> removeTags(AuthPrincipal principal, UUID cellId, List<String> tags) {
+        int updated = writeToolRepository.removeTags(cellId, tags);
+        Map<String, Object> opPayload = new java.util.LinkedHashMap<>();
+        opPayload.put("cell_id", cellId.toString());
+        opPayload.put("tags", tags);
+        opPayload.put("agent_id", principal.name());
+        UUID opId = opLogWriter.append("remove_tags", opPayload);
+        pushDispatcher.dispatch(opId);
+        return Map.of("updated", updated);
+    }
+
+    @Transactional
+    public Map<String, Object> bulkTag(AuthPrincipal principal, List<UUID> cellIds, List<String> addTagsList, List<String> removeTagsList) {
+        int updated = 0;
+        for (UUID id : cellIds) {
+            if (addTagsList != null && !addTagsList.isEmpty()) {
+                writeToolRepository.addTags(id, addTagsList);
+            }
+            if (removeTagsList != null && !removeTagsList.isEmpty()) {
+                writeToolRepository.removeTags(id, removeTagsList);
+            }
+            updated++;
+        }
+        Map<String, Object> opPayload = new java.util.LinkedHashMap<>();
+        opPayload.put("cell_ids", cellIds.stream().map(UUID::toString).toList());
+        opPayload.put("add_tags", addTagsList);
+        opPayload.put("remove_tags", removeTagsList);
+        opPayload.put("agent_id", principal.name());
+        UUID opId = opLogWriter.append("bulk_tag", opPayload);
+        pushDispatcher.dispatch(opId);
+        return Map.of("updated", updated);
+    }
+
+    @Transactional
+    public Map<String, Object> bulkReclassify(AuthPrincipal principal, List<UUID> cellIds, String realm, String signal, String topic) {
+        int updated = 0;
+        for (UUID id : cellIds) {
+            reclassifyCell(principal, id, realm, topic, signal);
+            updated++;
+        }
+        Map<String, Object> opPayload = new java.util.LinkedHashMap<>();
+        opPayload.put("cell_ids", cellIds.stream().map(UUID::toString).toList());
+        opPayload.put("realm", realm);
+        opPayload.put("signal", signal);
+        opPayload.put("topic", topic);
+        opPayload.put("agent_id", principal.name());
+        UUID opId = opLogWriter.append("bulk_reclassify", opPayload);
+        pushDispatcher.dispatch(opId);
+        return Map.of("updated", updated);
+    }
+
     private static String normalizeClassification(String value, String field) {
         String normalized = value.strip().toLowerCase().replace(' ', '-');
         if (normalized.isEmpty()) {
