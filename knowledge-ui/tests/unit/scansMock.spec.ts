@@ -60,11 +60,11 @@ describe('mock scans endpoints', () => {
     const empty = await c.call<any[]>('list_saved_searches')
     expect(empty).toEqual([])
 
-    // save a search
+    // save a search — mock returns filter as JSON string (mirrors real backend filter::text)
     const saved = await c.call<any>('save_search', { name: 'Invoices 2025', filter: { tag: ['invoice'] } })
     expect(saved).toHaveProperty('id')
     expect(saved.name).toBe('Invoices 2025')
-    expect(saved.filter).toEqual({ tag: ['invoice'] })
+    expect(saved.filter).toBe(JSON.stringify({ tag: ['invoice'] }))
 
     // list shows it
     const list = await c.call<any[]>('list_saved_searches')
@@ -75,7 +75,7 @@ describe('mock scans endpoints', () => {
     await c.call('save_search', { name: 'Invoices 2025', filter: { tag: ['invoice', 'paid'] } })
     const list2 = await c.call<any[]>('list_saved_searches')
     expect(list2.length).toBe(1)
-    expect(list2[0].filter).toEqual({ tag: ['invoice', 'paid'] })
+    expect(list2[0].filter).toBe(JSON.stringify({ tag: ['invoice', 'paid'] }))
 
     // delete
     const del = await c.call<any>('delete_saved_search', { id: list2[0].id })

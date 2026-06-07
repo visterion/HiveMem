@@ -58,12 +58,16 @@ public class DocumentListRepository {
                 "c.status, c.created_at, " +
                 "a.id AS attachment_id, a.mime_type, a.page_count, " +
                 "(a.s3_key_thumbnail IS NOT NULL) AS has_thumbnail, " +
-                "f.avg_confidence AS confidence " +
+                "f.avg_confidence AS confidence, " +
+                "corr.object AS correspondent " +
                 "FROM cells c " +
                 "LEFT JOIN cell_attachments ca ON ca.cell_id = c.id AND ca.extraction_source = true " +
                 "LEFT JOIN attachments a ON a.id = ca.attachment_id AND a.deleted_at IS NULL " +
                 "LEFT JOIN LATERAL (SELECT AVG(confidence)::real AS avg_confidence " +
                 "    FROM active_facts WHERE source_id = c.id) f ON true " +
+                "LEFT JOIN LATERAL (SELECT object FROM active_facts " +
+                "    WHERE source_id = c.id AND predicate IN ('vendor','party') " +
+                "    ORDER BY predicate LIMIT 1) corr ON true " +
                 "WHERE c.valid_until IS NULL " +
                 "AND c.realm = ? " +
                 "AND c.status = COALESCE(?, 'committed') " +
@@ -143,6 +147,9 @@ public class DocumentListRepository {
         // confidence: nullable average of active fact confidences for this document
         Number confidence = row.get("confidence", Number.class);
         m.put("confidence", confidence == null ? null : confidence.doubleValue());
+
+        // correspondent: first active vendor/party fact object for this document (nullable)
+        m.put("correspondent", row.get("correspondent", String.class));
 
         return m;
     }

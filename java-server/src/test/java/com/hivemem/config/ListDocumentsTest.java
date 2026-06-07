@@ -76,10 +76,15 @@ class ListDocumentsTest {
     static final UUID ID_CONF_DOC    = UUID.fromString("00000000-0000-0000-0002-000000000020");
     static final UUID ID_FACT_HIGH   = UUID.fromString("00000000-0000-0000-0002-000000000021");
     static final UUID ID_FACT_LOW    = UUID.fromString("00000000-0000-0000-0002-000000000022");
+    // Correspondent test cells
+    static final UUID ID_CORR_DOC    = UUID.fromString("00000000-0000-0000-0002-000000000030");
+    static final UUID ID_CORR_FACT   = UUID.fromString("00000000-0000-0000-0002-000000000031");
+    static final UUID ID_NO_CORR_DOC = UUID.fromString("00000000-0000-0000-0002-000000000032");
 
     @BeforeEach
     void seed() {
-        dslContext.execute("DELETE FROM facts WHERE id IN (?, ?)", ID_FACT_HIGH, ID_FACT_LOW);
+        dslContext.execute("DELETE FROM facts WHERE id IN (?, ?, ?)", ID_FACT_HIGH, ID_FACT_LOW, ID_CORR_FACT);
+        dslContext.execute("DELETE FROM cells WHERE id IN (?, ?)", ID_CORR_DOC, ID_NO_CORR_DOC);
         dslContext.execute("DELETE FROM cell_attachments WHERE cell_id IN (?, ?, ?, ?)",
                 ID_CONTRACT_1, ID_CONTRACT_2, ID_INVOICE, ID_PENDING);
         dslContext.execute("DELETE FROM attachments WHERE id = ?", ID_ATTACHMENT);
@@ -229,5 +234,39 @@ class ListDocumentsTest {
                     .as("confidence for doc %s with no active facts should be null", row.get("id"))
                     .isNull();
         }
+    }
+
+    @Test
+    void docWithVendorFactHasCorrespondentEqualToVendor() {
+        // Insert a document with a vendor fact
+        dslContext.execute(
+                "INSERT INTO cells (id, content, realm, signal, topic, tags, status, valid_from, created_at) " +
+                "VALUES (?, 'vendor doc', 'ldocs', 'facts', 'vendors', ?, 'committed', now(), '2026-04-01'::date)",
+                ID_CORR_DOC, new String[]{"corr-test"});
+        dslContext.execute(
+                "INSERT INTO facts (id, subject, predicate, object, confidence, source_id, status, created_by, " +
+                "created_at, valid_from) VALUES (?, 'corr-subject', 'vendor', 'Acme Corp', 0.9, ?, 'committed', 'system', now(), now())",
+                ID_CORR_FACT, ID_CORR_DOC);
+
+        List<Map<String, Object>> rows = documentListRepository.listDocuments(
+                "ldocs", null, null, List.of("corr-test"), "committed", "newest", 50, 0);
+
+        assertThat(rows).hasSize(1);
+        assertThat(rows.get(0).get("correspondent")).isEqualTo("Acme Corp");
+    }
+
+    @Test
+    void docWithNoVendorOrPartyFactHasNullCorrespondent() {
+        // Insert a document with no vendor/party facts
+        dslContext.execute(
+                "INSERT INTO cells (id, content, realm, signal, topic, tags, status, valid_from, created_at) " +
+                "VALUES (?, 'no corr doc', 'ldocs', 'facts', 'misc', ?, 'committed', now(), '2026-04-02'::date)",
+                ID_NO_CORR_DOC, new String[]{"no-corr-test"});
+
+        List<Map<String, Object>> rows = documentListRepository.listDocuments(
+                "ldocs", null, null, List.of("no-corr-test"), "committed", "newest", 50, 0);
+
+        assertThat(rows).hasSize(1);
+        assertThat(rows.get(0).get("correspondent")).isNull();
     }
 }

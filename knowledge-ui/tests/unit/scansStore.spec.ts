@@ -86,6 +86,29 @@ describe('scans store', () => {
     expect(localStorage.getItem('hivemem_scans_views')).toBeNull()
   })
 
+  it('loadSavedViews parses filter JSON string from server (round-trip)', async () => {
+    const s = useScansStore()
+    // Save a view — mock now returns filter as a JSON string
+    const p1 = s.saveView('Contracts Filter', { tag: ['contract'], status: ['pending'] })
+    await vi.advanceTimersByTimeAsync(600); await p1
+
+    // Reset in-memory state and reload so we exercise the string→object parse path
+    s.savedViews = []
+    const p2 = s.loadSavedViews(); await vi.advanceTimersByTimeAsync(300); await p2
+
+    const restored = s.savedViews.find(v => v.name === 'Contracts Filter')
+    expect(restored).toBeDefined()
+    // filter must have been parsed back to an object (not a string)
+    expect(typeof restored!.filter).toBe('object')
+    expect(Array.isArray(restored!.filter.tag)).toBe(true)
+    expect(restored!.filter.tag).toContain('contract')
+
+    // Apply the saved view and verify facets restore correctly
+    s.setSavedView(restored!.id)
+    expect(s.facets.tag.has('contract')).toBe(true)
+    expect(s.facets.status.has('pending')).toBe(true)
+  })
+
   it('loadSavedViews loads from server and populates savedViews', async () => {
     const s = useScansStore()
     // First save (save_search + list_saved_searches)

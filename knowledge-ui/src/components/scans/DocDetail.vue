@@ -100,17 +100,8 @@ async function loadCell(id: string) {
   } catch {
     similar.value = []
   }
-  // Load correspondent from quick_facts (best-effort)
-  if (props.d.correspondent) {
-    correspondent.value = props.d.correspondent
-  } else {
-    try {
-      const facts = await useApi().call<Record<string, string>>('quick_facts', { cell_id: id })
-      correspondent.value = facts?.vendor ?? facts?.party ?? null
-    } catch {
-      correspondent.value = null
-    }
-  }
+  // Correspondent is sourced directly from the document row (populated by backend via vendor/party fact).
+  correspondent.value = props.d.correspondent ?? null
 }
 
 // ── Tag editing ───────────────────────────────────────────────────────────────

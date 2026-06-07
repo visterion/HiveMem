@@ -27,8 +27,9 @@ export class MockApiClient implements ApiClient {
   private streamTunnelQueue: Tunnel[] = []
   private streamInitialized = false
 
-  // In-memory saved searches (upsert by owner+name)
-  private savedSearches: Array<SavedSearch & { owner: string }> = []
+  // In-memory saved searches (upsert by owner+name).
+  // filter is stored as a JSON string to match the real backend contract (filter::text).
+  private savedSearches: Array<Omit<SavedSearch, 'filter'> & { owner: string; filter: string }> = []
   private savedSearchCounter = 1
 
   constructor(config: MockConfig = {}) {
@@ -252,14 +253,15 @@ export class MockApiClient implements ApiClient {
     return result
   }
 
-  private saveSearch(args: { name: string; filter: Record<string, unknown> }): SavedSearch & { owner: string } {
+  private saveSearch(args: { name: string; filter: Record<string, unknown> }): Omit<SavedSearch, 'filter'> & { owner: string; filter: string } {
     const owner = 'mock-user'
     const existing = this.savedSearches.findIndex(s => s.owner === owner && s.name === args.name)
     const row = {
       id: existing >= 0 ? this.savedSearches[existing].id : 'ss-' + (this.savedSearchCounter++),
       owner,
       name: args.name,
-      filter: args.filter,
+      // Serialize to JSON string — mirrors real backend `filter::text` projection
+      filter: JSON.stringify(args.filter),
       created_at: new Date().toISOString(),
     }
     if (existing >= 0) this.savedSearches[existing] = row
@@ -267,7 +269,7 @@ export class MockApiClient implements ApiClient {
     return row
   }
 
-  private listSavedSearches(): Array<SavedSearch & { owner: string }> {
+  private listSavedSearches(): Array<Omit<SavedSearch, 'filter'> & { owner: string; filter: string }> {
     return this.savedSearches.filter(s => s.owner === 'mock-user')
   }
 

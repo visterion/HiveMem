@@ -131,11 +131,15 @@ export const useScansStore = defineStore('scans', {
     async loadSavedViews() {
       const api = useApi()
       const rows = await api.call<SavedSearch[]>('list_saved_searches')
-      this.savedViews = rows.map(r => ({
-        id: r.id,
-        name: r.name,
-        filter: r.filter as Partial<Record<FacetKey, string[]>>,
-      }))
+      this.savedViews = rows.map(r => {
+        let filter: Partial<Record<FacetKey, string[]>>
+        if (typeof r.filter === 'string') {
+          try { filter = JSON.parse(r.filter) } catch { filter = {} }
+        } else {
+          filter = (r.filter ?? {}) as Partial<Record<FacetKey, string[]>>
+        }
+        return { id: r.id, name: r.name, filter }
+      })
     },
     async saveView(name: string, filter: Partial<Record<FacetKey, string[]>>) {
       const api = useApi()
