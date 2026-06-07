@@ -32,7 +32,8 @@ public class FacetCountToolHandler implements ToolHandler {
 
     @Override
     public String description() {
-        return "Aggregate document counts grouped by a cell field (tag, status, realm, year, signal), " +
+        return "Aggregate document counts grouped by a cell field (tag, status, realm, year, signal) " +
+               "or by a fact predicate using 'fact:<predicate>' fields (e.g. 'fact:vendor', 'fact:party'), " +
                "honoring realm/signal/topic/tags/status/query filters.";
     }
 
@@ -45,7 +46,7 @@ public class FacetCountToolHandler implements ToolHandler {
                 .optionalStringList("tags", "Filter to cells that have ANY of the given tags")
                 .optionalString("status", "Restrict to a status: committed | pending | rejected")
                 .optionalString("query", "Optional full-text filter applied before counting")
-                .requiredEnumStringList("fields", "Fields to facet on", "tag", "status", "realm", "year", "signal")
+                .requiredStringList("fields", "Fields to facet on: tag, status, realm, year, signal, or fact:<predicate> (e.g. fact:vendor, fact:party)")
                 .optionalInteger("limit", "Maximum buckets per facet (default 10, max 100)")
                 .build();
     }

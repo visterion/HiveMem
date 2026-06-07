@@ -14,11 +14,20 @@ import java.util.Set;
  *
  * <p>Counts are performed over ALL active cells (valid_until IS NULL), including both
  * committed and pending, so the {@code status} facet reflects the full picture.
+ *
+ * <p>In addition to cell-column fields (tag, status, realm, year, signal), fields of the
+ * form {@code fact:<predicate>} are supported: they count documents grouped by the
+ * {@code object} of committed facts with that predicate, joined via {@code source_id}.
  */
 @Repository
 public class FacetRepository {
 
     private static final Set<String> ALLOWED_FIELDS = Set.of("tag", "status", "realm", "year", "signal");
+
+    private static final Set<String> ALLOWED_FACT_PREDICATES = Set.of(
+            "vendor", "party", "amount_total", "value_per_period",
+            "document_date", "due_date", "invoice_number", "contract_number"
+    );
 
     private final DSLContext dslContext;
 
@@ -50,7 +59,12 @@ public class FacetRepository {
             int limit
     ) {
         for (String f : fields) {
-            if (!ALLOWED_FIELDS.contains(f)) {
+            if (f.startsWith("fact:")) {
+                String predicate = f.substring(5);
+                if (!ALLOWED_FACT_PREDICATES.contains(predicate)) {
+                    throw new IllegalArgumentException("Unknown fact predicate: " + predicate);
+                }
+            } else if (!ALLOWED_FIELDS.contains(f)) {
                 throw new IllegalArgumentException("Unknown facet field: " + f);
             }
         }
@@ -72,7 +86,13 @@ public class FacetRepository {
 
         for (String field : fields) {
             List<Object> binds = buildBinds(realm, signal, topic, tagsArr, status, query);
-            String sql = buildFieldSql(field, sharedWhere, limit, binds);
+            String sql;
+            if (field.startsWith("fact:")) {
+                String predicate = field.substring(5);
+                sql = buildFactFieldSql(predicate, sharedWhere, limit, binds);
+            } else {
+                sql = buildFieldSql(field, sharedWhere, limit, binds);
+            }
             org.jooq.Result<org.jooq.Record> rows = dslContext.fetch(sql, binds.toArray());
             List<Map<String, Object>> facetRows = new ArrayList<>();
             for (org.jooq.Record r : rows) {
@@ -103,6 +123,34 @@ public class FacetRepository {
         b.add(status);  b.add(status);
         b.add(query);   b.add(query);   b.add(query);
         return b;
+    }
+
+    /**
+     * Builds the fact-facet SQL for {@code fact:<predicate>} fields.
+     * Joins {@code active_facts} to the filtered cell set via {@code source_id}.
+     * The predicate value is validated against the allow-list before this is called.
+     * Parameter order: same shared binds (using aliased cells table) + predicate + limit.
+     */
+    private static String buildFactFieldSql(String predicate, String sharedWhere, int limit, List<Object> binds) {
+        // Rebuild the shared WHERE with the cells alias "c."
+        String aliasedWhere = sharedWhere
+                .replace("valid_until ", "c.valid_until ")
+                .replace("realm  = ", "c.realm  = ")
+                .replace("signal = ", "c.signal = ")
+                .replace("topic  = ", "c.topic  = ")
+                .replace("tags &&", "c.tags &&")
+                .replace("status = ", "c.status = ")
+                .replace("tsv @@", "c.tsv @@");
+        binds.add(predicate);
+        binds.add(limit);
+        return "SELECT f.\"object\" AS value, count(*)::int AS count " +
+               "FROM active_facts f " +
+               "JOIN cells c ON c.id = f.source_id " +
+               "WHERE " + aliasedWhere + " " +
+               "AND f.predicate = ? " +
+               "GROUP BY f.\"object\" " +
+               "ORDER BY count DESC, value " +
+               "LIMIT ?";
     }
 
     /**

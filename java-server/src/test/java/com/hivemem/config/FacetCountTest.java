@@ -73,6 +73,7 @@ class FacetCountTest {
 
     @BeforeEach
     void seed() {
+        dslContext.execute("DELETE FROM facts WHERE source_id IN (SELECT id FROM cells WHERE realm = 'fdocs')");
         dslContext.execute("DELETE FROM cells WHERE realm = 'fdocs' AND topic = 't'");
         // 2 committed with tag contract (years 2024, 2025)
         seed(ID_1, "contract alpha document", new String[]{"contract"}, "committed", "2024");
@@ -125,5 +126,48 @@ class FacetCountTest {
                 List.of("evil"), 20))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("evil");
+    }
+
+    // ── fact-facet helpers ────────────────────────────────────────────────────
+
+    private void seedDoc(UUID id, String realm) {
+        dslContext.execute(
+                "INSERT INTO cells (id, content, realm, signal, topic, tags, status, valid_from, created_at) " +
+                "VALUES (?, 'doc content', ?, 'facts', 'fact_t', '{}', 'committed', now(), now())",
+                id, realm);
+    }
+
+    private void seedFact(UUID sourceId, String predicate, String object) {
+        dslContext.execute(
+                "INSERT INTO facts (subject, predicate, \"object\", confidence, source_id, status, valid_from) " +
+                "VALUES ('doc', ?, ?, 1.0, ?, 'committed', now())",
+                predicate, object, sourceId);
+    }
+
+    // ── fact-facet tests ──────────────────────────────────────────────────────
+
+    @Test
+    void factFacetCountsByPredicateObject() {
+        UUID d1 = UUID.randomUUID(), d2 = UUID.randomUUID(), d3 = UUID.randomUUID();
+        seedDoc(d1, "fdocs"); seedDoc(d2, "fdocs"); seedDoc(d3, "fdocs");
+        seedFact(d1, "vendor", "HUK-COBURG");
+        seedFact(d2, "vendor", "HUK-COBURG");
+        seedFact(d3, "vendor", "Telekom");
+
+        var fc = facetRepository.facetCounts("fdocs", null, null, null, null, null,
+                java.util.List.of("fact:vendor"), 20);
+
+        var vendor = fc.get("fact:vendor");
+        assertThat(vendor).isNotNull();
+        // HUK first (count 2), Telekom (count 1)
+        assertThat(vendor.get(0).get("value")).isEqualTo("HUK-COBURG");
+        assertThat(((Number) vendor.get(0).get("count")).intValue()).isEqualTo(2);
+    }
+
+    @Test
+    void unknownFactPredicateRejected() {
+        assertThatThrownBy(() -> facetRepository.facetCounts("fdocs", null, null, null, null, null,
+                java.util.List.of("fact:evil"), 20))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 }
