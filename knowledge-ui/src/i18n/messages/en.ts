@@ -5,12 +5,16 @@ export default {
     connecting: 'Connecting…',
     loading: 'Loading…',
     reload: 'Reload',
-    noResults: 'No results.'
+    noResults: 'No results.',
+    comingSoon: 'Coming soon',
   },
   nav: {
-    search: 'Search',
-    realms: 'Realms',
-    settings: 'Settings'
+    search: 'Search', hive: 'Hive', graph: 'Graph', realms: 'Realms', photos: 'Photos',
+    scans: 'Scans', timemachine: 'Time Machine', queen: 'Queen', settings: 'Settings',
+  },
+  tweaks: {
+    appearance: 'Appearance', layout: 'Layout', theme: 'Theme', language: 'Language',
+    accent: 'Accent', density: 'Density', hive: 'Hive motif',
   },
   settings: {
     signedInAs: 'Signed in as {name}',
