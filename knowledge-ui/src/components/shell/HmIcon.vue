@@ -18,6 +18,10 @@ const PATHS: Record<string, string> = {
   moon: '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/>',
   chevron: '<path d="m9 6 6 6-6 6"/>',
   cinema: '<rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M2.5 9h19M7 6v3M12 6v3M17 6v3"/>',
+  pages: '<rect x="4" y="6" width="13" height="15" rx="2"/><path d="M7 3h11a2 2 0 0 1 2 2v13"/>',
+  chevdown: '<path d="m6 9 6 6 6-6"/>',
+  sort: '<path d="M4 6h16M4 12h10M4 18h6"/>',
+  check: '<path d="M5 12l4.5 4.5L19 7"/>',
 }
 const inner = computed(() => PATHS[props.name] ?? '')
 </script>
