@@ -14,7 +14,7 @@ import java.util.Map;
 import java.util.UUID;
 
 @Component
-@Order(22)
+@Order(24)
 public class ApprovePendingToolHandler implements ToolHandler {
 
     private static final List<String> VALID_DECISIONS = List.of("committed", "rejected");

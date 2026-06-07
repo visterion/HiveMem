@@ -14,7 +14,7 @@ import java.util.Map;
 import java.util.UUID;
 
 @Component
-@Order(29)
+@Order(31)
 public class UpdateBlueprintToolHandler implements ToolHandler {
 
     private final WriteToolService writeToolService;

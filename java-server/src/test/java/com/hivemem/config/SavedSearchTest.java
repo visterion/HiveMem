@@ -146,7 +146,7 @@ class SavedSearchTest {
     // ─── owner scoping ───────────────────────────────────────────────────────
 
     @Test
-    void ownerScopingPreventsSeingOtherUserSearches() {
+    void ownerScopingPreventsSeeingOtherUserSearches() {
         savedSearchRepository.save("alice", "Alice's search", "{\"realm\":\"personal\"}");
         savedSearchRepository.save("bob",   "Bob's search",   "{\"realm\":\"work\"}");
 

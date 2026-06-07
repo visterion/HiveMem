@@ -13,7 +13,7 @@ import java.util.Map;
 import java.util.UUID;
 
 @Component
-@Order(34)
+@Order(36)
 public class ReclassifyCellToolHandler implements ToolHandler {
 
     private static final String[] SIGNAL_VALUES = {

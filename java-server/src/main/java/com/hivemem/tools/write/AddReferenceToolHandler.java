@@ -12,7 +12,7 @@ import org.springframework.stereotype.Component;
 import java.util.Map;
 
 @Component
-@Order(25)
+@Order(27)
 public class AddReferenceToolHandler implements ToolHandler {
 
     private final WriteToolService writeToolService;

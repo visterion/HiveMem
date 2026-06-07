@@ -13,7 +13,7 @@ import java.util.Map;
 import java.util.UUID;
 
 @Component
-@Order(33)
+@Order(35)
 public class ReviseCellToolHandler implements ToolHandler {
 
     private final WriteToolService writeToolService;

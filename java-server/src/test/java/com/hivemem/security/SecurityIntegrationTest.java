@@ -153,7 +153,7 @@ class SecurityIntegrationTest {
     class ToolListFiltering {
 
         @Test
-        void readerSees18Tools() throws Exception {
+        void readerSees20Tools() throws Exception {
             insertToken("reader-user", "reader-token", "reader");
 
             mockMvc.perform(post("/mcp")
@@ -165,7 +165,7 @@ class SecurityIntegrationTest {
         }
 
         @Test
-        void writerSees33Tools() throws Exception {
+        void writerSees37Tools() throws Exception {
             insertToken("writer-user", "writer-token", "writer");
 
             mockMvc.perform(post("/mcp")
@@ -177,7 +177,7 @@ class SecurityIntegrationTest {
         }
 
         @Test
-        void agentSees33Tools() throws Exception {
+        void agentSees37Tools() throws Exception {
             insertToken("agent-user", "agent-token", "agent");
 
             mockMvc.perform(post("/mcp")
@@ -189,7 +189,7 @@ class SecurityIntegrationTest {
         }
 
         @Test
-        void adminSees37Tools() throws Exception {
+        void adminSees41Tools() throws Exception {
             insertToken("admin-user", "admin-token", "admin");
 
             mockMvc.perform(post("/mcp")

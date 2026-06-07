@@ -8,7 +8,7 @@ import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 @Component
-@Order(17)
+@Order(19)
 public class WakeUpToolHandler implements ToolHandler {
 
     private final ReadToolService readToolService;

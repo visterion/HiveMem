@@ -8,6 +8,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 @Repository
@@ -38,6 +39,7 @@ public class SavedSearchRepository {
                 "RETURNING id, name, filter::text AS filter, created_at",
                 owner, name, filterJson);
 
+        Objects.requireNonNull(row, "INSERT RETURNING returned no row");
         return toMap(row);
     }
 

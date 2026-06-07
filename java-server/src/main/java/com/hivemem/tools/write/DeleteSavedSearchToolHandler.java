@@ -13,7 +13,7 @@ import java.util.Map;
 import java.util.UUID;
 
 @Component
-@Order(39)
+@Order(41)
 public class DeleteSavedSearchToolHandler implements ToolHandler {
 
     private final SavedSearchRepository savedSearchRepository;

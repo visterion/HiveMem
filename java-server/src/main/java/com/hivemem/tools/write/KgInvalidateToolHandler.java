@@ -13,7 +13,7 @@ import java.util.Map;
 import java.util.UUID;
 
 @Component
-@Order(20)
+@Order(22)
 public class KgInvalidateToolHandler implements ToolHandler {
 
     private final WriteToolService writeToolService;

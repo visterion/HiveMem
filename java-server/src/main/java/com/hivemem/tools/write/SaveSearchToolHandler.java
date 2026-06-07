@@ -1,6 +1,7 @@
 package com.hivemem.tools.write;
 
 import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 import com.hivemem.auth.AuthPrincipal;
 import com.hivemem.mcp.ToolHandler;
 import com.hivemem.mcp.ToolInputSchema;
@@ -12,13 +13,16 @@ import org.springframework.stereotype.Component;
 import java.util.Map;
 
 @Component
-@Order(38)
+@Order(40)
 public class SaveSearchToolHandler implements ToolHandler {
 
     private final SavedSearchRepository savedSearchRepository;
+    private final ObjectMapper objectMapper;
 
-    public SaveSearchToolHandler(SavedSearchRepository savedSearchRepository) {
+    public SaveSearchToolHandler(SavedSearchRepository savedSearchRepository,
+                                 ObjectMapper objectMapper) {
         this.savedSearchRepository = savedSearchRepository;
+        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -51,6 +55,12 @@ public class SaveSearchToolHandler implements ToolHandler {
             // Accept both a JSON string ("{}") and an inline object ({}); normalise to string
             if (filterNode.isTextual()) {
                 filterJson = filterNode.asText();
+                // Validate that the string is well-formed JSON before sending it to ::jsonb
+                try {
+                    objectMapper.readTree(filterJson);
+                } catch (Exception e) {
+                    throw new IllegalArgumentException("filter must be valid JSON");
+                }
             } else {
                 filterJson = filterNode.toString();
             }
