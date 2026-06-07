@@ -1,5 +1,5 @@
 import { palace as mockPalace } from '../data/mock'
-import type { ApiClient, HiveEvent, Cell, Realm, Signal, Tunnel, Fact, StatusSummary, Reference, SearchResult } from './types'
+import type { ApiClient, HiveEvent, Cell, Realm, Signal, Tunnel, Fact, StatusSummary, Reference, SearchResult, DocumentRow, FacetValue } from './types'
 
 interface MockConfig { latencyMs?: [number, number]; eventInterval?: number }
 
@@ -40,6 +40,8 @@ export class MockApiClient implements ApiClient {
       time_machine: () => mockPalace.facts,
       search_kg: () => mockPalace.facts,
       history: () => [],
+      list_documents: (a: any) => this.listDocuments(a),
+      facet_count: (a: any) => this.facetCount(a),
     }
   }
 
@@ -91,11 +93,19 @@ export class MockApiClient implements ApiClient {
     return mockPalace.realms
   }
 
-  private search(args: { query?: string; limit?: number }): SearchResult[] {
+  private search(args: { query?: string; limit?: number; status?: string; tags?: string[] }): SearchResult[] {
     const q = (args.query || '').toLowerCase()
-    const all = q
+    const filterStatus = args.status ?? null
+    const filterTags = args.tags && args.tags.length > 0 ? args.tags : null
+    let all = q
       ? mockPalace.cells.filter(c => c.title.toLowerCase().includes(q) || c.content.toLowerCase().includes(q))
       : mockPalace.cells
+    if (filterStatus) {
+      all = all.filter(c => (c.status ?? 'committed') === filterStatus)
+    }
+    if (filterTags) {
+      all = all.filter(c => filterTags.some(t => (c.tags ?? []).includes(t)))
+    }
     const SIGS = ['semantic', 'keyword', 'recency', 'importance', 'popularity', 'graph_proximity'] as const
     return all.slice(0, args.limit ?? 100).map((cell, i) => {
       const base = Math.max(0.1, 0.92 - i * 0.05)
@@ -105,6 +115,103 @@ export class MockApiClient implements ApiClient {
       }
       return { ...cell, ...scores, score_total: base, confidence_level: base > 0.6 ? 'HIGH' : 'MEDIUM' } as SearchResult
     })
+  }
+
+  private filterDocCells(args: {
+    realm?: string; status?: string; tags?: string[]
+    signal?: string; topic?: string
+  }): Cell[] {
+    const realm = args.realm ?? 'documents'
+    const status = args.status ?? null
+    const filterTags = args.tags && args.tags.length > 0 ? args.tags : null
+    let cells = mockPalace.cells.filter(c => c.realm === realm)
+    if (status) cells = cells.filter(c => (c.status ?? 'committed') === status)
+    if (filterTags) cells = cells.filter(c => filterTags.some(t => (c.tags ?? []).includes(t)))
+    if (args.signal) cells = cells.filter(c => c.signal === args.signal)
+    if (args.topic) cells = cells.filter(c => c.topic === args.topic)
+    return cells
+  }
+
+  private listDocuments(args: {
+    realm?: string; status?: string; tags?: string[]
+    signal?: string; topic?: string
+    sort?: string; offset?: number; limit?: number
+  }): DocumentRow[] {
+    let cells = this.filterDocCells(args)
+    // Sort
+    const sort = args.sort ?? 'newest'
+    if (sort === 'newest') {
+      cells = [...cells].sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? ''))
+    } else if (sort === 'oldest') {
+      cells = [...cells].sort((a, b) => (a.created_at ?? '').localeCompare(b.created_at ?? ''))
+    } else if (sort === 'title') {
+      cells = [...cells].sort((a, b) => (a.title ?? '').localeCompare(b.title ?? ''))
+    }
+    // Paginate
+    const offset = args.offset ?? 0
+    const limit = args.limit ?? 50
+    cells = cells.slice(offset, offset + limit)
+    // Map to DocumentRow — synthesize attachment fields for ~half the docs
+    return cells.map((c, i): DocumentRow => {
+      const hasAtt = i % 2 === 0
+      return {
+        id: c.id,
+        realm: c.realm,
+        signal: c.signal ?? null,
+        topic: c.topic ?? null,
+        summary: c.summary ?? null,
+        tags: c.tags ?? [],
+        importance: c.importance,
+        status: c.status ?? 'committed',
+        created_at: c.created_at,
+        attachment_id: hasAtt ? 'att-' + c.id : null,
+        mime_type: hasAtt ? 'application/pdf' : null,
+        page_count: hasAtt ? (1 + (c.id.charCodeAt(c.id.length - 1) % 4)) : null,
+        has_thumbnail: hasAtt,
+      }
+    })
+  }
+
+  private facetCount(args: {
+    realm?: string; status?: string; tags?: string[]
+    signal?: string; topic?: string; fields?: string[]
+  }): Record<string, FacetValue[]> {
+    const cells = this.filterDocCells(args)
+    const fields = args.fields ?? ['tag', 'status']
+    const result: Record<string, FacetValue[]> = {}
+    for (const field of fields) {
+      const counts = new Map<string, number>()
+      if (field === 'tag') {
+        for (const c of cells) {
+          for (const t of (c.tags ?? [])) {
+            counts.set(t, (counts.get(t) ?? 0) + 1)
+          }
+        }
+      } else if (field === 'status') {
+        for (const c of cells) {
+          const s = c.status ?? 'committed'
+          counts.set(s, (counts.get(s) ?? 0) + 1)
+        }
+      } else if (field === 'realm') {
+        for (const c of cells) {
+          counts.set(c.realm, (counts.get(c.realm) ?? 0) + 1)
+        }
+      } else if (field === 'signal') {
+        for (const c of cells) {
+          const s = c.signal ?? '(none)'
+          counts.set(s, (counts.get(s) ?? 0) + 1)
+        }
+      } else if (field === 'year') {
+        for (const c of cells) {
+          const y = (c.created_at ?? '').slice(0, 4) || 'unknown'
+          counts.set(y, (counts.get(y) ?? 0) + 1)
+        }
+      }
+      result[field] = [...counts.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .map(([value, count]) => ({ value, count }))
+    }
+    return result
   }
 
   private getCell(args: { cell_id: string }): Cell {

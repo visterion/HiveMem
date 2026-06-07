@@ -131,3 +131,22 @@ export interface PendingApproval {
   created_by: string | null
   created_at: string
 }
+
+export interface DocumentRow {
+  id: string
+  realm: string
+  signal: string | null
+  topic: string | null
+  summary: string | null
+  tags: string[]
+  importance: number
+  status: string
+  created_at: string
+  attachment_id?: string | null
+  mime_type?: string | null
+  page_count?: number | null
+  has_thumbnail?: boolean
+}
+
+export interface FacetValue { value: string; count: number }
+export type FacetCounts = Record<string, FacetValue[]>
