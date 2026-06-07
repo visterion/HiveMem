@@ -45,10 +45,7 @@ public class AddTagsToolHandler implements ToolHandler {
     @Override
     public Object call(AuthPrincipal principal, JsonNode arguments) {
         UUID cellId = WriteArgumentParser.requiredUuid(arguments, "cell_id");
-        List<String> tags = WriteArgumentParser.optionalTextList(arguments, "tags");
-        if (tags == null || tags.isEmpty()) {
-            throw new IllegalArgumentException("Missing tags");
-        }
+        List<String> tags = WriteArgumentParser.requiredTextList(arguments, "tags");
         return writeToolService.addTags(principal, cellId, tags);
     }
 }

@@ -117,6 +117,28 @@ public final class WriteArgumentParser {
         return List.copyOf(ids);
     }
 
+    public static List<String> requiredTextList(JsonNode arguments, String field) {
+        JsonNode node = requiredNode(arguments, field);
+        if (!node.isArray()) {
+            throw new IllegalArgumentException("Invalid " + field);
+        }
+        List<String> values = new ArrayList<>(node.size());
+        for (JsonNode item : node) {
+            if (!item.isTextual()) {
+                throw new IllegalArgumentException("Invalid " + field);
+            }
+            String text = item.asText();
+            if (text.isBlank()) {
+                throw new IllegalArgumentException("Invalid " + field);
+            }
+            values.add(text);
+        }
+        if (values.isEmpty()) {
+            throw new IllegalArgumentException("Missing " + field);
+        }
+        return List.copyOf(values);
+    }
+
     public static List<String> optionalTextList(JsonNode arguments, String field) {
         if (arguments == null || !arguments.has(field) || arguments.get(field).isNull()) {
             return null;

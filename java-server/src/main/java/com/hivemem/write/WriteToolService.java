@@ -337,13 +337,14 @@ public class WriteToolService {
     public Map<String, Object> bulkTag(AuthPrincipal principal, List<UUID> cellIds, List<String> addTagsList, List<String> removeTagsList) {
         int updated = 0;
         for (UUID id : cellIds) {
+            int rowsAffected = 0;
             if (addTagsList != null && !addTagsList.isEmpty()) {
-                writeToolRepository.addTags(id, addTagsList);
+                rowsAffected = Math.max(rowsAffected, writeToolRepository.addTags(id, addTagsList));
             }
             if (removeTagsList != null && !removeTagsList.isEmpty()) {
-                writeToolRepository.removeTags(id, removeTagsList);
+                rowsAffected = Math.max(rowsAffected, writeToolRepository.removeTags(id, removeTagsList));
             }
-            updated++;
+            updated += rowsAffected;
         }
         Map<String, Object> opPayload = new java.util.LinkedHashMap<>();
         opPayload.put("cell_ids", cellIds.stream().map(UUID::toString).toList());
@@ -362,14 +363,6 @@ public class WriteToolService {
             reclassifyCell(principal, id, realm, topic, signal);
             updated++;
         }
-        Map<String, Object> opPayload = new java.util.LinkedHashMap<>();
-        opPayload.put("cell_ids", cellIds.stream().map(UUID::toString).toList());
-        opPayload.put("realm", realm);
-        opPayload.put("signal", signal);
-        opPayload.put("topic", topic);
-        opPayload.put("agent_id", principal.name());
-        UUID opId = opLogWriter.append("bulk_reclassify", opPayload);
-        pushDispatcher.dispatch(opId);
         return Map.of("updated", updated);
     }
 

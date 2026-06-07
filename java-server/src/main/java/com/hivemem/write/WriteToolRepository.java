@@ -100,7 +100,10 @@ public class WriteToolRepository {
         String[] tagArray = tags == null ? new String[0] : tags.toArray(String[]::new);
         return dslContext.execute("""
                 UPDATE cells
-                SET tags = array(SELECT t FROM unnest(tags) t WHERE t <> ALL(?::text[]))
+                SET tags = CASE
+                    WHEN tags IS NULL THEN NULL
+                    ELSE array(SELECT t FROM unnest(tags) t WHERE t <> ALL(?::text[]))
+                END
                 WHERE id = ?
                   AND valid_until IS NULL
                 """, tagArray, id);

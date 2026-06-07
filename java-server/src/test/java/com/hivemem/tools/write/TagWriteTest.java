@@ -98,6 +98,23 @@ class TagWriteTest {
         return row.get("id", UUID.class);
     }
 
+    /** Seeds a cell with a NULL tags column (no tags array at all). */
+    private UUID seedCellNullTags(String content, String realm) {
+        org.jooq.Record row = dslContext.fetchOne("""
+                INSERT INTO cells (content, realm, signal, topic, status, created_by, valid_from)
+                VALUES (?, ?, 'facts', 'test', 'committed', 'test', now())
+                RETURNING id
+                """, content, realm);
+        return row.get("id", UUID.class);
+    }
+
+    private boolean cellTagsIsNull(UUID id) {
+        org.jooq.Record row = dslContext.fetchOne(
+                "SELECT tags FROM cells WHERE id = ? AND valid_until IS NULL", id);
+        if (row == null) return false;
+        return row.get("tags", String[].class) == null;
+    }
+
     private String[] getCellTags(UUID id) {
         org.jooq.Record row = dslContext.fetchOne(
                 "SELECT tags FROM cells WHERE id = ? AND valid_until IS NULL", id);
@@ -207,7 +224,7 @@ class TagWriteTest {
     }
 
     @Test
-    void writerAddTagsCommittedImmediately() throws Exception {
+    void addTagsDoesNotChangeStatus() throws Exception {
         UUID cellId = seedCell("writer commit test", "test-realm");
 
         callToolContent("writer-token", "add_tags", Map.of(
@@ -263,6 +280,49 @@ class TagWriteTest {
 
         assertThat(getCellTags(cell1)).contains("new-tag");
         assertThat(getCellTags(cell2)).contains("new-tag");
+    }
+
+    @Test
+    void removeTagsOnNullTagsCellLeavesTagsNull() throws Exception {
+        // C-1: a cell with NULL tags must remain NULL after remove_tags, not become {}
+        UUID cellId = seedCellNullTags("null-tags cell", "test-realm");
+
+        JsonNode result = callToolContent("writer-token", "remove_tags", Map.of(
+                "cell_id", cellId.toString(),
+                "tags", List.of("nonexistent-tag")
+        ));
+
+        assertThat(result.path("updated").asInt()).isEqualTo(1);
+        assertThat(cellTagsIsNull(cellId))
+                .as("tags column must remain NULL, not be converted to {}")
+                .isTrue();
+    }
+
+    @Test
+    void bulkReclassifyTwoCells() throws Exception {
+        // I-3: bulk_reclassify must update all cells and report the correct count
+        UUID cell1 = seedCell("reclassify cell 1", "old-realm");
+        UUID cell2 = seedCell("reclassify cell 2", "old-realm");
+
+        JsonNode result = callToolContent("writer-token", "bulk_reclassify", Map.of(
+                "cell_ids", List.of(cell1.toString(), cell2.toString()),
+                "realm", "new-realm",
+                "signal", "events",
+                "topic", "new-topic"
+        ));
+
+        assertThat(result.path("updated").asInt()).isEqualTo(2);
+
+        // Verify both cells reflect the reclassification
+        JsonNode c1 = callToolContent("writer-token", "get_cell", Map.of("cell_id", cell1.toString()));
+        assertThat(c1.path("realm").asText()).isEqualTo("new-realm");
+        assertThat(c1.path("signal").asText()).isEqualTo("events");
+        assertThat(c1.path("topic").asText()).isEqualTo("new-topic");
+
+        JsonNode c2 = callToolContent("writer-token", "get_cell", Map.of("cell_id", cell2.toString()));
+        assertThat(c2.path("realm").asText()).isEqualTo("new-realm");
+        assertThat(c2.path("signal").asText()).isEqualTo("events");
+        assertThat(c2.path("topic").asText()).isEqualTo("new-topic");
     }
 
     @TestConfiguration(proxyBeanMethods = false)
