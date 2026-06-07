@@ -29,7 +29,7 @@ HiveMem exposes **36 MCP tools** across search, knowledge graph, progressive sum
 6. `traverse`: Recursive graph traversal.
 7. `quick_facts`: Context-aware facts about an entity.
 8. `time_machine`: Historical knowledge retrieval.
-9. `wake_up`: Initial session context.
+9. `wake_up`: Initial session context. The response includes a `default_language` field (the backend-configured default UI language, set via `HIVEMEM_LANGUAGE`, default `de`).
 10. `history`: Trace revisions of a cell or fact (type-dispatched, recursive CTE depth cap 100).
 11. `pending_approvals`: List work awaiting review.
 12. `get_blueprint`: Narrative realm overviews.

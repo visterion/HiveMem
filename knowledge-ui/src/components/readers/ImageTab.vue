@@ -1,10 +1,12 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 defineProps<{ url: string }>()
+const { t } = useI18n()
 </script>
 
 <template>
   <div class="image-tab">
-    <img :src="url" alt="Original document" />
+    <img :src="url" :alt="t('reader.imageAlt')" />
   </div>
 </template>
 

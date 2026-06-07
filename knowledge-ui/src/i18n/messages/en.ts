@@ -44,7 +44,15 @@ export default {
     insight: 'INSIGHT',
     text: 'TEXT',
     tunnels: 'TUNNELS ({n})',
-    facts: 'FACTS ({n})'
+    facts: 'FACTS ({n})',
+    eml: {
+      from: 'From:',
+      to: 'To:',
+      subject: 'Subject:',
+      date: 'Date:',
+      parseError: 'Failed to parse email.'
+    },
+    imageAlt: 'Original document'
   },
   queen: {
     activity: 'Queen activity',
