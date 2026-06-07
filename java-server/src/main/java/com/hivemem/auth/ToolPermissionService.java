@@ -38,7 +38,8 @@ public class ToolPermissionService {
             "list_attachments",
             "get_attachment_info",
             "facet_count",
-            "list_documents"
+            "list_documents",
+            "list_saved_searches"
     );
 
     private static final Set<String> WRITE_TOOLS = tools(
@@ -56,7 +57,9 @@ public class ToolPermissionService {
             "register_agent",
             "diary_write",
             "update_blueprint",
-            "upload_attachment"
+            "upload_attachment",
+            "save_search",
+            "delete_saved_search"
     );
 
     private static final Set<String> ADMIN_TOOLS = tools(

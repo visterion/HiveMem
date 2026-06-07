@@ -73,11 +73,11 @@ class ParitySmokeTest {
     @Test
     void adminPermissionSetContainsFullExpectedToolCount() {
         assertThat(toolPermissionService.allowedTools(AuthRole.ADMIN))
-                .hasSize(38)
+                .hasSize(41)
                 .contains("search", "add_cell", "approve_pending",
                         "health", "reclassify_cell", "queen_runs", "queen_run_detail",
                         "upload_attachment", "list_attachments", "get_attachment_info",
-                        "facet_count")
+                        "facet_count", "save_search", "list_saved_searches", "delete_saved_search")
                 .doesNotContain("hivemem_check_duplicate", "hivemem_check_contradiction",
                         "add_peer", "remove_peer", "list_peers");
     }
@@ -85,10 +85,10 @@ class ParitySmokeTest {
     @Test
     void writerPermissionSetContainsReadAndWriteToolsButNoAdminTools() {
         assertThat(toolPermissionService.allowedTools(AuthRole.WRITER))
-                .hasSize(34)
+                .hasSize(37)
                 .contains("search", "add_cell", "revise_cell", "reclassify_cell",
                         "upload_attachment", "list_attachments", "get_attachment_info",
-                        "facet_count")
+                        "facet_count", "save_search", "list_saved_searches", "delete_saved_search")
                 .doesNotContain("health", "approve_pending", "hivemem_check_duplicate",
                         "hivemem_check_contradiction");
     }
