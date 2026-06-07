@@ -19,7 +19,7 @@ public final class CellFieldSelection {
             "valid_from", "valid_until"
     );
     private static final List<String> GET_CELL_ONLY_FIELDS = List.of(
-            "parent_id", "actionability", "status", "created_by", "attachments"
+            "parent_id", "actionability", "status", "created_by", "attachments", "confidence"
     );
     private static final List<String> SEARCH_DEFAULTS = List.of("summary", "tags", "importance", "created_at");
     private static final List<String> GET_CELL_DEFAULTS = List.of(

@@ -371,6 +371,81 @@ class ReadToolIntegrationTest {
     }
 
     @Test
+    void getCellWithConfidenceIncludeReturnsAvgActiveFacts() throws Exception {
+        UUID cellId = UUID.fromString("00000000-0000-0000-0000-000000000116");
+        insertDrawer(
+                cellId, null, "Doc with two facts",
+                "documents", "facts", "invoices", "system",
+                3, "confidence test cell", null,
+                "archive", "committed", "writer",
+                OffsetDateTime.parse("2026-04-03T12:00:00Z"),
+                OffsetDateTime.parse("2026-04-03T12:00:00Z"),
+                null
+        );
+        // fact 1: confidence 0.8, active (no valid_until)
+        insertFact(UUID.fromString("00000000-0000-0000-0000-000000000f01"), null,
+                "doc", "has", "vendor_a", 0.8f, cellId,
+                "committed", "system",
+                OffsetDateTime.parse("2026-04-03T12:00:00Z"),
+                OffsetDateTime.parse("2026-04-03T12:00:00Z"), null);
+        // fact 2: confidence 0.6, active
+        insertFact(UUID.fromString("00000000-0000-0000-0000-000000000f02"), null,
+                "doc", "has", "vendor_b", 0.6f, cellId,
+                "committed", "system",
+                OffsetDateTime.parse("2026-04-03T12:00:00Z"),
+                OffsetDateTime.parse("2026-04-03T12:00:00Z"), null);
+
+        JsonNode content = callToolContent("get_cell", Map.of(
+                "cell_id", cellId.toString(),
+                "include", List.of("confidence")
+        ));
+        assertThat(content.path("id").asText()).isEqualTo(cellId.toString());
+        assertThat(content.has("confidence")).isTrue();
+        double conf = content.path("confidence").asDouble();
+        assertThat(conf).isCloseTo(0.7, org.assertj.core.data.Offset.offset(0.001));
+    }
+
+    @Test
+    void getCellWithConfidenceIncludeReturnsNullWhenNoActiveFacts() throws Exception {
+        UUID cellId = UUID.fromString("00000000-0000-0000-0000-000000000117");
+        insertDrawer(
+                cellId, null, "Doc with no facts",
+                "documents", "facts", "invoices", "system",
+                1, "no-facts cell", null,
+                "archive", "committed", "writer",
+                OffsetDateTime.parse("2026-04-03T12:00:00Z"),
+                OffsetDateTime.parse("2026-04-03T12:00:00Z"),
+                null
+        );
+
+        JsonNode content = callToolContent("get_cell", Map.of(
+                "cell_id", cellId.toString(),
+                "include", List.of("confidence")
+        ));
+        assertThat(content.path("id").asText()).isEqualTo(cellId.toString());
+        assertThat(content.has("confidence")).isTrue();
+        assertThat(content.path("confidence").isNull()).isTrue();
+    }
+
+    @Test
+    void getCellWithoutConfidenceIncludeDoesNotExposeConfidenceField() throws Exception {
+        UUID cellId = UUID.fromString("00000000-0000-0000-0000-000000000118");
+        insertDrawer(
+                cellId, null, "Doc - confidence not requested",
+                "documents", "facts", "invoices", "system",
+                1, "hidden confidence cell", null,
+                "archive", "committed", "writer",
+                OffsetDateTime.parse("2026-04-03T12:00:00Z"),
+                OffsetDateTime.parse("2026-04-03T12:00:00Z"),
+                null
+        );
+
+        // Default get_cell (no explicit include) should NOT contain confidence
+        JsonNode content = callToolContent("get_cell", Map.of("cell_id", cellId.toString()));
+        assertThat(content.has("confidence")).isFalse();
+    }
+
+    @Test
     void getDrawerToolReturnsNullWhenDrawerDoesNotExist() throws Exception {
         JsonNode content = callToolContent("get_cell", Map.of("cell_id", "00000000-0000-0000-0000-000000000999"));
         assertThat(content.isNull()).isTrue();

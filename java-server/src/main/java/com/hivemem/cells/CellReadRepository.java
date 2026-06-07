@@ -553,6 +553,11 @@ public class CellReadRepository {
         projections.add(timestampProjection("created_at", selection));
         projections.add(timestampProjection("valid_from", selection));
         projections.add(timestampProjection("valid_until", selection));
+        if (selection.includes("confidence")) {
+            projections.add("(SELECT AVG(confidence)::real FROM active_facts WHERE source_id = cells.id) AS confidence");
+        } else {
+            projections.add("NULL::real AS confidence");
+        }
 
         String sql = "SELECT " + String.join(", ", projections) + " FROM cells WHERE id = ?";
         Record row = dslContext.fetchOne(sql, cellId);
@@ -606,6 +611,10 @@ public class CellReadRepository {
         }
         if (selection.includes("valid_until")) {
             values.put("valid_until", timestampValue(row, "valid_until"));
+        }
+        if (selection.includes("confidence")) {
+            Number conf = row.get("confidence", Number.class);
+            values.put("confidence", conf == null ? null : conf.doubleValue());
         }
         return Optional.of(selection.project(values));
     }

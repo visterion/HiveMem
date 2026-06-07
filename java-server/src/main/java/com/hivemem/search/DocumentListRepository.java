@@ -57,10 +57,13 @@ public class DocumentListRepository {
                 "SELECT c.id, c.realm, c.signal, c.topic, c.summary, c.tags, c.importance, " +
                 "c.status, c.created_at, " +
                 "a.id AS attachment_id, a.mime_type, a.page_count, " +
-                "(a.s3_key_thumbnail IS NOT NULL) AS has_thumbnail " +
+                "(a.s3_key_thumbnail IS NOT NULL) AS has_thumbnail, " +
+                "f.avg_confidence AS confidence " +
                 "FROM cells c " +
                 "LEFT JOIN cell_attachments ca ON ca.cell_id = c.id AND ca.extraction_source = true " +
                 "LEFT JOIN attachments a ON a.id = ca.attachment_id AND a.deleted_at IS NULL " +
+                "LEFT JOIN LATERAL (SELECT AVG(confidence)::real AS avg_confidence " +
+                "    FROM active_facts WHERE source_id = c.id) f ON true " +
                 "WHERE c.valid_until IS NULL " +
                 "AND c.realm = ? " +
                 "AND c.status = COALESCE(?, 'committed') " +
@@ -136,6 +139,10 @@ public class DocumentListRepository {
         // has_thumbnail: the SQL expression returns Boolean
         Boolean hasThumbnail = row.get("has_thumbnail", Boolean.class);
         m.put("has_thumbnail", hasThumbnail != null && hasThumbnail);
+
+        // confidence: nullable average of active fact confidences for this document
+        Number confidence = row.get("confidence", Number.class);
+        m.put("confidence", confidence == null ? null : confidence.doubleValue());
 
         return m;
     }

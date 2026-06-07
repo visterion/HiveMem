@@ -72,9 +72,14 @@ class ListDocumentsTest {
     static final UUID ID_PENDING     = UUID.fromString("00000000-0000-0000-0002-000000000004");
     static final UUID ID_ATTACHMENT  = UUID.fromString("00000000-0000-0000-0002-000000000010");
     static final UUID ID_CELL_ATT    = UUID.fromString("00000000-0000-0000-0002-000000000011");
+    // Confidence test cell
+    static final UUID ID_CONF_DOC    = UUID.fromString("00000000-0000-0000-0002-000000000020");
+    static final UUID ID_FACT_HIGH   = UUID.fromString("00000000-0000-0000-0002-000000000021");
+    static final UUID ID_FACT_LOW    = UUID.fromString("00000000-0000-0000-0002-000000000022");
 
     @BeforeEach
     void seed() {
+        dslContext.execute("DELETE FROM facts WHERE id IN (?, ?)", ID_FACT_HIGH, ID_FACT_LOW);
         dslContext.execute("DELETE FROM cell_attachments WHERE cell_id IN (?, ?, ?, ?)",
                 ID_CONTRACT_1, ID_CONTRACT_2, ID_INVOICE, ID_PENDING);
         dslContext.execute("DELETE FROM attachments WHERE id = ?", ID_ATTACHMENT);
@@ -180,5 +185,49 @@ class ListDocumentsTest {
         // offset=1 skips the newest (invoice), returns contract_2
         assertThat(rows).hasSize(1);
         assertThat(rows.get(0).get("id")).isEqualTo(ID_CONTRACT_2.toString());
+    }
+
+    @Test
+    void docWithTwoActiveFactsHasConfidenceAverage() {
+        // Insert a document cell in ldocs
+        dslContext.execute(
+                "INSERT INTO cells (id, content, realm, signal, topic, tags, status, valid_from, created_at) " +
+                "VALUES (?, 'confidence test doc', 'ldocs', 'facts', 'confidence', ?, 'committed', now(), '2026-03-01'::date)",
+                ID_CONF_DOC, new String[]{"conf-test"});
+
+        // Insert 2 active facts with source_id = ID_CONF_DOC and confidences 0.8 and 0.6
+        dslContext.execute(
+                "INSERT INTO facts (id, subject, predicate, object, confidence, source_id, status, created_by, " +
+                "created_at, valid_from) VALUES (?, 'doc', 'has', 'vendor_a', 0.8, ?, 'committed', 'system', now(), now())",
+                ID_FACT_HIGH, ID_CONF_DOC);
+        dslContext.execute(
+                "INSERT INTO facts (id, subject, predicate, object, confidence, source_id, status, created_by, " +
+                "created_at, valid_from) VALUES (?, 'doc', 'has', 'vendor_b', 0.6, ?, 'committed', 'system', now(), now())",
+                ID_FACT_LOW, ID_CONF_DOC);
+
+        List<Map<String, Object>> rows = documentListRepository.listDocuments(
+                "ldocs", null, null, List.of("conf-test"), "committed", "newest", 50, 0);
+
+        assertThat(rows).hasSize(1);
+        Map<String, Object> row = rows.get(0);
+        assertThat(row.get("id")).isEqualTo(ID_CONF_DOC.toString());
+        Double confidence = (Double) row.get("confidence");
+        assertThat(confidence).isNotNull();
+        assertThat(confidence).isCloseTo(0.7, org.assertj.core.data.Offset.offset(0.001));
+    }
+
+    @Test
+    void docWithNoActiveFactsHasNullConfidence() {
+        // contract_1 has no facts seeded — confidence must be null
+        List<Map<String, Object>> rows = documentListRepository.listDocuments(
+                "ldocs", null, null, List.of("contract"), "committed", "newest", 50, 0);
+
+        // Both contract_1 and contract_2 have no facts; both should have null confidence
+        assertThat(rows).hasSizeGreaterThanOrEqualTo(1);
+        for (Map<String, Object> row : rows) {
+            assertThat(row.get("confidence"))
+                    .as("confidence for doc %s with no active facts should be null", row.get("id"))
+                    .isNull();
+        }
     }
 }
