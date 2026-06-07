@@ -14,7 +14,7 @@ import java.util.Map;
 import java.util.UUID;
 
 @Component
-@Order(43)
+@Order(42)
 public class RemoveTagsToolHandler implements ToolHandler {
 
     private final WriteToolService writeToolService;

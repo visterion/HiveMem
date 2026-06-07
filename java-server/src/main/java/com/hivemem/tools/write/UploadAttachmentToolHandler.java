@@ -15,7 +15,7 @@ import java.util.Map;
 import java.util.UUID;
 
 @Component
-@Order(37)
+@Order(38)
 public class UploadAttachmentToolHandler implements ToolHandler {
 
     private final AttachmentService service;

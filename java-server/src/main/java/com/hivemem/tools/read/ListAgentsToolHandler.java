@@ -7,7 +7,7 @@ import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 @Component
-@Order(14)
+@Order(13)
 public class ListAgentsToolHandler implements ToolHandler {
 
     private final ReadToolService readToolService;

@@ -13,7 +13,7 @@ import java.util.Map;
 import java.util.UUID;
 
 @Component
-@Order(32)
+@Order(34)
 public class AddTunnelToolHandler implements ToolHandler {
 
     private final WriteToolService writeToolService;

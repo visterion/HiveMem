@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.Map;
 
 @Component
-@Order(42)
+@Order(22)
 public class QueenRunDetailToolHandler implements ToolHandler {
 
     private final QueenRunsService service;

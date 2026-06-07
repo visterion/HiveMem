@@ -10,7 +10,7 @@ import org.springframework.stereotype.Component;
 import java.util.Map;
 
 @Component
-@Order(6)
+@Order(5)
 public class ListToolHandler implements ToolHandler {
 
     private final ReadToolService readToolService;

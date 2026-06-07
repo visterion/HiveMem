@@ -12,7 +12,7 @@ import java.util.Map;
 import java.util.UUID;
 
 @Component
-@Order(36)
+@Order(19)
 public class ListAttachmentsToolHandler implements ToolHandler {
 
     private final AttachmentRepository repo;

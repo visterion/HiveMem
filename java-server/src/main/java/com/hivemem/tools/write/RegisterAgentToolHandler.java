@@ -12,7 +12,7 @@ import org.springframework.stereotype.Component;
 import java.util.Map;
 
 @Component
-@Order(29)
+@Order(31)
 public class RegisterAgentToolHandler implements ToolHandler {
 
     private final WriteToolService writeToolService;

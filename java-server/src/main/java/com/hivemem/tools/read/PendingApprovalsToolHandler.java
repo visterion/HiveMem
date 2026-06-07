@@ -7,7 +7,7 @@ import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 @Component
-@Order(12)
+@Order(11)
 public class PendingApprovalsToolHandler implements ToolHandler {
 
     private final ReadToolService readToolService;

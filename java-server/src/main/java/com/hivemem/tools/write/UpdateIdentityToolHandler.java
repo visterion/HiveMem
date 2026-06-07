@@ -12,7 +12,7 @@ import org.springframework.stereotype.Component;
 import java.util.Map;
 
 @Component
-@Order(26)
+@Order(28)
 public class UpdateIdentityToolHandler implements ToolHandler {
 
     private final WriteToolService writeToolService;

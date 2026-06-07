@@ -14,7 +14,7 @@ import java.util.Map;
 import java.util.UUID;
 
 @Component
-@Order(44)
+@Order(43)
 public class BulkTagToolHandler implements ToolHandler {
 
     private final WriteToolService writeToolService;

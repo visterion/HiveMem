@@ -8,7 +8,7 @@ import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 @Component
-@Order(42)
+@Order(45)
 public class HealthToolHandler implements ToolHandler {
 
     private final AdminToolService adminToolService;

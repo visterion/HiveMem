@@ -13,7 +13,7 @@ import java.util.Map;
 import java.util.UUID;
 
 @Component
-@Order(25)
+@Order(27)
 public class ReviseFactToolHandler implements ToolHandler {
 
     private final WriteToolService writeToolService;

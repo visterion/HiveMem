@@ -14,7 +14,7 @@ import java.util.List;
 import java.util.Map;
 
 @Component
-@Order(20)
+@Order(23)
 public class AddCellToolHandler implements ToolHandler {
 
     private final WriteToolService writeToolService;

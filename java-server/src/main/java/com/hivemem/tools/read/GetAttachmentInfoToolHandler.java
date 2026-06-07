@@ -15,7 +15,7 @@ import java.util.Map;
 import java.util.UUID;
 
 @Component
-@Order(37)
+@Order(20)
 public class GetAttachmentInfoToolHandler implements ToolHandler {
 
     private final AttachmentRepository repo;

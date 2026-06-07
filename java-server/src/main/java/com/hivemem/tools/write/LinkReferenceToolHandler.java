@@ -13,7 +13,7 @@ import java.util.Map;
 import java.util.UUID;
 
 @Component
-@Order(28)
+@Order(30)
 public class LinkReferenceToolHandler implements ToolHandler {
 
     private final WriteToolService writeToolService;

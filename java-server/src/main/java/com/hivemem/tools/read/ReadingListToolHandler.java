@@ -10,7 +10,7 @@ import org.springframework.stereotype.Component;
 import java.util.Map;
 
 @Component
-@Order(13)
+@Order(12)
 public class ReadingListToolHandler implements ToolHandler {
     private static final int DEFAULT_LIMIT = 20;
     private static final int MAX_LIMIT = 100;

@@ -165,7 +165,7 @@ class SecurityIntegrationTest {
         }
 
         @Test
-        void writerSees37Tools() throws Exception {
+        void writerSees41Tools() throws Exception {
             insertToken("writer-user", "writer-token", "writer");
 
             mockMvc.perform(post("/mcp")

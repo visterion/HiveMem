@@ -10,7 +10,7 @@ import org.springframework.stereotype.Component;
 import java.util.Map;
 
 @Component
-@Order(15)
+@Order(14)
 public class DiaryReadToolHandler implements ToolHandler {
     private static final int DEFAULT_LIMIT = 10;
     private static final int MAX_LIMIT = 100;

@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.Map;
 
 @Component
-@Order(11)
+@Order(10)
 public class FacetCountToolHandler implements ToolHandler {
 
     private static final int DEFAULT_LIMIT = 10;

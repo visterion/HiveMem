@@ -11,7 +11,7 @@ import org.springframework.stereotype.Component;
 import java.util.Map;
 
 @Component
-@Order(18)
+@Order(17)
 public class ListSavedSearchesToolHandler implements ToolHandler {
 
     private final SavedSearchRepository savedSearchRepository;

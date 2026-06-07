@@ -11,7 +11,7 @@ import java.util.Map;
 import java.util.UUID;
 
 @Component
-@Order(7)
+@Order(6)
 public class TraverseToolHandler implements ToolHandler {
     private static final int DEFAULT_MAX_DEPTH = 2;
     private static final int MAX_MAX_DEPTH = 100;

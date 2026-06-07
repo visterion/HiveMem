@@ -12,7 +12,7 @@ import org.springframework.stereotype.Component;
 import java.util.Map;
 
 @Component
-@Order(21)
+@Order(24)
 public class KgAddToolHandler implements ToolHandler {
 
     private static final double DEFAULT_CONFIDENCE = 1.0d;

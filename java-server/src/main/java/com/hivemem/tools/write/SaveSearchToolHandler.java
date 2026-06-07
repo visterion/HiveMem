@@ -13,7 +13,7 @@ import org.springframework.stereotype.Component;
 import java.util.Map;
 
 @Component
-@Order(40)
+@Order(39)
 public class SaveSearchToolHandler implements ToolHandler {
 
     private final SavedSearchRepository savedSearchRepository;

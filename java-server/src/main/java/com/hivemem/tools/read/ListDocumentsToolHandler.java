@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.Map;
 
 @Component
-@Order(17)
+@Order(16)
 public class ListDocumentsToolHandler implements ToolHandler {
 
     private static final int DEFAULT_LIMIT = 50;

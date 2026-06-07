@@ -11,7 +11,7 @@ import java.time.OffsetDateTime;
 import java.util.Map;
 
 @Component
-@Order(9)
+@Order(8)
 public class TimeMachineToolHandler implements ToolHandler {
     private static final int DEFAULT_LIMIT = 100;
     private static final int MAX_LIMIT = 100;

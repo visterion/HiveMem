@@ -10,7 +10,7 @@ import org.springframework.stereotype.Component;
 import java.util.Map;
 
 @Component
-@Order(16)
+@Order(15)
 public class GetBlueprintToolHandler implements ToolHandler {
 
     private final ReadToolService readToolService;

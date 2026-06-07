@@ -11,7 +11,7 @@ import java.util.Map;
 import java.util.UUID;
 
 @Component
-@Order(10)
+@Order(9)
 public class HistoryToolHandler implements ToolHandler {
 
     private final ReadToolService readToolService;
