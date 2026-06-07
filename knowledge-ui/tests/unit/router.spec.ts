@@ -23,4 +23,11 @@ describe('router', () => {
     expect(byName.search.components).toHaveProperty('panel')
     expect(byName.search.components).toHaveProperty('inspector')
   })
+
+  it('scans route maps default + panel components and is not full', () => {
+    const byName = Object.fromEntries(router.getRoutes().map(r => [r.name, r]))
+    expect(byName.scans.components).toHaveProperty('default')
+    expect(byName.scans.components).toHaveProperty('panel')
+    expect(byName.scans.meta.full).toBeFalsy()
+  })
 })

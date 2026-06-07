@@ -1,6 +1,6 @@
-import { createRouter, createWebHistory } from 'vue-router'
+import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 
-const routes = [
+const routes: RouteRecordRaw[] = [
   { path: '/', name: 'search', meta: { title: 'nav.search', icon: 'search', full: false },
     components: {
       default: () => import('./components/knowledge/KnowledgeReader.vue'),
@@ -15,8 +15,11 @@ const routes = [
     meta: { title: 'nav.realms', icon: 'realms', full: false } },
   { path: '/photos', name: 'photos', component: () => import('./pages/ComingSoon.vue'),
     meta: { title: 'nav.photos', icon: 'photos', full: true } },
-  { path: '/scans', name: 'scans', component: () => import('./pages/ComingSoon.vue'),
-    meta: { title: 'nav.scans', icon: 'scans', full: true } },
+  { path: '/scans', name: 'scans', meta: { title: 'nav.scans', icon: 'scans', full: false },
+    components: {
+      default: () => import('./components/scans/ScansResults.vue'),
+      panel: () => import('./components/scans/ScansPanel.vue'),
+    } },
   { path: '/timemachine', name: 'timemachine', component: () => import('./pages/ComingSoon.vue'),
     meta: { title: 'nav.timemachine', icon: 'history', full: true } },
   { path: '/queen', name: 'queen', component: () => import('./pages/QueenRoute.vue'),

@@ -87,4 +87,15 @@ export default {
   knowledge: {
     selectCell: 'Zelle wählen', selectCellSub: 'Wähle links einen Treffer, um ihn zu lesen.', results: 'Treffer', allTypes: 'Alle',
   },
+  scans: {
+    savedViews: 'Gespeicherte Ansichten', allDocs: 'Alle Dokumente', items: 'Dokumente', searchDocs: 'Dokumente durchsuchen…',
+    docType: 'Dokumenttyp', correspondent: 'Korrespondent', year: 'Jahr', date: 'Datum', amount: 'Betrag',
+    selected: 'ausgewählt', bulkTag: 'Taggen', bulkRealm: 'Realm', bulkApprove: 'Freigeben', bulkExport: 'Export',
+    clearFilter: 'Filter löschen', extracted: 'Extrahierte Felder', subtype: 'Subtyp', archiveNo: 'Archiv-Nr.',
+    confidence: 'Konfidenz', states: 'Status-Pipeline', ocrText: 'OCR-Text', similar: 'Ähnliche', sameCorr: 'Gleicher Korrespondent',
+    page: 'Seite', of: 'von', approve: 'Freigeben', editMeta: 'Metadaten bearbeiten', openOriginal: 'Original öffnen',
+    noResults: 'Keine Dokumente gefunden', noResultsSub: 'Passe Suche oder Filter an.',
+    newestFirst: 'Neueste zuerst', oldestFirst: 'Älteste zuerst', titleAZ: 'Titel A–Z', sortBy: 'Sortieren',
+    pending: 'Offen', committed: 'Freigegeben',
+  },
 }

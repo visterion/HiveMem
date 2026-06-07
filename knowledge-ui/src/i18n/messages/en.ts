@@ -87,4 +87,15 @@ export default {
   knowledge: {
     selectCell: 'Select a cell', selectCellSub: 'Pick a result on the left to read it.', results: 'results', allTypes: 'All',
   },
+  scans: {
+    savedViews: 'Saved views', allDocs: 'All documents', items: 'documents', searchDocs: 'Search documents…',
+    docType: 'Document type', correspondent: 'Correspondent', year: 'Year', date: 'Date', amount: 'Amount',
+    selected: 'selected', bulkTag: 'Tag', bulkRealm: 'Realm', bulkApprove: 'Approve', bulkExport: 'Export',
+    clearFilter: 'Clear filters', extracted: 'Extracted fields', subtype: 'Subtype', archiveNo: 'Archive no.',
+    confidence: 'Confidence', states: 'Status pipeline', ocrText: 'OCR text', similar: 'Similar', sameCorr: 'Same correspondent',
+    page: 'Page', of: 'of', approve: 'Approve', editMeta: 'Edit metadata', openOriginal: 'Open original',
+    noResults: 'No documents found', noResultsSub: 'Adjust your search or filters.',
+    newestFirst: 'Newest first', oldestFirst: 'Oldest first', titleAZ: 'Title A–Z', sortBy: 'Sort',
+    pending: 'Pending', committed: 'Committed',
+  },
 }
