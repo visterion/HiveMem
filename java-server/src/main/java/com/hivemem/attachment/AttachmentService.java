@@ -11,6 +11,9 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.pdmodel.PDDocument;
+
 import java.io.*;
 import java.nio.file.*;
 import java.security.*;
@@ -118,8 +121,9 @@ public class AttachmentService {
                     uploadThumbnail(s3KeyThumbnail, thumbnail, thumbnailMimeType);
                 }
 
+                Integer pageCount = pdfPageCount(tempFile, mimeType);
                 attachmentRow = repo.insert(hash, mimeType, originalFilename, sizeBytes,
-                        s3KeyOriginal, s3KeyThumbnail, uploadedBy);
+                        s3KeyOriginal, s3KeyThumbnail, uploadedBy, pageCount);
             }
 
             // 6. Create extraction Cell
@@ -203,6 +207,16 @@ public class AttachmentService {
             seaweedFs.uploadBytes(key, bytes, mimeType != null ? mimeType : "image/jpeg");
         } catch (Exception e) {
             log.warn("Thumbnail upload failed for key {}: {}", key, e.getMessage());
+        }
+    }
+
+    static Integer pdfPageCount(Path file, String mimeType) {
+        if (!"application/pdf".equals(mimeType)) return null;
+        try (PDDocument doc = Loader.loadPDF(file.toFile())) {
+            return doc.getNumberOfPages();
+        } catch (Exception e) {
+            log.warn("Could not determine PDF page count for {}: {}", file, e.getMessage());
+            return null;
         }
     }
 

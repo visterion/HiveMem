@@ -137,6 +137,7 @@ public class ReadToolService {
                         a.put("mime_type", row.get("mime_type"));
                         a.put("original_filename", row.get("original_filename"));
                         a.put("size_bytes", row.get("size_bytes"));
+                        a.put("page_count", row.get("page_count"));
                         return a;
                     })
                     .toList();

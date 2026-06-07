@@ -18,7 +18,7 @@ public class AttachmentRepository {
     public Optional<Map<String, Object>> findByHash(String fileHash) {
         Record row = dsl.fetchOne(
                 "SELECT id, file_hash, mime_type, original_filename, size_bytes, " +
-                "s3_key_original, s3_key_thumbnail, uploaded_by, created_at " +
+                "s3_key_original, s3_key_thumbnail, uploaded_by, created_at, page_count " +
                 "FROM attachments WHERE file_hash = ?",
                 fileHash);
         return Optional.ofNullable(row).map(this::toMap);
@@ -27,7 +27,7 @@ public class AttachmentRepository {
     public Optional<Map<String, Object>> findById(UUID id) {
         Record row = dsl.fetchOne(
                 "SELECT id, file_hash, mime_type, original_filename, size_bytes, " +
-                "s3_key_original, s3_key_thumbnail, uploaded_by, created_at " +
+                "s3_key_original, s3_key_thumbnail, uploaded_by, created_at, page_count " +
                 "FROM attachments WHERE id = ? AND deleted_at IS NULL",
                 id);
         return Optional.ofNullable(row).map(this::toMap);
@@ -36,17 +36,17 @@ public class AttachmentRepository {
     public Map<String, Object> insert(
             String fileHash, String mimeType, String originalFilename,
             long sizeBytes, String s3KeyOriginal, String s3KeyThumbnail,
-            String uploadedBy) {
+            String uploadedBy, Integer pageCount) {
         Record row = dsl.fetchOne("""
                 INSERT INTO attachments
                   (file_hash, mime_type, original_filename, size_bytes,
-                   s3_key_original, s3_key_thumbnail, uploaded_by)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                   s3_key_original, s3_key_thumbnail, uploaded_by, page_count)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 RETURNING id, file_hash, mime_type, original_filename, size_bytes,
-                          s3_key_original, s3_key_thumbnail, uploaded_by, created_at
+                          s3_key_original, s3_key_thumbnail, uploaded_by, created_at, page_count
                 """,
                 fileHash, mimeType, originalFilename, sizeBytes,
-                s3KeyOriginal, s3KeyThumbnail, uploadedBy);
+                s3KeyOriginal, s3KeyThumbnail, uploadedBy, pageCount);
         return Optional.ofNullable(row)
                 .map(this::toMap)
                 .orElseThrow(() -> new NoSuchElementException("Attachment insert returned no row for hash: " + fileHash));
@@ -60,7 +60,7 @@ public class AttachmentRepository {
                     s3_key_thumbnail = COALESCE(s3_key_thumbnail, ?)
                 WHERE id = ?
                 RETURNING id, file_hash, mime_type, original_filename, size_bytes,
-                          s3_key_original, s3_key_thumbnail, uploaded_by, created_at
+                          s3_key_original, s3_key_thumbnail, uploaded_by, created_at, page_count
                 """, s3KeyThumbnail, id);
         return Optional.ofNullable(row)
                 .map(this::toMap)
@@ -79,7 +79,7 @@ public class AttachmentRepository {
         return dsl.fetch("""
                 SELECT a.id, a.file_hash, a.mime_type, a.original_filename,
                        a.size_bytes, a.s3_key_original, a.s3_key_thumbnail,
-                       a.uploaded_by, a.created_at
+                       a.uploaded_by, a.created_at, a.page_count
                 FROM attachments a
                 JOIN cell_attachments ca ON ca.attachment_id = a.id
                 WHERE ca.cell_id = ? AND a.deleted_at IS NULL
@@ -165,6 +165,11 @@ public class AttachmentRepository {
         m.put("s3_key_thumbnail", row.get("s3_key_thumbnail", String.class));
         m.put("uploaded_by", row.get("uploaded_by", String.class));
         m.put("created_at", row.get("created_at").toString());
+        try {
+            m.put("page_count", row.get("page_count", Integer.class));
+        } catch (Exception ignored) {
+            // queries that don't SELECT page_count won't have it in the record
+        }
         return m;
     }
 }
