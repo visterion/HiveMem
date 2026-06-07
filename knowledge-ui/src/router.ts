@@ -20,7 +20,7 @@ const routes = [
   { path: '/settings', name: 'settings', component: () => import('./pages/SettingsRoute.vue'),
     meta: { title: 'nav.settings', icon: 'settings', full: false } },
   { path: '/cinema', name: 'cinema', component: () => import('./pages/CinemaRoute.vue'),
-    meta: { title: 'nav.hive', icon: 'cinema', full: true } },
+    meta: { title: 'nav.cinema', icon: 'cinema', full: true } },
 ]
 
 export const router = createRouter({ history: createWebHistory(), routes })

@@ -30,8 +30,9 @@
 /* density + hive motif (tweaks) */
 :root[data-density="compact"] { --panel-w:320px; }
 :root[data-density="comfy"]   { --panel-w:400px; }
+.hexfield { opacity:.5; }
 :root[data-hive="subtil"] .hexfield { display:none; }
-:root[data-hive="stark"] .hexfield { opacity:1.6; }
+:root[data-hive="stark"] .hexfield { opacity:1; }
 
 * { box-sizing:border-box; }
 html, body { margin:0; height:100%; }

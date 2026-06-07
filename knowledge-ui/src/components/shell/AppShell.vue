@@ -15,6 +15,7 @@ const full = computed(() => !!route.meta?.full)
     <IconRail />
     <div class="view-wrap">
       <div :class="['stage', { full }]">
+        <div class="hexfield" />
         <TopBar />
         <div class="stage-body">
           <router-view />

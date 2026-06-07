@@ -18,7 +18,7 @@ onMounted(() => { if (!canvas.loaded) canvas.loadTopLevel() })
 
 <template>
   <div class="cinema">
-    <v-btn class="back" icon="mdi-arrow-left" @click="router.push('/')" />
+    <v-btn class="back" icon="mdi-arrow-left" @click="router.push({ name: 'hive' })" />
     <Suspense>
       <TresCanvas clear-color="#000010" :dpr="1.5">
         <TresPerspectiveCamera :position="[0, 0, 14]" />

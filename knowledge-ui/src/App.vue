@@ -1,15 +1,22 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useTheme } from 'vuetify'
 import { useAuthStore } from './stores/auth'
 import { useUiStore } from './stores/ui'
 import { useCanvasStore } from './stores/canvas'
+import { usePrefsStore } from './stores/prefs'
 import AppShell from './components/shell/AppShell.vue'
 
 const { t } = useI18n()
 const auth = useAuthStore()
 const ui = useUiStore()
 const canvas = useCanvasStore()
+const prefs = usePrefsStore()
+const vTheme = useTheme()
+watch(() => prefs.theme, (v) => {
+  vTheme.global.name.value = v === 'light' ? 'hivememLight' : 'hivememDark'
+}, { immediate: true })
 
 onMounted(async () => {
   try { await auth.init() } catch { /* httpClient redirects to /login on 401 */ }

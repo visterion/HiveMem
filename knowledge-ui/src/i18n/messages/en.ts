@@ -10,7 +10,7 @@ export default {
   },
   nav: {
     search: 'Search', hive: 'Hive', graph: 'Graph', realms: 'Realms', photos: 'Photos',
-    scans: 'Scans', timemachine: 'Time Machine', queen: 'Queen', settings: 'Settings',
+    scans: 'Scans', timemachine: 'Time Machine', queen: 'Queen', settings: 'Settings', cinema: 'Cinema',
   },
   tweaks: {
     appearance: 'Appearance', layout: 'Layout', theme: 'Theme', language: 'Language',

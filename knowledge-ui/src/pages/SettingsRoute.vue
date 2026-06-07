@@ -11,7 +11,7 @@ const rows = ref<Row[]>([
 ])
 </script>
 <template>
-  <div class="stage-body">
+  <div class="page">
     <div style="padding:34px 44px;max-width:720px;margin:0 auto">
       <div class="h-eyebrow">Souveränität &amp; Routing</div>
       <h1 class="h-display" style="font-size:28px;margin:4px 0 22px">Souveränität &amp; Routing</h1>
@@ -23,7 +23,7 @@ const rows = ref<Row[]>([
   </div>
 </template>
 <style scoped>
-.stage-body { flex:1; overflow-y:auto; min-height:0; }
+.page { flex:1; overflow-y:auto; min-height:0; height:100%; }
 .h-eyebrow { font-size:11.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--text-2); font-weight:600; }
 .h-display { font-family:var(--font-display); font-weight:600; letter-spacing:-.02em; color:var(--text-0); }
 .setting-row { display:flex; align-items:center; justify-content:space-between; padding:16px 0; border-bottom:1px solid var(--line); }
