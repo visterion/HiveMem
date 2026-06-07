@@ -119,7 +119,8 @@ class ReadToolIntegrationTest {
                 .andExpect(jsonPath("$.result.tools[12].name").value("list_agents"))
                 .andExpect(jsonPath("$.result.tools[13].name").value("diary_read"))
                 .andExpect(jsonPath("$.result.tools[14].name").value("get_blueprint"))
-                .andExpect(jsonPath("$.result.tools[15].name").value("wake_up"));
+                .andExpect(jsonPath("$.result.tools[15].name").value("list_documents"))
+                .andExpect(jsonPath("$.result.tools[16].name").value("wake_up"));
     }
 
     @Test

@@ -7,6 +7,7 @@ import com.hivemem.embedding.EmbeddingClient;
 import com.hivemem.search.CellSearchRepository;
 import com.hivemem.search.ConfidenceLevel;
 import com.hivemem.search.ConfidenceThresholds;
+import com.hivemem.search.DocumentListRepository;
 import com.hivemem.search.FacetRepository;
 import com.hivemem.search.KgSearchRepository;
 import com.hivemem.search.SearchWeightsProperties;
@@ -36,6 +37,7 @@ public class ReadToolService {
     private final ConfidenceThresholds confidenceThresholds;
     private final AttachmentRepository attachmentRepository;
     private final FacetRepository facetRepository;
+    private final DocumentListRepository documentListRepository;
 
     public ReadToolService(
             CellReadRepository cellReadRepository,
@@ -46,7 +48,8 @@ public class ReadToolService {
             SearchWeightsProperties searchWeightsProperties,
             ConfidenceThresholds confidenceThresholds,
             AttachmentRepository attachmentRepository,
-            FacetRepository facetRepository
+            FacetRepository facetRepository,
+            DocumentListRepository documentListRepository
     ) {
         this.cellReadRepository = cellReadRepository;
         this.kgSearchRepository = kgSearchRepository;
@@ -57,6 +60,7 @@ public class ReadToolService {
         this.confidenceThresholds = confidenceThresholds;
         this.attachmentRepository = attachmentRepository;
         this.facetRepository = facetRepository;
+        this.documentListRepository = documentListRepository;
     }
 
     public Map<String, Object> status() {
@@ -198,6 +202,23 @@ public class ReadToolService {
             int limit
     ) {
         return facetRepository.facetCounts(realm, signal, topic, tags, status, query, fields, limit);
+    }
+
+    public List<Map<String, Object>> listDocuments(
+            String realm,
+            String signal,
+            String topic,
+            List<String> tags,
+            String status,
+            String sort,
+            int limit,
+            int offset
+    ) {
+        String effectiveRealm = (realm == null || realm.isBlank()) ? "documents" : realm;
+        int clampedLimit = Math.min(Math.max(limit, 1), 200);
+        int clampedOffset = Math.max(offset, 0);
+        return documentListRepository.listDocuments(
+                effectiveRealm, signal, topic, tags, status, sort, clampedLimit, clampedOffset);
     }
 
     public Map<String, Object> wakeUp() {

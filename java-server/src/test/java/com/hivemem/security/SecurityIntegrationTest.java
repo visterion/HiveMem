@@ -161,7 +161,7 @@ class SecurityIntegrationTest {
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(TOOLS_LIST_REQUEST))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.result.tools", hasSize(18)));
+                    .andExpect(jsonPath("$.result.tools", hasSize(19)));
         }
 
         @Test
@@ -173,7 +173,7 @@ class SecurityIntegrationTest {
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(TOOLS_LIST_REQUEST))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.result.tools", hasSize(33)));
+                    .andExpect(jsonPath("$.result.tools", hasSize(34)));
         }
 
         @Test
@@ -185,7 +185,7 @@ class SecurityIntegrationTest {
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(TOOLS_LIST_REQUEST))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.result.tools", hasSize(33)));
+                    .andExpect(jsonPath("$.result.tools", hasSize(34)));
         }
 
         @Test
@@ -197,7 +197,7 @@ class SecurityIntegrationTest {
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(TOOLS_LIST_REQUEST))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.result.tools", hasSize(37)));
+                    .andExpect(jsonPath("$.result.tools", hasSize(38)));
         }
     }
 
