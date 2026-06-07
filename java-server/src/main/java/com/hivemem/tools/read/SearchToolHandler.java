@@ -52,7 +52,7 @@ public class SearchToolHandler implements ToolHandler {
                 .optionalNumber("weight_importance", "Importance weight (default 0.15)")
                 .optionalNumber("weight_popularity", "Popularity weight (default 0.15)")
                 .optionalNumber("weight_graph_proximity", "Graph proximity weight (default 0.10)")
-                .optionalStringList("tags", "Filter to cells that have ALL of the given tags")
+                .optionalStringList("tags", "Filter to cells that have ANY of the given tags (array overlap)")
                 .optionalString("status", "Restrict to a status: committed | pending | rejected (default committed)")
                 .build();
     }
