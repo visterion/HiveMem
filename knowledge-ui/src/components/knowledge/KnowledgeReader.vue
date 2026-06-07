@@ -41,7 +41,7 @@ function openDoc() { if (cellStore.currentId) reader.openReader(cellStore.curren
         <span class="chip honey">★ {{ cell.importance }}</span>
         <button v-if="hasDoc" class="chip honey doc" @click="openDoc">{{ t('reader.openReader') }}</button>
       </div>
-      <h1 class="h-display title">{{ (cell as any).title || cellLabel(cell) }}</h1>
+      <h1 class="h-display title">{{ cellLabel(cell) }}</h1>
       <div class="tabs">
         <button v-for="[k, lbl] in tabs" :key="k" :class="['tab', { on: tab === k }]" @click="tab = (k as any)">{{ lbl }}</button>
       </div>

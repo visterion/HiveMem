@@ -27,7 +27,8 @@ describe('KnowledgeReader', () => {
   it('renders the title and switches between the 4 layers', async () => {
     seed()
     const w = mount(KnowledgeReader, { global: { plugins: [i18n] } })
-    expect(w.text()).toContain('Mietvertrag')
+    // Header uses cellLabel() (summary first), NOT the unreliable title field
+    expect(w.find('.title').text()).toContain('Eine Zusammenfassung')
     expect(w.text()).toContain('Eine Zusammenfassung') // summary tab default
     const tabs = w.findAll('.tab')
     expect(tabs.length).toBe(4)
