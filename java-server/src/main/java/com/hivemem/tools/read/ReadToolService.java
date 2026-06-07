@@ -7,6 +7,7 @@ import com.hivemem.embedding.EmbeddingClient;
 import com.hivemem.search.CellSearchRepository;
 import com.hivemem.search.ConfidenceLevel;
 import com.hivemem.search.ConfidenceThresholds;
+import com.hivemem.search.FacetRepository;
 import com.hivemem.search.KgSearchRepository;
 import com.hivemem.search.SearchWeightsProperties;
 import com.hivemem.write.AdminToolService;
@@ -34,6 +35,7 @@ public class ReadToolService {
     private final SearchWeightsProperties searchWeightsProperties;
     private final ConfidenceThresholds confidenceThresholds;
     private final AttachmentRepository attachmentRepository;
+    private final FacetRepository facetRepository;
 
     public ReadToolService(
             CellReadRepository cellReadRepository,
@@ -43,7 +45,8 @@ public class ReadToolService {
             AdminToolService adminToolService,
             SearchWeightsProperties searchWeightsProperties,
             ConfidenceThresholds confidenceThresholds,
-            AttachmentRepository attachmentRepository
+            AttachmentRepository attachmentRepository,
+            FacetRepository facetRepository
     ) {
         this.cellReadRepository = cellReadRepository;
         this.kgSearchRepository = kgSearchRepository;
@@ -53,6 +56,7 @@ public class ReadToolService {
         this.searchWeightsProperties = searchWeightsProperties;
         this.confidenceThresholds = confidenceThresholds;
         this.attachmentRepository = attachmentRepository;
+        this.facetRepository = facetRepository;
     }
 
     public Map<String, Object> status() {
@@ -180,6 +184,19 @@ public class ReadToolService {
 
     public List<Map<String, Object>> getBlueprint(String realm) {
         return cellReadRepository.getBlueprint(realm);
+    }
+
+    public Map<String, List<Map<String, Object>>> facetCount(
+            String realm,
+            String signal,
+            String topic,
+            List<String> tags,
+            String status,
+            String query,
+            List<String> fields,
+            int limit
+    ) {
+        return facetRepository.facetCounts(realm, signal, topic, tags, status, query, fields, limit);
     }
 
     public Map<String, Object> wakeUp() {
