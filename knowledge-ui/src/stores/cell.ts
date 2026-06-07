@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { useApi } from '../api/useApi'
-import type { Cell, Fact, Tunnel } from '../api/types'
+import type { Cell, Fact, Tunnel, SearchResult } from '../api/types'
 
 type CellEntry = { cell: Cell; facts: Fact[]; tunnels: Tunnel[] }
 
@@ -18,7 +18,8 @@ export const useCellStore = defineStore('cell', {
   state: () => ({
     cache: new Map<string, CellEntry>(),
     currentId: null as string | null,
-    loading: false
+    loading: false,
+    selectedScores: null as SearchResult | null
   }),
   getters: {
     current(s): CellEntry | null {
@@ -45,6 +46,7 @@ export const useCellStore = defineStore('cell', {
     // carries content/summary. Avoids a second get_cell that would drop those fields,
     // so the panel shows a real label and the OCR/parsed content immediately.
     async open(cell: Cell) {
+      this.selectedScores = (cell && 'score_total' in cell) ? (cell as unknown as SearchResult) : null
       this.loading = true
       try {
         const id = cell.id
@@ -75,6 +77,6 @@ export const useCellStore = defineStore('cell', {
         if (first) this.cache.delete(first)
       }
     },
-    clear() { this.currentId = null }
+    clear() { this.currentId = null; this.selectedScores = null }
   }
 })
