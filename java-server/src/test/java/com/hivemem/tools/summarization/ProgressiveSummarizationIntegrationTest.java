@@ -12,6 +12,7 @@ import com.hivemem.search.SearchWeightsProperties;
 import com.hivemem.tools.read.CellFieldSelection;
 import com.hivemem.attachment.AttachmentRepository;
 import com.hivemem.search.FacetRepository;
+import com.hivemem.search.DocumentListRepository;
 import com.hivemem.tools.read.ReadToolService;
 import com.hivemem.write.AdminToolRepository;
 import com.hivemem.write.AdminToolService;
@@ -576,6 +577,37 @@ class ProgressiveSummarizationIntegrationTest {
     }
 
     // -----------------------------------------------------------------------
+    // 6. Regression: long content without a summary enters the needs_summary
+    //    branch in WriteToolService.addCell. The repository returns the cell id
+    //    as a String, so the service must not cast it directly to UUID
+    //    (previously a ClassCastException at WriteToolService.addCell line 97).
+    // -----------------------------------------------------------------------
+
+    @Test
+    void longContentWithoutSummaryInsertsAndTagsNeedsSummary() {
+        // > 500 chars (NeedsSummaryDecider.DEFAULT_THRESHOLD_CHARS) with no summary
+        // forces the needs_summary branch that crashed on the UUID cast.
+        String longContent = "Milestone documentation entry number ".repeat(20);
+        assertThat(longContent.length()).isGreaterThan(500);
+
+        Map<String, Object> created = writeToolService.addCell(
+                WRITER,
+                longContent,
+                "engineering", "events", "milestone",
+                null, List.of(), null,
+                null,            // no summary -> needsSummary == true
+                List.of(), null, null,
+                "committed", BASE_TIME, null
+        );
+
+        assertThat(created.get("inserted")).isEqualTo(true);
+        assertThat(created.get("id")).isNotNull();
+
+        Map<String, Object> drawer = getCellFull(UUID.fromString((String) created.get("id")));
+        assertThat((List<String>) drawer.get("tags")).contains("needs_summary");
+    }
+
+    // -----------------------------------------------------------------------
     // Test application and config
     // -----------------------------------------------------------------------
 
@@ -592,6 +624,7 @@ class ProgressiveSummarizationIntegrationTest {
             CellReadRepository.class,
             CellSearchRepository.class,
             KgSearchRepository.class,
+            DocumentListRepository.class,
             AdminToolRepository.class,
             OpLogWriter.class,
             InstanceConfig.class,

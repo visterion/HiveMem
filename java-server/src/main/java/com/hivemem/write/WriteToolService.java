@@ -94,7 +94,10 @@ public class WriteToolService {
         );
 
         if (NeedsSummaryDecider.needsSummary(content, summary)) {
-            UUID cellId = (UUID) inserted.get("id");
+            // The repository returns the cell id as a String (uuidValue → toString),
+            // so parse it rather than casting directly to UUID.
+            Object idValue = inserted.get("id");
+            UUID cellId = idValue == null ? null : UUID.fromString(idValue.toString());
             if (cellId != null) {
                 writeToolRepository.tagNeedsSummary(cellId);
                 eventPublisher.publishEvent(new CellNeedsSummaryEvent(cellId));
