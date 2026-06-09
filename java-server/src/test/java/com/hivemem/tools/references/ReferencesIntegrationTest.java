@@ -9,7 +9,10 @@ import com.hivemem.search.CellSearchRepository;
 import com.hivemem.search.KgSearchRepository;
 import com.hivemem.search.ConfidenceThresholds;
 import com.hivemem.search.SearchWeightsProperties;
+import com.hivemem.attachment.AttachmentRepository;
+import com.hivemem.search.FacetRepository;
 import com.hivemem.tools.read.ReadToolService;
+import com.hivemem.search.DocumentListRepository;
 import com.hivemem.write.WriteToolRepository;
 import com.hivemem.write.AdminToolRepository;
 import com.hivemem.write.AdminToolService;
@@ -237,6 +240,9 @@ class ReferencesIntegrationTest {
             WriteToolService.class,
             WriteToolRepository.class,
             ReadToolService.class,
+            DocumentListRepository.class,
+            FacetRepository.class,
+            AttachmentRepository.class,
             SearchWeightsProperties.class,
             ConfidenceThresholds.class,
             CellReadRepository.class,

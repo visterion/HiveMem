@@ -36,7 +36,9 @@ public class ToolPermissionService {
             "list_agents",
             "diary_read",
             "list_attachments",
-            "get_attachment_info"
+            "get_attachment_info",
+            "facet_count",
+            "list_documents"
     );
 
     private static final Set<String> WRITE_TOOLS = tools(

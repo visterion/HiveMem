@@ -57,7 +57,7 @@ class QueenWebhookServiceTest {
         when(cells.findCell(eq(self), any())).thenReturn(Optional.of(Map.of("content", "abc")));
         when(embedding.encodeQuery("abc")).thenReturn(List.of(0.1f, 0.2f));
         when(search.rankedSearch(any(), anyString(), isNull(), isNull(), isNull(), anyInt(),
-                anyDouble(), anyDouble(), anyDouble(), anyDouble(), anyDouble(), anyDouble()))
+                anyDouble(), anyDouble(), anyDouble(), anyDouble(), anyDouble(), anyDouble(), any(), any()))
                 .thenReturn(List.of(
                         new RankedRow(self, "self", "selfsum", "work", "facts", "t", List.of(), 3,
                                 OffsetDateTime.now(), OffsetDateTime.now(), null,

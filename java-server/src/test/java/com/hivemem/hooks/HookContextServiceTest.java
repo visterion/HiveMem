@@ -49,7 +49,7 @@ class HookContextServiceTest {
     @Test
     void emptyWhenAllResultsBelowThreshold() {
         when(repo.rankedSearch(any(), anyString(), any(), any(), any(), anyInt(),
-                anyDouble(), anyDouble(), anyDouble(), anyDouble(), anyDouble(), anyDouble()))
+                anyDouble(), anyDouble(), anyDouble(), anyDouble(), anyDouble(), anyDouble(), any(), any()))
                 .thenReturn(List.of(weakRow()));
         ContextResult result = svc.contextFor(new HookContextRequest(
                 "UserPromptSubmit", "What was the plan for project X phase 3?", "s1", null));
@@ -60,7 +60,7 @@ class HookContextServiceTest {
     @Test
     void formatsResultsAboveThreshold() {
         when(repo.rankedSearch(any(), anyString(), any(), any(), any(), anyInt(),
-                anyDouble(), anyDouble(), anyDouble(), anyDouble(), anyDouble(), anyDouble()))
+                anyDouble(), anyDouble(), anyDouble(), anyDouble(), anyDouble(), anyDouble(), any(), any()))
                 .thenReturn(List.of(strongRow()));
         ContextResult result = svc.contextFor(new HookContextRequest(
                 "UserPromptSubmit", "What was the plan for project X phase 3?", "s1", null));
@@ -72,7 +72,7 @@ class HookContextServiceTest {
     void dedupSuppressesRepeatedInjection() {
         RankedRow row = strongRow();
         when(repo.rankedSearch(any(), anyString(), any(), any(), any(), anyInt(),
-                anyDouble(), anyDouble(), anyDouble(), anyDouble(), anyDouble(), anyDouble()))
+                anyDouble(), anyDouble(), anyDouble(), anyDouble(), anyDouble(), anyDouble(), any(), any()))
                 .thenReturn(List.of(row));
         var req = new HookContextRequest(
                 "UserPromptSubmit", "What was the plan for project X phase 3?", "s1", null);
@@ -93,7 +93,7 @@ class HookContextServiceTest {
     @Test
     void searchExceptionReturnsEmpty() {
         when(repo.rankedSearch(any(), anyString(), any(), any(), any(), anyInt(),
-                anyDouble(), anyDouble(), anyDouble(), anyDouble(), anyDouble(), anyDouble()))
+                anyDouble(), anyDouble(), anyDouble(), anyDouble(), anyDouble(), anyDouble(), any(), any()))
                 .thenThrow(new RuntimeException("db down"));
         ContextResult result = svc.contextFor(new HookContextRequest(
                 "UserPromptSubmit", "What was the plan for project X phase 3?", "s1", null));
@@ -106,7 +106,7 @@ class HookContextServiceTest {
                 List.of(), 3, OffsetDateTime.now(), null, null,
                 0.1, 0.9, 0.0, 0.0, 0.0, 0.0, 0.70);
         when(repo.rankedSearch(any(), anyString(), any(), any(), any(), anyInt(),
-                anyDouble(), anyDouble(), anyDouble(), anyDouble(), anyDouble(), anyDouble()))
+                anyDouble(), anyDouble(), anyDouble(), anyDouble(), anyDouble(), anyDouble(), any(), any()))
                 .thenReturn(List.of(keywordOnly));
         ContextResult result = svc.contextFor(new HookContextRequest(
                 "UserPromptSubmit", "What was the plan for project X phase 3?", "s1", null));
@@ -116,7 +116,7 @@ class HookContextServiceTest {
     @Test
     void usesHookPrecisionWeightsNotSearchWeights() {
         when(repo.rankedSearch(any(), anyString(), any(), any(), any(), anyInt(),
-                eq(0.70), eq(0.10), anyDouble(), anyDouble(), anyDouble(), anyDouble()))
+                eq(0.70), eq(0.10), anyDouble(), anyDouble(), anyDouble(), anyDouble(), any(), any()))
                 .thenReturn(List.of(strongRow()));
 
         ContextResult result = svc.contextFor(new HookContextRequest(
@@ -136,7 +136,7 @@ class HookContextServiceTest {
                 List.of("ansible"), 1, OffsetDateTime.now(), null, null,
                 0.85, 0.0, 0.0, 0.0, 0.0, 0.0, 0.85);
         when(repo.rankedSearch(any(), anyString(), any(), any(), any(), anyInt(),
-                anyDouble(), anyDouble(), anyDouble(), anyDouble(), anyDouble(), anyDouble()))
+                anyDouble(), anyDouble(), anyDouble(), anyDouble(), anyDouble(), anyDouble(), any(), any()))
                 .thenReturn(List.of(otherCell, projectCell));
 
         ContextResult result = svc.contextFor(new HookContextRequest(
@@ -153,7 +153,7 @@ class HookContextServiceTest {
     void citedSourcesContainAttributionForReturnedCell() {
         RankedRow row = strongRow();
         when(repo.rankedSearch(any(), anyString(), any(), any(), any(), anyInt(),
-                anyDouble(), anyDouble(), anyDouble(), anyDouble(), anyDouble(), anyDouble()))
+                anyDouble(), anyDouble(), anyDouble(), anyDouble(), anyDouble(), anyDouble(), any(), any()))
                 .thenReturn(List.of(row));
         CellSearchRepository.RefRow refRow =
                 new CellSearchRepository.RefRow(row.id(), "My Source", "https://src.com");

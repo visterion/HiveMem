@@ -3,6 +3,7 @@ import { nextTick, reactive } from 'vue'
 import { mount } from '@vue/test-utils'
 import { createRoot } from 'react-dom/client'
 import GraphRoute from '../../src/pages/GraphRoute.vue'
+import { i18n } from '../../src/i18n'
 
 const loadTopLevel = vi.fn()
 const loadCell = vi.fn()
@@ -79,6 +80,7 @@ vi.mock('../../src/composables/keybindings', () => ({
 
 describe('graph route', () => {
   beforeEach(() => {
+    i18n.global.locale.value = 'de'
     canvasState.loaded = false
     canvasState.cells = []
     canvasState.tunnels = []
@@ -94,6 +96,7 @@ describe('graph route', () => {
   it('renders the graph skeleton and triggers the initial load', async () => {
     const wrapper = mount(GraphRoute, {
       global: {
+        plugins: [i18n],
         stubs: {
           IconRail: true,
           SearchPanel: true,
@@ -107,9 +110,10 @@ describe('graph route', () => {
     })
     await nextTick()
 
-    expect(wrapper.find('aside.panel').exists()).toBe(true)
-    expect(wrapper.find('header strong').text()).toBe('Search')
-    expect(wrapper.find('main.graph-slot').text()).toBe('Loading…')
+    // Rail/side-panels are owned by AppShell now (SP-A); this route is just the
+    // graph stage. While the canvas store is not loaded it shows the loading splash.
+    expect(wrapper.find('.graph-stage').exists()).toBe(true)
+    expect(wrapper.find('.splash').text()).toBe('Lädt…')
     expect(createRoot).not.toHaveBeenCalled()
     expect(loadTopLevel).toHaveBeenCalledTimes(1)
   })
@@ -118,6 +122,7 @@ describe('graph route', () => {
     canvasState.loaded = true
     const wrapper = mount(GraphRoute, {
       global: {
+        plugins: [i18n],
         stubs: {
           IconRail: true,
           SearchPanel: true,
@@ -165,6 +170,7 @@ describe('graph route', () => {
 
     const wrapper = mount(GraphRoute, {
       global: {
+        plugins: [i18n],
         stubs: {
           IconRail: true,
           SearchPanel: true,

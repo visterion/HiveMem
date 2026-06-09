@@ -1,15 +1,28 @@
 import { defineStore } from 'pinia'
 import { useApi } from '../api/useApi'
-import type { Cell, Fact, Tunnel } from '../api/types'
+import type { Cell, Fact, Tunnel, SearchResult } from '../api/types'
+
+type CellEntry = { cell: Cell; facts: Fact[]; tunnels: Tunnel[] }
+
+// Cells have no `title`; facts are keyed on a human subject. Use summary/topic when
+// available, and skip the lookup for bare cells (e.g. scans) so a blank subject never
+// triggers a "Missing subject" error. Module-level helper to keep the store's `this`
+// typing simple (no cross-action calls).
+async function fetchFacts(cell: Cell): Promise<Fact[]> {
+  const subject = cell.summary?.trim() || cell.topic?.trim()
+  if (!subject) return []
+  return useApi().call<Fact[]>('quick_facts', { subject }).catch(() => [])
+}
 
 export const useCellStore = defineStore('cell', {
   state: () => ({
-    cache: new Map<string, { cell: Cell; facts: Fact[]; tunnels: Tunnel[] }>(),
+    cache: new Map<string, CellEntry>(),
     currentId: null as string | null,
-    loading: false
+    loading: false,
+    selectedScores: null as SearchResult | null
   }),
   getters: {
-    current(s): { cell: Cell; facts: Fact[]; tunnels: Tunnel[] } | null {
+    current(s): CellEntry | null {
       return s.currentId ? s.cache.get(s.currentId) ?? null : null
     }
   },
@@ -23,16 +36,47 @@ export const useCellStore = defineStore('cell', {
             api.call<Cell>('get_cell', { cell_id: id }),
             api.call<Tunnel[]>('traverse', { cell_id: id, depth: 1 }).catch(() => [])
           ])
-          const facts = await api.call<Fact[]>('quick_facts', { subject: cell.title }).catch(() => [])
-          this.cache.set(id, { cell, facts, tunnels })
-          if (this.cache.size > 50) {
-            const first = this.cache.keys().next().value
-            if (first) this.cache.delete(first)
-          }
+          const facts = await fetchFacts(cell)
+          this.store(id, { cell, facts, tunnels })
         }
         this.currentId = id
       } finally { this.loading = false }
     },
-    clear() { this.currentId = null }
+    // Open a cell using an already-fetched (rich) row — e.g. a search result that
+    // carries content/summary. Avoids a second get_cell that would drop those fields,
+    // so the panel shows a real label and the OCR/parsed content immediately.
+    async open(cell: Cell) {
+      this.selectedScores = (cell && 'score_total' in cell) ? (cell as unknown as SearchResult) : null
+      this.loading = true
+      try {
+        const id = cell.id
+        if (!this.cache.has(id)) {
+          const tunnels = await useApi().call<Tunnel[]>('traverse', { cell_id: id, depth: 1 }).catch(() => [])
+          const facts = await fetchFacts(cell)
+          this.store(id, { cell, facts, tunnels })
+        }
+        this.currentId = id
+      } finally { this.loading = false }
+    },
+    // Attachments are not carried by search rows (used by open()) and are only
+    // needed when the reader is shown, so fetch them lazily via get_cell (which
+    // returns them by default) and merge into the cached entry. Idempotent.
+    async ensureAttachments(id: string) {
+      const entry = this.cache.get(id)
+      if (!entry || entry.cell.attachments !== undefined) return
+      const full = await useApi().call<Cell>('get_cell', { cell_id: id }).catch(() => null)
+      const current = this.cache.get(id)
+      if (full && current) {
+        current.cell.attachments = full.attachments ?? []
+      }
+    },
+    store(id: string, entry: CellEntry) {
+      this.cache.set(id, entry)
+      if (this.cache.size > 50) {
+        const first = this.cache.keys().next().value
+        if (first) this.cache.delete(first)
+      }
+    },
+    clear() { this.currentId = null; this.selectedScores = null }
   }
 })

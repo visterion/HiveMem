@@ -94,7 +94,10 @@ public class WriteToolService {
         );
 
         if (NeedsSummaryDecider.needsSummary(content, summary)) {
-            UUID cellId = (UUID) inserted.get("id");
+            // The repository returns the cell id as a String (uuidValue → toString),
+            // so parse it rather than casting directly to UUID.
+            Object idValue = inserted.get("id");
+            UUID cellId = idValue == null ? null : UUID.fromString(idValue.toString());
             if (cellId != null) {
                 writeToolRepository.tagNeedsSummary(cellId);
                 eventPublisher.publishEvent(new CellNeedsSummaryEvent(cellId));
@@ -226,6 +229,38 @@ public class WriteToolService {
                 eventPublisher.publishEvent(new CellNeedsSummaryEvent(newId));
             }
         }
+
+        Map<String, Object> opPayload = new java.util.LinkedHashMap<>();
+        opPayload.put("cell_id", oldId.toString());
+        opPayload.put("new_cell_id", result.get("new_id").toString());
+        opPayload.put("new_content", newContent);
+        opPayload.put("new_summary", newSummary);
+        opPayload.put("agent_id", principal.name());
+        opPayload.put("status", status);
+        UUID opId = opLogWriter.append("revise_cell", opPayload);
+        pushDispatcher.dispatch(opId);
+        return result;
+    }
+
+    /**
+     * Revise a cell, persisting LLM-derived metadata (key_points, insight, tags) alongside the
+     * summary. Used by the summarizer; unlike {@link #reviseCell}, it does not re-tag needs_summary
+     * (the caller is expected to pass a real summary and to manage that tag explicitly).
+     */
+    @Transactional
+    public Map<String, Object> reviseCellWithSummary(
+            AuthPrincipal principal,
+            UUID oldId,
+            String newContent,
+            String newSummary,
+            List<String> keyPoints,
+            String insight,
+            List<String> tags
+    ) {
+        String status = principal.role() == AuthRole.AGENT ? STATUS_PENDING : STATUS_COMMITTED;
+        List<Float> embedding = embeddingClient.encodeForCell(newContent, newSummary);
+        Map<String, Object> result = writeToolRepository.reviseCell(
+                oldId, newContent, newSummary, keyPoints, insight, tags, embedding, principal.name(), status);
 
         Map<String, Object> opPayload = new java.util.LinkedHashMap<>();
         opPayload.put("cell_id", oldId.toString());

@@ -19,12 +19,12 @@ public final class CellFieldSelection {
             "valid_from", "valid_until"
     );
     private static final List<String> GET_CELL_ONLY_FIELDS = List.of(
-            "parent_id", "actionability", "status", "created_by"
+            "parent_id", "actionability", "status", "created_by", "attachments"
     );
     private static final List<String> SEARCH_DEFAULTS = List.of("summary", "tags", "importance", "created_at");
     private static final List<String> GET_CELL_DEFAULTS = List.of(
             "summary", "key_points", "insight", "tags", "importance",
-            "source", "actionability", "status", "created_at"
+            "source", "actionability", "status", "created_at", "attachments"
     );
 
     private final List<String> responseFields;

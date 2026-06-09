@@ -1,10 +1,10 @@
 # Tools
 
-HiveMem exposes **36 MCP tools** across search, knowledge graph, progressive summarization, agent fleet, references, attachments, and admin. Large file uploads can also use the REST endpoint (`POST /api/attachments`) — see [Attachments](#attachments).
+HiveMem exposes **37 MCP tools** across search, knowledge graph, progressive summarization, agent fleet, references, attachments, and admin. Large file uploads can also use the REST endpoint (`POST /api/attachments`) — see [Attachments](#attachments).
 
 ## Feature Overview
 
-- **36 MCP tools** across search, knowledge graph, progressive summarization, agent fleet, references, attachments, and admin
+- **37 MCP tools** across search, knowledge graph, progressive summarization, agent fleet, references, attachments, and admin
 - **6-signal ranked search** — semantic similarity + keyword match + recency + importance + popularity + graph proximity
 - **Append-only versioning** — never lose history, revise with parent_id chains, point-in-time queries
 - **Progressive summarization** — content, summary, key_points, insight per cell
@@ -19,17 +19,17 @@ HiveMem exposes **36 MCP tools** across search, knowledge graph, progressive sum
 
 ## Tool List
 
-**Read (19):**
+**Read (20):**
 
 1. `status`: System overview and counts.
-2. `search`: Semantic similarity + keyword search; returns metadata by default and supports `include` for optional fields.
+2. `search`: Semantic similarity + keyword search; returns metadata by default and supports `include` for optional fields. Optional params: `tags` (string array — match-ANY overlap filter), `status` (`committed`|`pending`|`rejected`, default `committed`).
 3. `search_kg`: Knowledge graph triple lookup.
 4. `get_cell`: Read a single knowledge item (logs access automatically); supports `include` for optional fields including content.
 5. `list`: Navigate the Realm→Signal→Topic→Cell hierarchy (omit all params for realms; add `realm` for signals; add `realm`+`signal` for topics; add `realm`+`signal`+`topic` for cells).
 6. `traverse`: Recursive graph traversal.
 7. `quick_facts`: Context-aware facts about an entity.
 8. `time_machine`: Historical knowledge retrieval.
-9. `wake_up`: Initial session context.
+9. `wake_up`: Initial session context. The response includes a `default_language` field (the backend-configured default UI language, set via `HIVEMEM_LANGUAGE`, default `de`).
 10. `history`: Trace revisions of a cell or fact (type-dispatched, recursive CTE depth cap 100).
 11. `pending_approvals`: List work awaiting review.
 12. `get_blueprint`: Narrative realm overviews.
@@ -37,9 +37,10 @@ HiveMem exposes **36 MCP tools** across search, knowledge graph, progressive sum
 14. `list_agents`: View active agent fleet.
 15. `diary_read`: Read agent diary entries.
 16. `list_attachments`: List all file attachments linked to a cell (metadata only, no file content).
-17. `get_attachment_info`: Get metadata for a single attachment by ID. Return fields include `cell_id` (UUID of the extraction cell), `content_uri` (`hivemem://attachments/{id}/content`), and `thumbnail_uri` (`hivemem://attachments/{id}/thumbnail` or null). Download via `GET /api/attachments/{id}/content`.
-18. `queen_runs` *(admin only)*: List recent Queen/Bee agent runs from Vistierie. Optional args: `limit` (1–200, default 50), `offset` (0+, default 0). Returns `{items:[{id,agent,trigger,status,startedAt,finishedAt,durationMs,llmCalls,costMicros}], total, costAvailable}`; on Vistierie outage returns `{items:[],total:0,costAvailable:false,unavailable:true}`. Cost fields (`llmCalls`, `costMicros`) are populated only when `HIVEMEM_QUEEN_VISTIERIE_ADMIN_TOKEN` is configured.
-19. `queen_run_detail` *(admin only)*: Fetch full detail for a single Queen/Bee run. Required arg: `run_id` (string). Returns `{run:{...}, events:[{type,...}]}` (run metadata + Vistierie event timeline); on outage returns `{run:{},events:[],unavailable:true}`.
+17. `get_attachment_info`: Get metadata for a single attachment by ID. Return fields include `cell_id` (UUID of the extraction cell), `content_uri` (`hivemem://attachments/{id}/content`), `thumbnail_uri` (`hivemem://attachments/{id}/thumbnail` or null), and `page_count` (INTEGER for PDFs, `null` for other types). Download via `GET /api/attachments/{id}/content`.
+18. `facet_count`: Aggregate document counts grouped by one or more cell fields. Required param: `fields` (array of one or more of `tag`, `status`, `realm`, `year`, `signal`). Optional filters: `realm`, `signal`, `topic`, `status` (`committed`|`pending`|`rejected`), `query` (full-text/semantic), `tags` (match-ANY), `limit` (max values per field, default 50). Returns `{field: [{value, count}, …]}` for each requested field.
+19. `queen_runs` *(admin only)*: List recent Queen/Bee agent runs from Vistierie. Optional args: `limit` (1–200, default 50), `offset` (0+, default 0). Returns `{items:[{id,agent,trigger,status,startedAt,finishedAt,durationMs,llmCalls,costMicros}], total, costAvailable}`; on Vistierie outage returns `{items:[],total:0,costAvailable:false,unavailable:true}`. Cost fields (`llmCalls`, `costMicros`) are populated only when `HIVEMEM_QUEEN_VISTIERIE_ADMIN_TOKEN` is configured.
+20. `queen_run_detail` *(admin only)*: Fetch full detail for a single Queen/Bee run. Required arg: `run_id` (string). Returns `{run:{...}, events:[{type,...}]}` (run metadata + Vistierie event timeline); on outage returns `{run:{},events:[],unavailable:true}`.
 
 **Write (15):**
 
@@ -104,7 +105,9 @@ Each search result includes a `confidence_level` field indicating how strongly t
 Thresholds are configurable via `hivemem.search.confidence.high/medium/low` in `application.yml`.
 `score_total` (the raw numeric value) is always present alongside `confidence_level`.
 
-`search` defaults to `summary`, `tags`, `importance`, and `created_at` plus required identity fields (`id`, `realm`, `signal`, `topic`). `get_cell` defaults to `summary`, `key_points`, `insight`, `tags`, `importance`, `source`, and `created_at` plus the same required identity fields. Pass `include` to request a specific subset of optional fields, including `content`.
+`search` defaults to `summary`, `tags`, `importance`, and `created_at` plus required identity fields (`id`, `realm`, `signal`, `topic`). `get_cell` defaults to `summary`, `key_points`, `insight`, `tags`, `importance`, `source`, `actionability`, `status`, `created_at`, and `attachments` plus the same required identity fields. Pass `include` to request a specific subset of optional fields, including `content`.
+
+- `attachments` (get_cell only, on by default): list of the cell's original files, each `{id, mime_type, original_filename, size_bytes, page_count}` (`page_count` is an INTEGER, populated for PDFs at ingest — `null` for non-PDFs). Download the bytes at `GET /api/attachments/{id}/content`. Internal storage keys are not exposed.
 
 ## Progressive Summarization
 

@@ -11,7 +11,7 @@ Prerequisites, Docker Compose setup, first token, connecting to Claude Code and 
 The four-level knowledge hierarchy — Realms, Signals, Topics, Cells — plus Tunnels, Facts, and Blueprints. Start here if you want to understand how HiveMem organizes knowledge.
 
 ### [Tools](tools.md)
-All 34 MCP tools with descriptions, the parallel REST attachment API, the 6 search signals and their weights, and the progressive summarization layers (content → summary → key points → insight).
+All 37 MCP tools with descriptions, the parallel REST attachment API, the 6 search signals and their weights, and the progressive summarization layers (content → summary → key points → insight).
 
 ### [Architecture](architecture.md)
 System architecture diagram, PostgreSQL data model (ER), security and capability matrix, environment variable reference, and compliance details.
@@ -25,8 +25,23 @@ Auto-inject relevant memory cells into every Claude Code session before you even
 ### [Operations](operations.md)
 Backups, deploying changes, adding Flyway migrations, and debugging.
 
+### [Document & Scan Pipeline](document-pipeline.md)
+The big picture: how a file becomes searchable knowledge end to end — the two entry points (watched folder + REST upload), the shared ingest core (hash → parse → dedup → store → cell), and the four async enrichment paths (OCR · Vision · Kroki · Summarizer). Start here, then follow the links into the deep-dive pages below.
+
 ### [Consumption Folder](consumption.md)
 Automatic scan ingest: drop PDFs into a folder, HiveMem polls and ingests. Multi-page batches are split into individual documents by a Vistierie LLM agent based on content (no separator sheets required). Hardware setup, how it works, config reference, and known limitations.
+
+### [OCR](ocr.md)
+Tesseract OCR for scan-only PDFs: scan detection, page rasterization, the async backfill, and the optional Vision transcription fallback.
+
+### [Document-Type Extraction](extraction.md)
+Typed documents (invoices, contracts, …) are auto-classified during summarization; typed facts (vendor, amount, parties, dates) land in the knowledge graph.
+
+### [Kroki + Vision](kroki-vision.md)
+Async, opt-in, budget-capped enrichment: diagram thumbnails (Mermaid/PlantUML/Graphviz/D2) and image description via an LLM.
+
+### [Auto-Summarizer](summarizer.md)
+Long cells become curated, embedded summaries so multi-page documents stay findable by semantic search — cost-capped and opt-in.
 
 ### [Vision](vision.md)
 The cognitive science behind HiveMem — Working Memory, Cognitive Load Theory, the Extended Mind Thesis — and how Zettelkasten and PARA shaped the design.

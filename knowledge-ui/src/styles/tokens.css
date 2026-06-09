@@ -1,0 +1,63 @@
+/* HiveMem — Sovereign Knowledge · Design System tokens (single source of truth) */
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+:root {
+  --font-display: 'Space Grotesk', system-ui, sans-serif;
+  --font-sans: 'IBM Plex Sans', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+
+  --bg-0:#090B10; --bg-1:#0D1017; --bg-2:#12161F; --bg-3:#181D29; --bg-4:#20283688; --raise:#1C2331;
+  --line:rgba(255,255,255,0.07); --line-2:rgba(255,255,255,0.12); --line-honey:rgba(244,183,64,0.28);
+  --text-0:#ECEAE3; --text-1:#A7AEBD; --text-2:#6B7385; --text-3:#4A5161;
+  --honey:#F4B740; --honey-bright:#FFCB5E; --honey-deep:#C98A1E; --honey-dim:rgba(244,183,64,0.13); --honey-glow:rgba(244,183,64,0.32);
+  --cyber:#46D6E0; --good:#54C98C; --warn:#F4B740; --danger:#F0676B;
+  --shadow-1:0 1px 0 rgba(255,255,255,0.03) inset, 0 8px 28px -12px rgba(0,0,0,0.7);
+  --shadow-2:0 24px 60px -24px rgba(0,0,0,0.85);
+  --radius:14px; --radius-sm:9px;
+  --rail-w:68px; --panel-w:366px; --inspector-w:392px;
+  --r-legal:#F4B740; --r-medical:#3FB6A8; --r-private:#E8638C; --r-work:#6E78F0;
+  --r-docs:#4FB3F0; --r-eng:#9BCB3C; --r-code:#A781F2; --r-finance:#46C08A;
+}
+:root[data-theme="light"] {
+  --bg-0:#EFEAE0; --bg-1:#F6F1E7; --bg-2:#FFFFFF; --bg-3:#F3EEE3; --bg-4:#EFE8D9; --raise:#FFFFFF;
+  --line:rgba(40,32,16,0.10); --line-2:rgba(40,32,16,0.16); --line-honey:rgba(201,138,30,0.40);
+  --text-0:#211D16; --text-1:#5A5446; --text-2:#8A8474; --text-3:#ACA694;
+  --honey:#C98A1E; --honey-bright:#E0A434; --honey-deep:#9A6712; --honey-dim:rgba(201,138,30,0.12); --honey-glow:rgba(201,138,30,0.22);
+  --shadow-1:0 1px 2px rgba(60,48,20,0.06), 0 10px 30px -16px rgba(60,48,20,0.30);
+  --shadow-2:0 30px 70px -30px rgba(60,48,20,0.45);
+}
+
+/* density + hive motif (tweaks) */
+:root[data-density="compact"] { --panel-w:320px; }
+:root[data-density="comfy"]   { --panel-w:400px; }
+.hexfield { opacity:.5; }
+:root[data-hive="subtil"] .hexfield { display:none; }
+:root[data-hive="stark"] .hexfield { opacity:1; }
+
+* { box-sizing:border-box; }
+html, body { margin:0; height:100%; }
+body {
+  font-family:var(--font-sans); background:var(--bg-0); color:var(--text-0);
+  -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility; overflow:hidden;
+}
+::selection { background:var(--honey-glow); color:var(--text-0); }
+*::-webkit-scrollbar { width:10px; height:10px; }
+*::-webkit-scrollbar-thumb { background:var(--line-2); border-radius:20px; border:3px solid transparent; background-clip:content-box; }
+*::-webkit-scrollbar-thumb:hover { background:var(--text-3); background-clip:content-box; }
+*::-webkit-scrollbar-track { background:transparent; }
+
+.app {
+  height:100vh; display:grid;
+  grid-template-columns: var(--rail-w) auto 1fr auto;
+  background:
+    radial-gradient(1200px 700px at 78% -8%, rgba(244,183,64,0.06), transparent 60%),
+    radial-gradient(900px 600px at -6% 108%, rgba(70,214,224,0.05), transparent 55%),
+    var(--bg-0);
+}
+.hexfield {
+  position:absolute; inset:0; pointer-events:none;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='96' viewBox='0 0 56 96'%3E%3Cpath d='M28 0L52 14V42L28 56L4 42V14Z M28 56L52 70V98 M28 56L4 70V98' fill='none' stroke='%23ffffff' stroke-opacity='0.05' stroke-width='1'/%3E%3C/svg%3E");
+  background-size:56px 96px;
+}
+.fade-in { animation:fadeIn .35s ease both; }
+@keyframes fadeIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }

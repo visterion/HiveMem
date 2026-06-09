@@ -15,12 +15,26 @@ when one is available, and falls back to the content only for short cells.
 For long cells without a summary, the embedding is left NULL and the cell is tagged
 `needs_summary`. The summarizer picks them up automatically.
 
+## What gets written
+
+Each successful run persists, on a new revision of the cell:
+
+- `summary` — the embedded 1–2 sentence summary
+- `key_points`, `insight`, `tags` — the curated metadata the LLM returns
+- `document_type` — the inferred profile type (invoice / contract / other)
+- extracted facts — written to the knowledge graph (see [extraction](extraction.md))
+
+If the LLM returns no summary, the cell is **not** revised; the `needs_summary` tag is
+cleared so it is not retried in a loop.
+
 ## Enabling
 
-Set the env vars and restart:
+Set the env vars and restart (the summarizer calls Claude via the Vistierie gateway,
+sharing the same base URL / token as the other Vistierie-backed features):
 
     HIVEMEM_SUMMARIZE_ENABLED=true
-    ANTHROPIC_API_KEY=sk-ant-...
+    HIVEMEM_VISTIERIE_BASE_URL=http://vistierie:8090
+    HIVEMEM_VISTIERIE_TOKEN=<tenant token>
 
 That's it. On boot, all existing cells without a summary and with content > 500 chars
 are tagged `needs_summary`. The backfill scheduler picks them up over the next minutes.
@@ -58,8 +72,9 @@ Cells throttled by the API:
 | Property | Default | Purpose |
 |----------|---------|---------|
 | `hivemem.summarize.enabled` | `false` | Master switch |
-| `hivemem.summarize.anthropic-api-key` | empty | Required to enable |
-| `hivemem.summarize.model` | `claude-haiku-4-5-20251001` | Which Claude model |
+| `hivemem.summarize.vistierie-token` (`HIVEMEM_VISTIERIE_TOKEN`) | empty | Tenant token for the Vistierie `/llm/complete` gateway — required to enable |
+| `hivemem.summarize.model` | `claude-haiku-4-5` | Which Claude model |
+| `hivemem.summarize.language` (`HIVEMEM_SUMMARIZE_LANGUAGE`) | `${HIVEMEM_LANGUAGE:de}` *(inherits global)* | Default output language (ISO 639-1) when the content's language is unclear; source language preserved otherwise |
 | `hivemem.summarize.daily-budget-usd` | `1.00` | Hard cost cap per UTC day |
 | `hivemem.summarize.backfill-interval` | `PT5M` | Documentation only — see note below |
 | `hivemem.summarize.backfill-batch-size` | `10` | Cells per backfill run |
@@ -87,6 +102,21 @@ Phase 1. Realm-scoped routing comes with the planned Provider-Abstraction featur
 (see SP3 backlog Item I). If you have realms that must never go through Claude
 (e.g., `legal`, `medical`), keep the summarizer disabled until Item I lands —
 or only enable it on a separate HiveMem instance for the realms that may use it.
+
+## Language
+
+The summarizer writes `summary`, `key_points`, `insight`, and `tags` in the **same language
+as the cell content** (a German document stays German, an English one stays English). When the
+content's language is unclear or too short to tell (e.g. a brief manual `add_cell` note), it
+falls back to the backend default language.
+
+- Configure with `HIVEMEM_SUMMARIZE_LANGUAGE` (`hivemem.summarize.language`, ISO 639-1).
+  When unset it inherits the global `HIVEMEM_LANGUAGE` (default `de`), so one knob sets both
+  the UI and the summarizer; set `HIVEMEM_SUMMARIZE_LANGUAGE` to override the summarizer
+  independently of the UI.
+- `document_type` and fact `predicate` keys stay in their controlled English vocabulary; fact
+  `object` values are data and are unaffected.
+- Applies to newly written and newly re-summarized cells; existing cells are not reprocessed.
 
 ## Verwandte Pipeline-Schritte
 

@@ -2,6 +2,13 @@ export type Role = 'admin' | 'writer' | 'reader' | 'agent'
 export type Relation = 'related_to' | 'builds_on' | 'contradicts' | 'refines'
 export type CellStatus = 'committed' | 'pending' | 'rejected'
 
+export interface Attachment {
+  id: string
+  mime_type: string
+  original_filename: string
+  size_bytes: number
+}
+
 export interface Cell {
   id: string
   realm: string
@@ -19,6 +26,18 @@ export interface Cell {
   created_at: string
   valid_from: string
   valid_until: string | null
+  attachments?: Attachment[]
+}
+
+export interface SearchResult extends Cell {
+  score_total: number
+  score_semantic: number
+  score_keyword: number
+  score_recency: number
+  score_importance: number
+  score_popularity: number
+  score_graph_proximity: number
+  confidence_level?: string
 }
 
 export interface Realm { name: string; cell_count: number; signals: Signal[] }
@@ -112,3 +131,22 @@ export interface PendingApproval {
   created_by: string | null
   created_at: string
 }
+
+export interface DocumentRow {
+  id: string
+  realm: string
+  signal: string | null
+  topic: string | null
+  summary: string | null
+  tags: string[]
+  importance: number
+  status: string
+  created_at: string
+  attachment_id?: string | null
+  mime_type?: string | null
+  page_count?: number | null
+  has_thumbnail?: boolean
+}
+
+export interface FacetValue { value: string; count: number }
+export type FacetCounts = Record<string, FacetValue[]>

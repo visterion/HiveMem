@@ -6,7 +6,10 @@ import com.hivemem.cells.CellReadRepository;
 import com.hivemem.embedding.EmbeddingClient;
 import com.hivemem.embedding.EmbeddingStateRepository;
 import com.hivemem.embedding.FixedEmbeddingClient;
+import com.hivemem.attachment.AttachmentRepository;
+import com.hivemem.search.FacetRepository;
 import com.hivemem.tools.read.ReadToolService;
+import com.hivemem.search.DocumentListRepository;
 import com.hivemem.write.AdminToolRepository;
 import com.hivemem.write.AdminToolService;
 import com.hivemem.write.WriteToolRepository;
@@ -120,7 +123,9 @@ class CellSearchRepositoryGraphTest {
                 0.15,
                 0.15,
                 0.15,
-                0.10
+                0.10,
+                null,
+                null
         );
 
         assertThat(rows).isNotEmpty();
@@ -170,6 +175,9 @@ class CellSearchRepositoryGraphTest {
             WriteToolService.class,
             WriteToolRepository.class,
             ReadToolService.class,
+            DocumentListRepository.class,
+            FacetRepository.class,
+            AttachmentRepository.class,
             SearchWeightsProperties.class,
             ConfidenceThresholds.class,
             CellReadRepository.class,

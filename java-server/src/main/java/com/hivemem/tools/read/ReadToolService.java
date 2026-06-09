@@ -1,14 +1,19 @@
 package com.hivemem.tools.read;
 
+import com.hivemem.attachment.AttachmentRepository;
 import com.hivemem.auth.AuthPrincipal;
 import com.hivemem.cells.CellReadRepository;
 import com.hivemem.embedding.EmbeddingClient;
 import com.hivemem.search.CellSearchRepository;
 import com.hivemem.search.ConfidenceLevel;
 import com.hivemem.search.ConfidenceThresholds;
+import com.hivemem.search.DocumentListRepository;
+import com.hivemem.search.FacetRepository;
 import com.hivemem.search.KgSearchRepository;
 import com.hivemem.search.SearchWeightsProperties;
 import com.hivemem.write.AdminToolService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.time.OffsetDateTime;
@@ -21,6 +26,8 @@ import java.util.LinkedHashMap;
 @Service
 public class ReadToolService {
 
+    private static final Logger log = LoggerFactory.getLogger(ReadToolService.class);
+
     private final CellReadRepository cellReadRepository;
     private final KgSearchRepository kgSearchRepository;
     private final CellSearchRepository cellSearchRepository;
@@ -28,6 +35,9 @@ public class ReadToolService {
     private final AdminToolService adminToolService;
     private final SearchWeightsProperties searchWeightsProperties;
     private final ConfidenceThresholds confidenceThresholds;
+    private final AttachmentRepository attachmentRepository;
+    private final FacetRepository facetRepository;
+    private final DocumentListRepository documentListRepository;
 
     public ReadToolService(
             CellReadRepository cellReadRepository,
@@ -36,7 +46,10 @@ public class ReadToolService {
             EmbeddingClient embeddingClient,
             AdminToolService adminToolService,
             SearchWeightsProperties searchWeightsProperties,
-            ConfidenceThresholds confidenceThresholds
+            ConfidenceThresholds confidenceThresholds,
+            AttachmentRepository attachmentRepository,
+            FacetRepository facetRepository,
+            DocumentListRepository documentListRepository
     ) {
         this.cellReadRepository = cellReadRepository;
         this.kgSearchRepository = kgSearchRepository;
@@ -45,6 +58,9 @@ public class ReadToolService {
         this.adminToolService = adminToolService;
         this.searchWeightsProperties = searchWeightsProperties;
         this.confidenceThresholds = confidenceThresholds;
+        this.attachmentRepository = attachmentRepository;
+        this.facetRepository = facetRepository;
+        this.documentListRepository = documentListRepository;
     }
 
     public Map<String, Object> status() {
@@ -79,13 +95,15 @@ public class ReadToolService {
             double weightRecency,
             double weightImportance,
             double weightPopularity,
-            double weightGraphProximity
+            double weightGraphProximity,
+            List<String> tags,
+            String status
     ) {
         List<Float> queryVector = embeddingClient.encodeQuery(query);
         List<CellSearchRepository.RankedRow> rows = cellSearchRepository.rankedSearch(
                 queryVector, query, realm, signal, topic, limit,
                 weightSemantic, weightKeyword, weightRecency, weightImportance, weightPopularity,
-                weightGraphProximity
+                weightGraphProximity, tags, status
         );
         return rows.stream()
                 .map(row -> projectRow(row, selection,
@@ -103,8 +121,34 @@ public class ReadToolService {
 
     public Map<String, Object> getCell(AuthPrincipal principal, UUID cellId, CellFieldSelection selection) {
         Optional<Map<String, Object>> cell = cellReadRepository.findCell(cellId, selection);
-        cell.ifPresent(c -> adminToolService.logAccess(cellId, null, principal.name()));
-        return cell.orElse(null);
+        if (cell.isEmpty()) {
+            return null;
+        }
+        adminToolService.logAccess(cellId, null, principal.name());
+        Map<String, Object> result = new LinkedHashMap<>(cell.get());
+        if (selection.includes("attachments")) {
+            result.put("attachments", attachmentsForCell(cellId));
+        }
+        return result;
+    }
+
+    private List<Map<String, Object>> attachmentsForCell(UUID cellId) {
+        try {
+            return attachmentRepository.findByCellId(cellId).stream()
+                    .map(row -> {
+                        Map<String, Object> a = new LinkedHashMap<>();
+                        a.put("id", row.get("id"));
+                        a.put("mime_type", row.get("mime_type"));
+                        a.put("original_filename", row.get("original_filename"));
+                        a.put("size_bytes", row.get("size_bytes"));
+                        a.put("page_count", row.get("page_count"));
+                        return a;
+                    })
+                    .toList();
+        } catch (RuntimeException e) {
+            log.warn("Failed to load attachments for cell {}", cellId, e);
+            return List.of();
+        }
     }
 
     public List<Map<String, Object>> traverse(UUID cellId, int maxDepth, String relationFilter) {
@@ -145,6 +189,36 @@ public class ReadToolService {
 
     public List<Map<String, Object>> getBlueprint(String realm) {
         return cellReadRepository.getBlueprint(realm);
+    }
+
+    public Map<String, List<Map<String, Object>>> facetCount(
+            String realm,
+            String signal,
+            String topic,
+            List<String> tags,
+            String status,
+            String query,
+            List<String> fields,
+            int limit
+    ) {
+        return facetRepository.facetCounts(realm, signal, topic, tags, status, query, fields, limit);
+    }
+
+    public List<Map<String, Object>> listDocuments(
+            String realm,
+            String signal,
+            String topic,
+            List<String> tags,
+            String status,
+            String sort,
+            int limit,
+            int offset
+    ) {
+        String effectiveRealm = (realm == null || realm.isBlank()) ? "documents" : realm;
+        int clampedLimit = Math.min(Math.max(limit, 1), 200);
+        int clampedOffset = Math.max(offset, 0);
+        return documentListRepository.listDocuments(
+                effectiveRealm, signal, topic, tags, status, sort, clampedLimit, clampedOffset);
     }
 
     public Map<String, Object> wakeUp() {

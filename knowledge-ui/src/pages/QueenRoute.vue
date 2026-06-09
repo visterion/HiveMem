@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from 'vue'
 import { useQueenStore } from '../stores/queen'
+import { useI18n } from 'vue-i18n'
 
 const store = useQueenStore()
+const { t } = useI18n()
 const drawer = ref(false)
 let timer: number | null = null
 
@@ -26,17 +28,17 @@ onUnmounted(() => { if (timer) clearInterval(timer) })
 
 <template>
   <v-container fluid class="pa-4">
-    <h2 class="text-h6 mb-2">Queen activity</h2>
+    <h2 class="text-h6 mb-2">{{ t('queen.activity') }}</h2>
     <v-alert v-if="store.unavailable" type="warning" variant="tonal" class="mb-3">
-      Vistierie nicht erreichbar — die Queen ist evtl. deaktiviert.
+      {{ t('queen.unavailable') }}
     </v-alert>
 
     <v-table density="comfortable" class="mb-6">
       <thead>
         <tr>
-          <th>Started</th><th>Agent</th><th>Trigger</th><th>Status</th><th>Duration</th>
-          <th v-if="store.costAvailable">LLM calls</th>
-          <th v-if="store.costAvailable">Cost</th>
+          <th>{{ t('queen.started') }}</th><th>{{ t('queen.agent') }}</th><th>{{ t('queen.trigger') }}</th><th>{{ t('queen.status') }}</th><th>{{ t('queen.duration') }}</th>
+          <th v-if="store.costAvailable">{{ t('queen.llmCalls') }}</th>
+          <th v-if="store.costAvailable">{{ t('queen.cost') }}</th>
         </tr>
       </thead>
       <tbody>
@@ -54,28 +56,28 @@ onUnmounted(() => { if (timer) clearInterval(timer) })
           <td v-if="store.costAvailable">{{ fmtCost(r.costMicros) }}</td>
         </tr>
         <tr v-if="store.runs.length === 0">
-          <td :colspan="store.costAvailable ? 7 : 5" class="text-medium-emphasis">No runs yet.</td>
+          <td :colspan="store.costAvailable ? 7 : 5" class="text-medium-emphasis">{{ t('queen.noRuns') }}</td>
         </tr>
       </tbody>
     </v-table>
 
-    <h2 class="text-h6 mb-2">Pending proposals</h2>
+    <h2 class="text-h6 mb-2">{{ t('queen.pending') }}</h2>
     <v-list v-if="store.pending.length" lines="two">
       <v-list-item v-for="p in store.pending" :key="p.id" :title="p.description ?? p.id" :subtitle="p.realm ?? ''">
         <template #append>
-          <v-btn size="small" color="success" variant="tonal" class="mr-2" @click="store.approve(p.id, true)">Accept</v-btn>
-          <v-btn size="small" color="error" variant="tonal" @click="store.approve(p.id, false)">Reject</v-btn>
+          <v-btn size="small" color="success" variant="tonal" class="mr-2" @click="store.approve(p.id, true)">{{ t('queen.accept') }}</v-btn>
+          <v-btn size="small" color="error" variant="tonal" @click="store.approve(p.id, false)">{{ t('queen.reject') }}</v-btn>
         </template>
       </v-list-item>
     </v-list>
-    <div v-else class="text-medium-emphasis">No pending Queen proposals.</div>
+    <div v-else class="text-medium-emphasis">{{ t('queen.noPending') }}</div>
 
     <v-navigation-drawer v-model="drawer" location="right" temporary width="420">
       <div class="pa-4" v-if="store.selectedRun">
-        <h3 class="text-subtitle-1 mb-2">Run {{ (store.selectedRun.run as any).id }}</h3>
+        <h3 class="text-subtitle-1 mb-2">{{ t('queen.run', { id: (store.selectedRun.run as any).id }) }}</h3>
         <div class="mb-3 text-body-2">{{ (store.selectedRun.run as any).summary ?? '' }}</div>
         <v-divider class="mb-2" />
-        <div class="text-overline">Events</div>
+        <div class="text-overline">{{ t('queen.events') }}</div>
         <v-timeline density="compact" side="end">
           <v-timeline-item v-for="(e, i) in store.selectedRun.events" :key="i" size="x-small">
             <div class="text-body-2"><strong>{{ e.type }}</strong> <span class="text-medium-emphasis">{{ (e as any).at ?? '' }}</span></div>

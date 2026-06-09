@@ -69,7 +69,8 @@ public class HookContextService {
             rows = searchRepository.rankedSearch(
                     queryVector, req.prompt(), null, null, null, SEARCH_LIMIT,
                     w.semantic(), w.keyword(), w.recency(),
-                    w.importance(), w.popularity(), w.graphProximity());
+                    w.importance(), w.popularity(), w.graphProximity(),
+                    null, null);
         } catch (RuntimeException e) {
             log.warn("Hook search failed; returning empty context", e);
             return ContextResult.empty();

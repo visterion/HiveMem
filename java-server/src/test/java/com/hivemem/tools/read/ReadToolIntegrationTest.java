@@ -92,7 +92,7 @@ class ReadToolIntegrationTest {
     @BeforeEach
     void resetDatabase() {
         rateLimiter.clearAll();
-        dslContext.execute("TRUNCATE TABLE agent_diary, cell_references, references_, blueprints, identity, agents, facts, tunnels, cells CASCADE");
+        dslContext.execute("TRUNCATE TABLE agent_diary, cell_references, references_, blueprints, identity, agents, facts, tunnels, cell_attachments, attachments, cells CASCADE");
     }
 
     @Test
@@ -113,12 +113,14 @@ class ReadToolIntegrationTest {
                 .andExpect(jsonPath("$.result.tools[6].name").value("quick_facts"))
                 .andExpect(jsonPath("$.result.tools[7].name").value("time_machine"))
                 .andExpect(jsonPath("$.result.tools[8].name").value("history"))
-                .andExpect(jsonPath("$.result.tools[9].name").value("pending_approvals"))
-                .andExpect(jsonPath("$.result.tools[10].name").value("reading_list"))
-                .andExpect(jsonPath("$.result.tools[11].name").value("list_agents"))
-                .andExpect(jsonPath("$.result.tools[12].name").value("diary_read"))
-                .andExpect(jsonPath("$.result.tools[13].name").value("get_blueprint"))
-                .andExpect(jsonPath("$.result.tools[14].name").value("wake_up"));
+                .andExpect(jsonPath("$.result.tools[9].name").value("facet_count"))
+                .andExpect(jsonPath("$.result.tools[10].name").value("pending_approvals"))
+                .andExpect(jsonPath("$.result.tools[11].name").value("reading_list"))
+                .andExpect(jsonPath("$.result.tools[12].name").value("list_agents"))
+                .andExpect(jsonPath("$.result.tools[13].name").value("diary_read"))
+                .andExpect(jsonPath("$.result.tools[14].name").value("get_blueprint"))
+                .andExpect(jsonPath("$.result.tools[15].name").value("list_documents"))
+                .andExpect(jsonPath("$.result.tools[16].name").value("wake_up"));
     }
 
     @Test
@@ -315,6 +317,56 @@ class ReadToolIntegrationTest {
 
         assertThat(content.path("parent_id").isNull()).isTrue();
         assertThat(content.path("created_by").asText()).isEqualTo("writer");
+    }
+
+    @Test
+    void getCellReturnsLinkedAttachmentsWithPublicFieldsOnly() throws Exception {
+        UUID cellId = UUID.fromString("00000000-0000-0000-0000-000000000114");
+        insertDrawer(
+                cellId, null, "[page=1] scanned invoice text",
+                "documents", "facts", "invoices", "system",
+                3, "HUK invoice", null,
+                "archive", "committed", "writer",
+                OffsetDateTime.parse("2026-04-03T12:00:00Z"),
+                OffsetDateTime.parse("2026-04-03T12:00:00Z"),
+                null
+        );
+        UUID attachmentId = UUID.fromString("00000000-0000-0000-0000-0000000000a1");
+        insertAttachment(attachmentId, cellId, "application/pdf", "huk-rechnung.pdf", 84213L);
+
+        JsonNode content = callToolContent("get_cell", Map.of("cell_id", cellId.toString()));
+
+        assertThat(content.path("attachments").isArray()).isTrue();
+        assertThat(content.path("attachments")).hasSize(1);
+        JsonNode a = content.path("attachments").get(0);
+        assertThat(a.path("id").asText()).isEqualTo(attachmentId.toString());
+        assertThat(a.path("mime_type").asText()).isEqualTo("application/pdf");
+        assertThat(a.path("original_filename").asText()).isEqualTo("huk-rechnung.pdf");
+        assertThat(a.path("size_bytes").asLong()).isEqualTo(84213L);
+        assertThat(a.has("s3_key_original")).isFalse();
+        assertThat(a.has("file_hash")).isFalse();
+        assertThat(a.has("s3_key_thumbnail")).isFalse();
+        assertThat(a.has("uploaded_by")).isFalse();
+        assertThat(a.has("created_at")).isFalse();
+    }
+
+    @Test
+    void getCellReturnsEmptyAttachmentsWhenNoneLinked() throws Exception {
+        UUID cellId = UUID.fromString("00000000-0000-0000-0000-000000000115");
+        insertDrawer(
+                cellId, null, "plain text cell",
+                "alpha", "facts", "notes", "system",
+                1, "no attachment", null,
+                "archive", "committed", "writer",
+                OffsetDateTime.parse("2026-04-03T12:00:00Z"),
+                OffsetDateTime.parse("2026-04-03T12:00:00Z"),
+                null
+        );
+
+        JsonNode content = callToolContent("get_cell", Map.of("cell_id", cellId.toString()));
+
+        assertThat(content.path("attachments").isArray()).isTrue();
+        assertThat(content.path("attachments")).isEmpty();
     }
 
     @Test
@@ -1109,6 +1161,13 @@ class ReadToolIntegrationTest {
                 .andExpect(jsonPath("$.error.message").value("Missing agent"));
     }
 
+    @Test
+    void searchRejectsAttachmentsIncludeField() {
+        org.junit.jupiter.api.Assertions.assertThrows(
+                IllegalArgumentException.class,
+                () -> CellFieldSelection.forSearch(java.util.List.of("attachments")));
+    }
+
     private void seedStatusRows() {
         UUID committedDrawer = UUID.fromString("00000000-0000-0000-0000-000000000001");
         UUID secondCommittedDrawer = UUID.fromString("00000000-0000-0000-0000-000000000002");
@@ -1401,6 +1460,32 @@ class ReadToolIntegrationTest {
                 ) VALUES (?, ?, ?, ?, ?::timestamptz)
                 """,
                 id, drawerId, referenceId, relation, createdAt
+        );
+    }
+
+    private void insertAttachment(
+            UUID attachmentId,
+            UUID cellId,
+            String mimeType,
+            String originalFilename,
+            long sizeBytes
+    ) {
+        dslContext.execute(
+                """
+                INSERT INTO attachments (
+                    id, file_hash, mime_type, original_filename, size_bytes,
+                    s3_key_original, s3_key_thumbnail, uploaded_by, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, now())
+                """,
+                attachmentId, "hash-" + attachmentId, mimeType, originalFilename, sizeBytes,
+                "attachments/" + attachmentId + ".pdf", "writer"
+        );
+        dslContext.execute(
+                """
+                INSERT INTO cell_attachments (id, cell_id, attachment_id, extraction_source, created_at)
+                VALUES (?, ?, ?, true, now())
+                """,
+                UUID.randomUUID(), cellId, attachmentId
         );
     }
 

@@ -41,9 +41,12 @@ public class CellSearchRepository {
             double weightRecency,
             double weightImportance,
             double weightPopularity,
-            double weightGraphProximity
+            double weightGraphProximity,
+            List<String> tags,
+            String status
     ) {
         Float[] embeddingArray = queryEmbedding == null ? null : queryEmbedding.toArray(Float[]::new);
+        String[] tagsArr = (tags == null || tags.isEmpty()) ? null : tags.toArray(String[]::new);
         String sql = """
                 SELECT id, content, summary, realm, signal, topic, tags, importance,
                        created_at, valid_from, valid_until,
@@ -51,7 +54,8 @@ public class CellSearchRepository {
                        score_importance, score_popularity, score_graph_proximity,
                        score_total
                 FROM ranked_search(?::vector, ?, ?, ?, ?, ?,
-                                   ?::real, ?::real, ?::real, ?::real, ?::real, ?::real)
+                                   ?::real, ?::real, ?::real, ?::real, ?::real, ?::real,
+                                   ?::text[], ?)
                 """;
 
         List<RankedRow> rows = new ArrayList<>();
@@ -60,7 +64,8 @@ public class CellSearchRepository {
                 embeddingArray, queryText, realm, signal, topic, limit,
                 (float) weightSemantic, (float) weightKeyword, (float) weightRecency,
                 (float) weightImportance, (float) weightPopularity,
-                (float) weightGraphProximity
+                (float) weightGraphProximity,
+                tagsArr, status
         )) {
             rows.add(new RankedRow(
                     row.get("id", UUID.class),

@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { ref, watchEffect } from 'vue'
+import { useI18n } from 'vue-i18n'
 import PostalMime from 'postal-mime'
 
 const props = defineProps<{ url: string }>()
 const parsed = ref<any>(null)
 const err = ref('')
+const { t } = useI18n()
 
 watchEffect(async () => {
   if (!props.url) return
@@ -12,7 +14,7 @@ watchEffect(async () => {
     const raw = await fetch(props.url).then(r => r.text())
     parsed.value = await new PostalMime().parse(raw)
   } catch (e: any) {
-    err.value = e?.message ?? 'failed to parse'
+    err.value = e?.message ?? t('reader.eml.parseError')
   }
 })
 </script>
@@ -22,10 +24,10 @@ watchEffect(async () => {
     <v-alert v-if="err" type="error" variant="tonal">{{ err }}</v-alert>
     <template v-else-if="parsed">
       <header>
-        <div><strong>From:</strong> {{ parsed.from?.address }}</div>
-        <div><strong>To:</strong> {{ parsed.to?.map((t: any) => t.address).join(', ') }}</div>
-        <div><strong>Subject:</strong> {{ parsed.subject }}</div>
-        <div><strong>Date:</strong> {{ parsed.date }}</div>
+        <div><strong>{{ t('reader.eml.from') }}</strong> {{ parsed.from?.address }}</div>
+        <div><strong>{{ t('reader.eml.to') }}</strong> {{ parsed.to?.map((r: any) => r.address).join(', ') }}</div>
+        <div><strong>{{ t('reader.eml.subject') }}</strong> {{ parsed.subject }}</div>
+        <div><strong>{{ t('reader.eml.date') }}</strong> {{ parsed.date }}</div>
       </header>
       <div class="body" v-html="parsed.html || parsed.text || ''"></div>
     </template>

@@ -60,7 +60,7 @@ class AttachmentRepositoryIntegrationTest {
     @Test
     void insertFindByHashAndById() {
         Map<String, Object> row = repo.insert("hash-1", "text/plain", "file.txt",
-                42L, "key-orig", "key-thumb", "user-a");
+                42L, "key-orig", "key-thumb", "user-a", null);
         UUID id = UUID.fromString((String) row.get("id"));
 
         assertThat(repo.findByHash("hash-1")).isPresent();
@@ -71,7 +71,7 @@ class AttachmentRepositoryIntegrationTest {
     @Test
     void reactivateClearsDeletedAtAndFillsThumbnailWhenNull() {
         Map<String, Object> row = repo.insert("hash-2", "image/png", "x.png",
-                10L, "k", null, "u");
+                10L, "k", null, "u", null);
         UUID id = UUID.fromString((String) row.get("id"));
 
         // soft-delete first
@@ -99,7 +99,7 @@ class AttachmentRepositoryIntegrationTest {
 
     @Test
     void softDeleteReturnsFalseWhenAlreadyDeleted() {
-        Map<String, Object> row = repo.insert("hash-3", "text/plain", "f.txt", 1L, "k3", null, "u");
+        Map<String, Object> row = repo.insert("hash-3", "text/plain", "f.txt", 1L, "k3", null, "u", null);
         UUID id = UUID.fromString((String) row.get("id"));
         assertThat(repo.softDelete(id)).isTrue();
         assertThat(repo.softDelete(id)).isFalse();
@@ -108,7 +108,7 @@ class AttachmentRepositoryIntegrationTest {
     @Test
     void linkExtractionCellAndFindByCellId() {
         UUID cellId = insertMinimalCell();
-        Map<String, Object> a = repo.insert("hash-4", "text/plain", "f.txt", 1L, "k4", null, "u");
+        Map<String, Object> a = repo.insert("hash-4", "text/plain", "f.txt", 1L, "k4", null, "u", null);
         UUID attachmentId = UUID.fromString((String) a.get("id"));
 
         repo.linkExtractionCell(attachmentId, cellId);
@@ -123,7 +123,7 @@ class AttachmentRepositoryIntegrationTest {
     @Test
     void findAttachmentForCellReturnsExtractionSource() {
         UUID cellId = insertMinimalCell();
-        Map<String, Object> a = repo.insert("hash-5", "image/png", "x.png", 1L, "k5", null, "u");
+        Map<String, Object> a = repo.insert("hash-5", "image/png", "x.png", 1L, "k5", null, "u", null);
         UUID attachmentId = UUID.fromString((String) a.get("id"));
         repo.linkExtractionCell(attachmentId, cellId);
 
@@ -140,7 +140,7 @@ class AttachmentRepositoryIntegrationTest {
     void updateThumbnailKeyAndFindDiagramsWithoutThumbnail() {
         UUID cellId = insertMinimalCell();
         Map<String, Object> a = repo.insert("hash-6", "text/vnd.mermaid", "g.mmd",
-                1L, "k6", null, "u");
+                1L, "k6", null, "u", null);
         UUID attachmentId = UUID.fromString((String) a.get("id"));
         repo.linkExtractionCell(attachmentId, cellId);
 

@@ -44,8 +44,11 @@ public class AnthropicSummarizer {
 
     private final RestClient client;
     private final String tenantToken;
+    private final String agentName;
     private final String model;
     private final int maxInputChars;
+    private final int maxOutputTokens;
+    private final String defaultLanguage;
 
     /**
      * Production constructor — called by SummarizerService via SummarizerProperties.
@@ -59,8 +62,11 @@ public class AnthropicSummarizer {
                 .requestFactory(rf)
                 .build();
         this.tenantToken = props.getVistierieToken();
+        this.agentName = props.getAgentName();
         this.model = props.getModel();
         this.maxInputChars = props.getMaxInputChars();
+        this.maxOutputTokens = props.getMaxOutputTokens();
+        this.defaultLanguage = props.getLanguage();
     }
 
     /**
@@ -68,14 +74,18 @@ public class AnthropicSummarizer {
      * SimpleClientHttpRequestFactory (HTTP/1.1) so WireMock-standalone works correctly.
      */
     AnthropicSummarizer(RestClient.Builder builder, String baseUrl,
-                        String tenantToken, String model, int maxInputChars) {
+                        String tenantToken, String agentName, String model,
+                        int maxInputChars, int maxOutputTokens, String defaultLanguage) {
         SimpleClientHttpRequestFactory rf = new SimpleClientHttpRequestFactory();
         rf.setConnectTimeout(30_000);
         rf.setReadTimeout(30_000);
         this.client = builder.baseUrl(baseUrl).requestFactory(rf).build();
         this.tenantToken = tenantToken;
+        this.agentName = agentName;
         this.model = model;
         this.maxInputChars = maxInputChars;
+        this.maxOutputTokens = maxOutputTokens;
+        this.defaultLanguage = defaultLanguage;
     }
 
     // Public method signature is unchanged — callers are unaffected.
@@ -91,16 +101,26 @@ public class AnthropicSummarizer {
                 + "Optional facts (emit if present): "
                 + String.join(", ", profile.optionalFacts());
 
+        systemPrompt = systemPrompt + "\n\nLanguage:\n"
+                + "- Write \"summary\", \"key_points\" and \"insight\" in the SAME LANGUAGE as the cell content below.\n"
+                + "- If the content's language is unclear or too short to determine, write them in "
+                + languageName(defaultLanguage) + ".\n"
+                + "- \"tags\" use the same language as the content (lowercase, kebab-case).\n"
+                + "- \"document_type\" and fact \"predicate\" keys stay in English as specified above.";
+
+        // Vistierie /llm/complete contract: agent_name (a registered agent with an operational
+        // budget) is required; the system prompt is a top-level field (Anthropic rejects a
+        // role:"system" entry inside messages), so messages carries the user turn only.
         Map<String, Object> body = Map.of(
-                "tenant", "hivemem",
+                "agent_name", agentName,
                 "purpose", "summarize_cell",
                 "realm", profile.type(),
                 "model", model,
+                "system", systemPrompt,
                 "messages", List.of(
-                        Map.of("role", "system", "content", systemPrompt),
                         Map.of("role", "user", "content", input)
                 ),
-                "max_tokens", 800
+                "max_tokens", maxOutputTokens
         );
 
         JsonNode resp = client.post()
@@ -121,7 +141,7 @@ public class AnthropicSummarizer {
 
         JsonNode parsed;
         try {
-            parsed = MAPPER.readTree(text);
+            parsed = MAPPER.readTree(stripJsonFences(text));
         } catch (Exception e) {
             throw new IllegalStateException("Failed to parse summarizer JSON: " + text, e);
         }
@@ -140,6 +160,38 @@ public class AnthropicSummarizer {
 
         return new SummaryResult(summary, keyPoints, insight, tags,
                 documentType, facts, inputTokens, outputTokens);
+    }
+
+    /**
+     * Maps an ISO 639-1 language code to the English language name used in the (English) system
+     * prompt. Unknown values pass through unchanged so an unmapped code or an already-spelled
+     * name still yields a usable instruction.
+     */
+    static String languageName(String code) {
+        if (code == null) return "German";
+        return switch (code.trim().toLowerCase()) {
+            case "de" -> "German";
+            case "en" -> "English";
+            default -> code;
+        };
+    }
+
+    /**
+     * Tolerant: strip ```json / ``` fences and narrow to the {...} object, so a fenced or
+     * prose-wrapped LLM response still parses. Mirrors PageGrouper's tolerant array parse.
+     */
+    static String stripJsonFences(String text) {
+        String cleaned = text.strip();
+        if (cleaned.startsWith("```")) {
+            int firstNl = cleaned.indexOf('\n');
+            if (firstNl >= 0) cleaned = cleaned.substring(firstNl + 1);
+            if (cleaned.endsWith("```")) cleaned = cleaned.substring(0, cleaned.length() - 3);
+            cleaned = cleaned.strip();
+        }
+        int s = cleaned.indexOf('{');
+        int e = cleaned.lastIndexOf('}');
+        if (s >= 0 && e > s) cleaned = cleaned.substring(s, e + 1);
+        return cleaned;
     }
 
     private static List<String> asStringList(JsonNode node) {

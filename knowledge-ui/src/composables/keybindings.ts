@@ -3,6 +3,7 @@ import { useUiStore } from '../stores/ui'
 import { useReaderStore } from '../stores/reader'
 import { useCellStore } from '../stores/cell'
 import { useCanvasStore } from '../stores/canvas'
+import { i18n } from '../i18n'
 
 export function useKeybindings() {
   const ui = useUiStore(), reader = useReaderStore(), cell = useCellStore()
@@ -21,7 +22,7 @@ export function useKeybindings() {
     } else if (e.key === 'Enter' && cell.currentId && !reader.open) {
       reader.openReader(cell.currentId)
     } else if (e.key === '?' && !ui.showLoginDialog) {
-      ui.pushToast('info', 'Cmd+K search · Esc back · Enter reader')
+      ui.pushToast('info', i18n.global.t('keybindings.hints'))
     }
   })
 }

@@ -330,6 +330,27 @@ public class WriteToolRepository {
             String createdBy,
             String status
     ) {
+        // Carry over key_points/insight/tags from the old revision unchanged.
+        return reviseCell(oldId, newContent, newSummary, null, null, null, embedding, createdBy, status);
+    }
+
+    /**
+     * Revise a cell, optionally replacing its derived metadata. A null {@code newSummary},
+     * {@code newKeyPoints} or {@code newInsight} carries the old value over; {@code newTags}
+     * are merged (union) with the existing tags. Used by the summarizer so the LLM-produced
+     * key_points/insight/tags are persisted, not just the summary.
+     */
+    public Map<String, Object> reviseCell(
+            UUID oldId,
+            String newContent,
+            String newSummary,
+            List<String> newKeyPoints,
+            String newInsight,
+            List<String> newTags,
+            List<Float> embedding,
+            String createdBy,
+            String status
+    ) {
         Float[] embeddingArray = embedding == null ? null : embedding.toArray(Float[]::new);
         return dslContext.transactionResult(configuration -> {
             DSLContext tx = DSL.using(configuration);
@@ -351,6 +372,14 @@ public class WriteToolRepository {
                     WHERE id = ?
                     """, revisionTimestamp, oldId);
 
+            String[] keyPointsArray = newKeyPoints != null
+                    ? newKeyPoints.toArray(String[]::new)
+                    : oldRow.get("key_points", String[].class);
+            String insightValue = newInsight != null
+                    ? newInsight
+                    : oldRow.get("insight", String.class);
+            String[] tagsArray = mergeTags(oldRow.get("tags", String[].class), newTags);
+
             Record newRow = tx.fetchOne("""
                     INSERT INTO cells (parent_id, content, embedding, realm, signal, topic, source, tags, importance,
                                          summary, key_points, insight, actionability, status, created_by, valid_from)
@@ -364,11 +393,11 @@ public class WriteToolRepository {
                     oldRow.get("signal", String.class),
                     oldRow.get("topic", String.class),
                     oldRow.get("source", String.class),
-                    oldRow.get("tags", String[].class),
+                    tagsArray,
                     oldRow.get("importance", Integer.class),
                     newSummary == null ? oldRow.get("summary", String.class) : newSummary,
-                    oldRow.get("key_points", String[].class),
-                    oldRow.get("insight", String.class),
+                    keyPointsArray,
+                    insightValue,
                     oldRow.get("actionability", String.class),
                     status,
                     createdBy,
@@ -389,6 +418,18 @@ public class WriteToolRepository {
                     "new_id", newId.toString()
             );
         });
+    }
+
+    /** Union of existing tags and new tags, order-preserving and de-duplicated. */
+    private static String[] mergeTags(String[] oldTags, List<String> newTags) {
+        java.util.LinkedHashSet<String> merged = new java.util.LinkedHashSet<>();
+        if (oldTags != null) {
+            merged.addAll(java.util.Arrays.asList(oldTags));
+        }
+        if (newTags != null) {
+            merged.addAll(newTags);
+        }
+        return merged.toArray(String[]::new);
     }
 
     public Map<String, Object> reclassifyCell(

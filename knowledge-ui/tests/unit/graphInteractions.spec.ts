@@ -12,6 +12,7 @@ import { useCanvasStore } from '../../src/stores/canvas'
 import { useCellStore } from '../../src/stores/cell'
 import { useReaderStore } from '../../src/stores/reader'
 import { useUiStore } from '../../src/stores/ui'
+import { i18n } from '../../src/i18n'
 
 const reactRoot = {
   render: vi.fn(),
@@ -333,6 +334,7 @@ describe('graph interactions', () => {
 
     const wrapper = mount(ScanPanel, {
       global: {
+        plugins: [i18n],
         stubs: {
           'v-btn': defineComponent({
             emits: ['click'],
@@ -377,6 +379,7 @@ describe('graph interactions', () => {
 
     const wrapper = mount(ScanPanel, {
       global: {
+        plugins: [i18n],
         stubs: {
           'v-btn': defineComponent({
             emits: ['click'],
@@ -422,6 +425,7 @@ describe('graph interactions', () => {
 
     const wrapper = mount(ScanPanel, {
       global: {
+        plugins: [i18n],
         stubs: {
           'v-btn': defineComponent({
             emits: ['click'],
@@ -473,6 +477,7 @@ describe('graph interactions', () => {
 
     const wrapper = mount(ScanPanel, {
       global: {
+        plugins: [i18n],
         stubs: {
           'v-btn': defineComponent({
             emits: ['click'],

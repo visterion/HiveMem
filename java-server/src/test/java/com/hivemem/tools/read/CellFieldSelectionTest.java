@@ -26,7 +26,7 @@ class CellFieldSelectionTest {
         assertThat(selection.responseFields()).containsExactly(
                 "id", "realm", "signal", "topic",
                 "summary", "key_points", "insight", "tags", "importance", "source",
-                "created_at", "actionability", "status"
+                "created_at", "actionability", "status", "attachments"
         );
     }
 
