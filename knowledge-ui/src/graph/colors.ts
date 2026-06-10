@@ -35,7 +35,6 @@ export function colorForRealm(name: string | null | undefined): string {
   return REALM_HEX[name] ?? paletteForRealm(hashIndex(name)).base
 }
 
-export function colorForRelation(relation: Relation): string
-export function colorForRelation(relation: string) {
+export function colorForRelation(relation: string): string {
   return RELATION_HEX[relation as Relation] ?? '#46D6E0'
 }
