@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useApi } from '../../api/useApi'
 import type { SearchResult } from '../../api/types'
@@ -14,23 +15,37 @@ const results = ref<SearchResult[]>([])
 const loading = ref(false)
 const typeF = ref('all')
 const cellStore = useCellStore()
+const route = useRoute()
+const router = useRouter()
 const { t } = useI18n()
 
 const TYPES = ['all', 'facts', 'events', 'discoveries', 'preferences', 'advice']
 
-let timer: number | null = null
-watch(q, v => {
-  if (timer) clearTimeout(timer)
-  timer = setTimeout(async () => {
-    if (!v) { results.value = []; return }
-    loading.value = true
-    try {
-      results.value = await useApi().call<SearchResult[]>('search', {
-        query: v, limit: 50, include: ['content', 'summary', 'created_at']
-      })
-    } finally { loading.value = false }
-  }, 180) as unknown as number
+const realmFilter = computed<string | null>(() => {
+  const r = route.query.realm
+  return typeof r === 'string' && r ? r : null
 })
+
+async function runSearch() {
+  const v = q.value
+  if (!v && !realmFilter.value) { results.value = []; return }
+  loading.value = true
+  try {
+    const args: Record<string, unknown> = { query: v, limit: 50, include: ['content', 'summary', 'created_at'] }
+    if (realmFilter.value) args.realm = realmFilter.value
+    results.value = await useApi().call<SearchResult[]>('search', args)
+  } finally { loading.value = false }
+}
+
+let timer: number | null = null
+watch(q, () => {
+  if (timer) clearTimeout(timer)
+  timer = setTimeout(runSearch, 180) as unknown as number
+})
+// re-run immediately when the realm filter changes (incl. initial mount with ?realm=)
+watch(realmFilter, runSearch, { immediate: true })
+
+function clearRealm() { router.replace({ query: {} }) }
 
 const shown = computed(() =>
   typeF.value === 'all' ? results.value : results.value.filter(c => c.signal === typeF.value))
@@ -57,6 +72,11 @@ function typeLabel(ty: string) { return ty === 'all' ? t('knowledge.allTypes') :
       <input v-model="q" :placeholder="t('search.placeholder')" />
       <kbd>⌘K</kbd>
     </div>
+    <div v-if="realmFilter" class="realm-chip">
+      <span class="dot" :style="{ background: realmColor(realmFilter) }" />
+      <span>{{ realmFilter }}</span>
+      <button class="x" @click="clearRealm" :aria-label="t('common.reload')"><HmIcon name="close" :size="12" /></button>
+    </div>
     <div class="seg">
       <button v-for="ty in TYPES" :key="ty" :class="{ on: typeF === ty }" @click="typeF = ty">{{ typeLabel(ty) }}</button>
     </div>
@@ -77,7 +97,8 @@ function typeLabel(ty: string) { return ty === 'all' ? t('knowledge.allTypes') :
         </div>
       </div>
       <div v-if="loading" class="hint">{{ t('search.searching') }}</div>
-      <div v-else-if="!shown.length && q" class="hint">{{ t('common.noResults') }}</div>
+      <div v-else-if="!shown.length && (q || realmFilter)" class="hint">{{ t('common.noResults') }}</div>
+      <div v-else-if="realmFilter && !q && !loading" class="hint">{{ t('search.withinRealm', { realm: realmFilter }) }}</div>
     </div>
   </div>
 </template>
@@ -95,6 +116,11 @@ function typeLabel(ty: string) { return ty === 'all' ? t('knowledge.allTypes') :
 .searchbar input { flex:1; background:none; border:none; outline:none; color:var(--text-0); font-size:14.5px; }
 .searchbar input::placeholder { color:var(--text-2); }
 .searchbar kbd { font-family:var(--font-mono); font-size:11px; color:var(--text-2); border:1px solid var(--line-2); border-radius:5px; padding:1px 5px; }
+.realm-chip { margin:0 8px 8px; display:inline-flex; align-items:center; gap:7px; padding:5px 8px 5px 10px;
+  background:var(--bg-3); border:1px solid var(--line); border-radius:999px; font-size:12.5px; color:var(--text-1);
+  text-transform:capitalize; width:fit-content; }
+.realm-chip .x { display:flex; align-items:center; background:none; border:none; color:var(--text-2); cursor:pointer; padding:0; }
+.realm-chip .x:hover { color:var(--text-0); }
 .seg { display:flex; gap:6px; padding:6px 8px 12px; flex-wrap:wrap; }
 .seg button { font-size:12px; color:var(--text-1); padding:5px 11px; border-radius:999px; border:1px solid var(--line);
   background:var(--bg-2); white-space:nowrap; cursor:pointer; }
