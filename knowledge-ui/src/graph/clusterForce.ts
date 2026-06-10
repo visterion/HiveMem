@@ -15,8 +15,7 @@ export function realmClusterCenters(
   realms: string[],
   radius = 320,
 ): Record<string, { x: number; y: number }> {
-  const unique: string[] = []
-  for (const r of realms) if (!unique.includes(r)) unique.push(r)
+  const unique = [...new Set(realms)]
   const centers: Record<string, { x: number; y: number }> = {}
   const n = unique.length
   if (n === 0) return centers

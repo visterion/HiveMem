@@ -91,6 +91,8 @@ describe('mapCanvasToForceGraph', () => {
     })
 
     expect(result.nodes).toHaveLength(3)
+    // val = max(2, sqrt(degree)*3 + importance*0.5). Only the a–b link survives
+    // (t2's 'missing' endpoint is filtered), so degree a=1,b=1,c=0 → 4.5 / 3.5 / 2.
     expect(result.nodes).toEqual(expect.arrayContaining([
       expect.objectContaining({
         id: 'a',

@@ -20,6 +20,7 @@ const size = ref({ width: 0, height: 0 })
 
 let root: Root | null = null
 let resizeObserver: ResizeObserver | null = null
+let zoomTimer: ReturnType<typeof setTimeout> | null = null
 const fgRef: { current: ForceGraphMethods<GraphNode, GraphLink> | undefined } = { current: undefined }
 
 function updateSize(measurement?: { width: number; height: number }) {
@@ -73,7 +74,9 @@ function installClusterForces() {
   fg.d3Force('y', forceY((n: unknown) => centers[(n as GraphNode).realm]?.y ?? 0).strength(0.22))
   fg.d3ReheatSimulation()
   // Frame the whole constellation once it settles (guarded for the mocked-root test env).
-  setTimeout(() => fgRef.current?.zoomToFit?.(500, 70), 1400)
+  // Track the timer so a quick unmount/remount can't fire a stale zoomToFit on a new instance.
+  if (zoomTimer) clearTimeout(zoomTimer)
+  zoomTimer = setTimeout(() => fgRef.current?.zoomToFit?.(500, 70), 1400)
 }
 
 onMounted(() => {
@@ -97,6 +100,7 @@ watch(graph, () => {
 watch([size, () => canvas.focusedId, () => canvas.hoveredId], renderReact)
 
 onBeforeUnmount(() => {
+  if (zoomTimer) { clearTimeout(zoomTimer); zoomTimer = null }
   resizeObserver?.disconnect()
   resizeObserver = null
   root?.unmount()
