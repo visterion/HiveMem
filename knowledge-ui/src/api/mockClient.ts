@@ -115,13 +115,14 @@ export class MockApiClient implements ApiClient {
     return mockPalace.realms
   }
 
-  private search(args: { query?: string; limit?: number; status?: string; tags?: string[] }): SearchResult[] {
+  private search(args: { query?: string; limit?: number; status?: string; tags?: string[]; realm?: string }): SearchResult[] {
     const q = (args.query || '').toLowerCase()
     const filterStatus = args.status ?? null
     const filterTags = args.tags && args.tags.length > 0 ? args.tags : null
     let all = q
       ? mockPalace.cells.filter(c => c.title.toLowerCase().includes(q) || c.content.toLowerCase().includes(q))
       : mockPalace.cells
+    if (args.realm) all = all.filter(c => c.realm === args.realm)
     if (filterStatus) {
       all = all.filter(c => (c.status ?? 'committed') === filterStatus)
     }
@@ -204,7 +205,9 @@ export class MockApiClient implements ApiClient {
     realm?: string; status?: string; tags?: string[]
     signal?: string; topic?: string; fields?: string[]
   }): Record<string, FacetValue[]> {
-    const cells = this.filterDocCells(args)
+    // Mirror FacetRepository: with no realm filter, count across ALL active
+    // cells; with a realm given, restrict to that realm (+doc filters).
+    const cells = args.realm ? this.filterDocCells(args) : mockPalace.cells
     const fields = args.fields ?? ['tag', 'status']
     const result: Record<string, FacetValue[]> = {}
     for (const field of fields) {
