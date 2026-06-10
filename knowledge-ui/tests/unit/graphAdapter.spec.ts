@@ -96,14 +96,14 @@ describe('mapCanvasToForceGraph', () => {
         id: 'a',
         signal: 'Consensus',
         topic: 'Architecture',
-        val: 3,
+        val: 4.5,
         color: colorForRealm('Systems')
       }),
       expect.objectContaining({
         id: 'b',
         signal: null,
         topic: null,
-        val: 1,
+        val: 3.5,
         color: colorForRealm('Systems')
       }),
       expect.objectContaining({
@@ -133,7 +133,7 @@ describe('mapCanvasToForceGraph', () => {
     })
 
     expect(result.nodes).toEqual([
-      expect.objectContaining({ id: 'a', importance: 0, val: 1 })
+      expect.objectContaining({ id: 'a', importance: 0, val: 2 })
     ])
   })
 
