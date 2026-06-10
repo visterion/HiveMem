@@ -11,8 +11,11 @@ const routes: RouteRecordRaw[] = [
     meta: { title: 'nav.hive', icon: 'reader', full: true } },
   { path: '/graph', name: 'graph', component: () => import('./pages/GraphRoute.vue'),
     meta: { title: 'nav.graph', icon: 'graph', full: true } },
-  { path: '/realms', name: 'realms', component: () => import('./pages/ComingSoon.vue'),
-    meta: { title: 'nav.realms', icon: 'realms', full: false } },
+  { path: '/realms', name: 'realms', meta: { title: 'nav.realms', icon: 'realms', full: false },
+    components: {
+      default: () => import('./components/realms/RealmsStage.vue'),
+      panel: () => import('./components/realms/RealmsPanel.vue'),
+    } },
   { path: '/photos', name: 'photos', component: () => import('./pages/ComingSoon.vue'),
     meta: { title: 'nav.photos', icon: 'photos', full: true } },
   { path: '/scans', name: 'scans', meta: { title: 'nav.scans', icon: 'scans', full: false },

@@ -30,4 +30,13 @@ describe('router', () => {
     expect(byName.scans.components).toHaveProperty('panel')
     expect(byName.scans.meta.full).toBeFalsy()
   })
+
+  it('realms route maps default + panel components and is not full', () => {
+    const byName = Object.fromEntries(router.getRoutes().map(r => [r.name, r]))
+    expect(byName.realms.components).toBeTruthy()
+    expect(byName.realms.components).toHaveProperty('default')
+    expect(byName.realms.components).toHaveProperty('panel')
+    expect(byName.realms.components).not.toHaveProperty('inspector')
+    expect(byName.realms.meta.full).toBeFalsy()
+  })
 })
