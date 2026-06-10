@@ -6,8 +6,7 @@ describe('HmIcon lock/cloud', () => {
   it('renders the lock icon inner markup', () => {
     const w = mount(HmIcon, { props: { name: 'lock' } })
     const html = w.html()
-    expect(html).toContain('x="5"')
-    expect(html).toContain('y="11"')
+    expect(html).toContain('M8 11V8a4 4 0 0 1 8 0v3')
   })
 
   it('renders the cloud icon inner markup', () => {

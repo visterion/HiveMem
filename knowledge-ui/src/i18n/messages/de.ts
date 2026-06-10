@@ -29,7 +29,8 @@ export default {
     hudPlaceholder: 'Suchen…',
     comingSoon: 'Demnächst',
     stats: '{cells} Zellen · {facts} Fakten · {realms} Realms',
-    withinRealm: 'innerhalb {realm} suchen'
+    withinRealm: 'innerhalb {realm} suchen',
+    clearRealm: 'Realm-Filter entfernen',
   },
   realms: {
     sizeMetric: 'GRÖSSENMETRIK',
@@ -38,6 +39,7 @@ export default {
     importance: 'Wichtigkeitsgewichtet',
     popularity: 'Popularität',
     cells: '{n} Zellen',
+    cellsLabel: 'Zellen',
     title: 'Realms',
     subtitle: 'Strikte Trennung pro Lebensbereich',
     heroLead: 'Jeder Realm hat eigene Routing-Regeln. Lokal markierte Realms verlassen niemals deine Maschine.',

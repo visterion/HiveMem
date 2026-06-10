@@ -45,7 +45,10 @@ watch(q, () => {
 // re-run immediately when the realm filter changes (incl. initial mount with ?realm=)
 watch(realmFilter, runSearch, { immediate: true })
 
-function clearRealm() { router.replace({ query: {} }) }
+function clearRealm() {
+  const { realm: _realm, ...rest } = route.query
+  router.replace({ query: rest })
+}
 
 const shown = computed(() =>
   typeF.value === 'all' ? results.value : results.value.filter(c => c.signal === typeF.value))
@@ -75,7 +78,7 @@ function typeLabel(ty: string) { return ty === 'all' ? t('knowledge.allTypes') :
     <div v-if="realmFilter" class="realm-chip">
       <span class="dot" :style="{ background: realmColor(realmFilter) }" />
       <span>{{ realmFilter }}</span>
-      <button class="x" @click="clearRealm" :aria-label="t('common.reload')"><HmIcon name="close" :size="12" /></button>
+      <button class="x" @click="clearRealm" :aria-label="t('search.clearRealm')"><HmIcon name="close" :size="12" /></button>
     </div>
     <div class="seg">
       <button v-for="ty in TYPES" :key="ty" :class="{ on: typeF === ty }" @click="typeF = ty">{{ typeLabel(ty) }}</button>

@@ -38,6 +38,9 @@ describe('RealmsStage', () => {
 
     const cards = w.findAll('.realm-card')
     expect(cards.length).toBe(2)
+    // footer shows the count once, not duplicated ("80 Zellen", never "80 80")
+    expect(cards[0].find('.rc-foot').text()).toContain('80 Zellen')
+    expect(cards[0].find('.rc-foot').text()).not.toMatch(/80\s+80/)
     const sparks = w.findAll('.rc-spark span')
     expect(sparks[0].attributes('style')).toContain('width: 100%') // max count → full
     expect(sparks[1].attributes('style')).toContain('width: 50%')  // 40/80

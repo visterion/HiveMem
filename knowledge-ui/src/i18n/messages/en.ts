@@ -29,7 +29,8 @@ export default {
     hudPlaceholder: 'Search…',
     comingSoon: 'Coming soon',
     stats: '{cells} cells · {facts} facts · {realms} realms',
-    withinRealm: 'searching within {realm}'
+    withinRealm: 'searching within {realm}',
+    clearRealm: 'Remove realm filter',
   },
   realms: {
     sizeMetric: 'SIZE METRIC',
@@ -38,6 +39,7 @@ export default {
     importance: 'Importance-weighted',
     popularity: 'Popularity',
     cells: '{n} cells',
+    cellsLabel: 'cells',
     title: 'Realms',
     subtitle: 'Strict separation per life domain',
     heroLead: 'Every realm has its own routing rules. Realms marked local never leave your machine.',

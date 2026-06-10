@@ -35,7 +35,7 @@ function sparkWidth(count: number): string {
         <div class="rc-name">{{ r.id }}</div>
         <div class="rc-desc">{{ r.desc }}</div>
         <div class="rc-foot">
-          <span class="rc-count">{{ r.count }}</span> {{ t('realms.cells', { n: r.count }) }}
+          <span class="rc-count">{{ r.count }}</span> {{ t('realms.cellsLabel') }}
           <span class="rc-spark"><span :style="{ width: sparkWidth(r.count), background: r.color }" /></span>
         </div>
       </button>
