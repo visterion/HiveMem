@@ -137,7 +137,7 @@ describe('mapCanvasToForceGraph', () => {
     ])
   })
 
-  it('returns the fallback color for unknown relations', () => {
-    expect(colorForRelation('unknown_relation')).toBe('#7f8aa3')
+  it('returns the cyan fallback color for unknown relations', () => {
+    expect(colorForRelation('unknown_relation')).toBe('#46D6E0')
   })
 })
