@@ -7,8 +7,8 @@ import { useKeybindings } from '../composables/keybindings'
 import { useI18n } from 'vue-i18n'
 
 // The rail, side panels and the global Reader are owned by AppShell (SP-A); this
-// route is just the force-graph stage plus the node-detail ScanPanel. In-graph
-// search/realm panels are reintroduced in the graph restyle (SP-F).
+// route is just the force-graph constellation stage plus the node-detail ScanPanel.
+// (Search and Realms are their own routes — no in-graph panels.)
 const canvas = useCanvasStore()
 const { t } = useI18n()
 
