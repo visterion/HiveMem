@@ -69,9 +69,11 @@ function installClusterForces() {
   const centers = clusterCenters.value
   fg.d3Force('charge')?.strength(-120)
   fg.d3Force('link')?.distance(38)
-  fg.d3Force('x', forceX((n: unknown) => centers[(n as GraphNode).realm]?.x ?? 0).strength(0.18))
-  fg.d3Force('y', forceY((n: unknown) => centers[(n as GraphNode).realm]?.y ?? 0).strength(0.18))
+  fg.d3Force('x', forceX((n: unknown) => centers[(n as GraphNode).realm]?.x ?? 0).strength(0.22))
+  fg.d3Force('y', forceY((n: unknown) => centers[(n as GraphNode).realm]?.y ?? 0).strength(0.22))
   fg.d3ReheatSimulation()
+  // Frame the whole constellation once it settles (guarded for the mocked-root test env).
+  setTimeout(() => fgRef.current?.zoomToFit?.(500, 70), 1400)
 }
 
 onMounted(() => {
