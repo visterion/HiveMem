@@ -28,7 +28,8 @@ export default {
     searching: 'Searching…',
     hudPlaceholder: 'Search…',
     comingSoon: 'Coming soon',
-    stats: '{cells} cells · {facts} facts · {realms} realms'
+    stats: '{cells} cells · {facts} facts · {realms} realms',
+    withinRealm: 'searching within {realm}'
   },
   realms: {
     sizeMetric: 'SIZE METRIC',
@@ -36,7 +37,12 @@ export default {
     contentVolume: 'Content volume',
     importance: 'Importance-weighted',
     popularity: 'Popularity',
-    cells: '{n} cells'
+    cells: '{n} cells',
+    title: 'Realms',
+    subtitle: 'Strict separation per life domain',
+    heroLead: 'Every realm has its own routing rules. Realms marked local never leave your machine.',
+    local: 'Local',
+    cloud: 'Cloud'
   },
   reader: {
     markdown: 'Markdown',
