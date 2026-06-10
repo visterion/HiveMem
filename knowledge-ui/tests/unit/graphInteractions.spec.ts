@@ -155,11 +155,22 @@ describe('graph interactions', () => {
       beginPath: vi.fn(),
       arc: vi.fn(),
       fill: vi.fn(),
-      fillStyle: ''
+      fillText: vi.fn(),
+      measureText: vi.fn(() => ({ width: 10 })),
+      save: vi.fn(),
+      restore: vi.fn(),
+      fillStyle: '',
+      font: '',
+      textAlign: '',
+      textBaseline: '',
+      globalAlpha: 1,
+      shadowColor: '',
+      shadowBlur: 0
     }
 
     forceGraphProps.nodeCanvasObject(node, hoveredCtx, 1)
     expect(hoveredCtx.arc).toHaveBeenCalledWith(10, 20, 7, 0, 2 * Math.PI)
+    expect(hoveredCtx.fillText).toHaveBeenCalled()
 
     const focusedGraphElement = ForceGraphRoot({
       nodes: [node],
@@ -177,7 +188,17 @@ describe('graph interactions', () => {
       beginPath: vi.fn(),
       arc: vi.fn(),
       fill: vi.fn(),
-      fillStyle: ''
+      fillText: vi.fn(),
+      measureText: vi.fn(() => ({ width: 10 })),
+      save: vi.fn(),
+      restore: vi.fn(),
+      fillStyle: '',
+      font: '',
+      textAlign: '',
+      textBaseline: '',
+      globalAlpha: 1,
+      shadowColor: '',
+      shadowBlur: 0
     }
 
     focusedProps.nodeCanvasObject(node, focusedCtx, 1)
