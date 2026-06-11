@@ -3,6 +3,8 @@ package com.hivemem.consumption;
 import com.hivemem.attachment.AttachmentProperties;
 import com.hivemem.attachment.AttachmentRepository;
 import com.hivemem.attachment.AttachmentService;
+import com.hivemem.attachment.ExifExtractor;
+import com.hivemem.attachment.ImageMetaRepository;
 import com.hivemem.attachment.KrokiClient;
 import com.hivemem.attachment.ParserRegistry;
 import com.hivemem.attachment.SeaweedFsClient;
@@ -124,9 +126,12 @@ abstract class ConsumptionITSupport {
         // KrokiClient — mock it; supports() returns false by default
         KrokiClient krokiClient = mock(KrokiClient.class);
 
+        ExifExtractor exifExtractor = new ExifExtractor();
+        ImageMetaRepository imageMetaRepo = new ImageMetaRepository(dsl);
+
         attachments = new AttachmentService(
                 attachmentProps, seaweed, parsers, attachmentRepo, writeRepo,
-                embedding, dsl, noopPublisher, krokiClient);
+                embedding, dsl, noopPublisher, krokiClient, exifExtractor, imageMetaRepo);
 
         jobRepo = new SeparationJobRepository(dsl);
     }

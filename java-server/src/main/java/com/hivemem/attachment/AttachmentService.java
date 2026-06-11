@@ -33,13 +33,17 @@ public class AttachmentService {
     private final DSLContext dsl;
     private final ApplicationEventPublisher eventPublisher;
     private final KrokiClient krokiClient;
+    private final ExifExtractor exifExtractor;
+    private final ImageMetaRepository imageMetaRepo;
 
     public AttachmentService(AttachmentProperties props, SeaweedFsClient seaweedFs,
                              ParserRegistry parsers, AttachmentRepository repo,
                              WriteToolRepository writeRepo, EmbeddingClient embeddingClient,
                              DSLContext dsl,
                              ApplicationEventPublisher eventPublisher,
-                             KrokiClient krokiClient) {
+                             KrokiClient krokiClient,
+                             ExifExtractor exifExtractor,
+                             ImageMetaRepository imageMetaRepo) {
         this.props = props;
         this.seaweedFs = seaweedFs;
         this.parsers = parsers;
@@ -49,6 +53,8 @@ public class AttachmentService {
         this.dsl = dsl;
         this.eventPublisher = eventPublisher;
         this.krokiClient = krokiClient;
+        this.exifExtractor = exifExtractor;
+        this.imageMetaRepo = imageMetaRepo;
     }
 
     @Transactional
@@ -152,6 +158,7 @@ public class AttachmentService {
                 writeRepo.tagVisionPending(cellId);
                 eventPublisher.publishEvent(
                         new VisionDescriptionRequestedEvent(attachmentId, cellId, key, mimeType));
+                extractAndStoreImageMeta(tempFile, attachmentId);
             } else if (krokiClient.supports(mimeType)) {
                 String fileHash = (String) attachmentRow.get("file_hash");
                 writeRepo.tagKrokiPending(cellId);
@@ -200,6 +207,24 @@ public class AttachmentService {
         String key = (String) row.get("s3_key_thumbnail");
         if (key == null) throw new NoSuchElementException("No thumbnail for attachment: " + id);
         return seaweedFs.download(key);
+    }
+
+    private void extractAndStoreImageMeta(Path tempFile, UUID attachmentId) {
+        try {
+            // Skip if metadata already exists (dedup/re-ingest path is idempotent).
+            if (imageMetaRepo.findByAttachmentId(attachmentId).isPresent()) return;
+            byte[] bytes = Files.readAllBytes(tempFile);
+            ExifData exif = exifExtractor.extract(bytes);
+            boolean hasGps = exif.gpsLat() != null && exif.gpsLon() != null;
+            String geocodeStatus = hasGps ? "pending" : "none";
+            imageMetaRepo.upsert(attachmentId, exif, geocodeStatus);
+            if (hasGps) {
+                eventPublisher.publishEvent(
+                        new GeocodeRequestedEvent(attachmentId, exif.gpsLat(), exif.gpsLon()));
+            }
+        } catch (Exception e) {
+            log.warn("Image EXIF extraction failed for {}: {}", attachmentId, e.getMessage());
+        }
     }
 
     private void uploadThumbnail(String key, byte[] bytes, String mimeType) {

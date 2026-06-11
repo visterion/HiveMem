@@ -5,6 +5,7 @@ import com.hivemem.write.WriteToolRepository;
 import org.jooq.DSLContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.context.ApplicationEventPublisher;
 
 import java.io.ByteArrayInputStream;
@@ -17,7 +18,11 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class AttachmentServiceUnitTest {
@@ -31,13 +36,15 @@ class AttachmentServiceUnitTest {
     private final DSLContext dsl = mock(DSLContext.class);
     private final ApplicationEventPublisher events = mock(ApplicationEventPublisher.class);
     private final KrokiClient krokiClient = mock(KrokiClient.class);
+    private final ExifExtractor exifExtractor = mock(ExifExtractor.class);
+    private final ImageMetaRepository imageMetaRepo = mock(ImageMetaRepository.class);
 
     private AttachmentService service;
 
     @BeforeEach
     void setUp() {
         service = new AttachmentService(props, seaweedFs, parsers, repo, writeRepo,
-                embeddingClient, dsl, events, krokiClient);
+                embeddingClient, dsl, events, krokiClient, exifExtractor, imageMetaRepo);
     }
 
     @Test
@@ -104,5 +111,49 @@ class AttachmentServiceUnitTest {
         when(seaweedFs.download("thumb.jpg")).thenReturn(stream);
 
         assertThat(service.downloadThumbnail(id)).isSameAs(stream);
+    }
+
+    @Test
+    void imageIngestExtractsExifUpsertsMetaAndPublishesGeocodeWhenGps() throws Exception {
+        props.setEnabled(true);
+
+        when(parsers.parse(eq("image/jpeg"), any()))
+                .thenReturn(ParseResult.withThumbnail(null, new byte[]{1, 2, 3}));
+        when(embeddingClient.encodeForCell(anyString(), any())).thenReturn(java.util.List.of(0.1f));
+
+        UUID attId = UUID.randomUUID();
+        UUID cellId = UUID.randomUUID();
+        when(repo.findByHash(anyString())).thenReturn(Optional.empty());
+        Map<String, Object> attRow = new LinkedHashMap<>();
+        attRow.put("id", attId.toString());
+        attRow.put("file_hash", "h");
+        attRow.put("s3_key_original", "orig/p.jpg");
+        attRow.put("s3_key_thumbnail", "thumb/p.jpg");
+        when(repo.insert(anyString(), anyString(), anyString(), org.mockito.ArgumentMatchers.anyLong(),
+                anyString(), org.mockito.ArgumentMatchers.nullable(String.class), anyString(),
+                org.mockito.ArgumentMatchers.nullable(Integer.class))).thenReturn(attRow);
+        Map<String, Object> cellRow = new LinkedHashMap<>();
+        cellRow.put("id", cellId.toString());
+        when(writeRepo.addCell(anyString(), any(), anyString(), any(), any(), anyString(),
+                any(), any(), any(), any(), any(), any(), anyString(), anyString(), any()))
+                .thenReturn(cellRow);
+
+        // REQUIRED: guard does findByAttachmentId(...).isPresent(); default mock returns null → NPE without this.
+        when(imageMetaRepo.findByAttachmentId(any())).thenReturn(Optional.empty());
+
+        ExifData exif = new ExifData(120, 80, null, "Apple", "iPhone 16 Pro", 49.4874, 8.4660, 6);
+        when(exifExtractor.extract(any())).thenReturn(exif);
+
+        InputStream in = new ByteArrayInputStream(new byte[]{9, 9, 9});
+        service.ingest(in, "p.jpg", "image/jpeg", "private", "events", "trip", null, "user");
+
+        verify(imageMetaRepo).upsert(eq(attId), eq(exif), eq("pending"));
+        ArgumentCaptor<GeocodeRequestedEvent> ev = ArgumentCaptor.forClass(GeocodeRequestedEvent.class);
+        verify(events, org.mockito.Mockito.atLeastOnce()).publishEvent(ev.capture());
+        assertThat(ev.getAllValues()).anySatisfy(e -> {
+            assertThat(e.attachmentId()).isEqualTo(attId);
+            assertThat(e.lat()).isEqualTo(49.4874);
+            assertThat(e.lon()).isEqualTo(8.4660);
+        });
     }
 }
