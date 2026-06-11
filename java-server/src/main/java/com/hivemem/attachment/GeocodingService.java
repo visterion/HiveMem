@@ -2,9 +2,10 @@ package com.hivemem.attachment;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
 
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -27,8 +28,11 @@ public class GeocodingService {
         this.props = props;
     }
 
+    // AFTER_COMMIT so a rolled-back ingest never leaves a stale geocode write (the
+    // attachment_image_meta row would not exist). fallbackExecution=true so events
+    // published outside a transaction (the startup backfill) are still handled.
     @Async
-    @EventListener
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
     public void onGeocodeRequested(GeocodeRequestedEvent event) {
         if (!props.isEnabled()) return;
         String key = round(event.lat()) + "," + round(event.lon());

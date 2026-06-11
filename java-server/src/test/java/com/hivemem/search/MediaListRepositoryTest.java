@@ -129,6 +129,15 @@ class MediaListRepositoryTest {
     }
 
     @Test
+    void oldestSortsByTakenAtAscFallingBackToCreatedAt() {
+        List<Map<String, Object>> rows = repo.listMedia("mphotos", "oldest", 50, 0);
+        assertThat(rows).hasSize(2);
+        // photo (taken_at 2026-05-10) is older than whiteboard (no taken_at → created_at 2026-06-05)
+        assertThat(rows.get(0).get("cell_id")).isEqualTo(C_PHOTO.toString());
+        assertThat(rows.get(1).get("cell_id")).isEqualTo(C_WHITE.toString());
+    }
+
+    @Test
     void pagingLimitOffset() {
         List<Map<String, Object>> rows = repo.listMedia("mphotos", "newest", 1, 1);
         assertThat(rows).hasSize(1);

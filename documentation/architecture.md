@@ -168,12 +168,13 @@ Each file upload (via `upload_attachment` or `POST /api/attachments`) automatica
 Image attachments (`image/*`) get a row in `attachment_image_meta` (1:0..1 with
 `attachments`, only images get a row), populated synchronously at ingest by
 `ExifExtractor` (the `metadata-extractor` library): pixel `width`/`height`, capture
-date (`taken_at` from EXIF `DateTimeOriginal`, interpreted as UTC), `camera_make`/
+date (`taken_at` from EXIF `DateTimeOriginal`, interpreted as UTC — EXIF carries no
+timezone, so cross-timezone sort order can be off by the local UTC offset), `camera_make`/
 `camera_model`, GPS `gps_lat`/`gps_lon`, and EXIF `orientation`. Thumbnails are rotated
 upright per the EXIF orientation flag. EXIF failures never abort ingest.
 
 When GPS coordinates are present, ingest publishes a `GeocodeRequestedEvent` and
-`GeocodingService` (async, `@EventListener`) reverse-geocodes them to a `place_name`
+`GeocodingService` (async, `@TransactionalEventListener` AFTER_COMMIT) reverse-geocodes them to a `place_name`
 ("City, CC") via a Nominatim endpoint, caching by rounded coordinates and throttling to
 ≤1 request/second. The resolution state is tracked in `geocode_status`
 (`none` | `pending` | `done` | `failed`).
