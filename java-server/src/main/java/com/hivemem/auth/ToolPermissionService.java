@@ -39,6 +39,7 @@ public class ToolPermissionService {
             "get_attachment_info",
             "facet_count",
             "list_documents",
+            "list_media",
             "list_saved_searches"
     );
 

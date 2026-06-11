@@ -73,7 +73,7 @@ class ParitySmokeTest {
     @Test
     void adminPermissionSetContainsFullExpectedToolCount() {
         assertThat(toolPermissionService.allowedTools(AuthRole.ADMIN))
-                .hasSize(45)
+                .hasSize(46)
                 .contains("search", "add_cell", "approve_pending",
                         "health", "reclassify_cell", "queen_runs", "queen_run_detail",
                         "upload_attachment", "list_attachments", "get_attachment_info",
@@ -86,7 +86,7 @@ class ParitySmokeTest {
     @Test
     void writerPermissionSetContainsReadAndWriteToolsButNoAdminTools() {
         assertThat(toolPermissionService.allowedTools(AuthRole.WRITER))
-                .hasSize(41)
+                .hasSize(42)
                 .contains("search", "add_cell", "revise_cell", "reclassify_cell",
                         "upload_attachment", "list_attachments", "get_attachment_info",
                         "facet_count", "save_search", "list_saved_searches", "delete_saved_search",

@@ -8,6 +8,7 @@ import com.hivemem.search.CellSearchRepository;
 import com.hivemem.search.ConfidenceLevel;
 import com.hivemem.search.ConfidenceThresholds;
 import com.hivemem.search.DocumentListRepository;
+import com.hivemem.search.MediaListRepository;
 import com.hivemem.search.FacetRepository;
 import com.hivemem.search.KgSearchRepository;
 import com.hivemem.search.SearchWeightsProperties;
@@ -38,6 +39,7 @@ public class ReadToolService {
     private final AttachmentRepository attachmentRepository;
     private final FacetRepository facetRepository;
     private final DocumentListRepository documentListRepository;
+    private final MediaListRepository mediaListRepository;
 
     public ReadToolService(
             CellReadRepository cellReadRepository,
@@ -49,7 +51,8 @@ public class ReadToolService {
             ConfidenceThresholds confidenceThresholds,
             AttachmentRepository attachmentRepository,
             FacetRepository facetRepository,
-            DocumentListRepository documentListRepository
+            DocumentListRepository documentListRepository,
+            MediaListRepository mediaListRepository
     ) {
         this.cellReadRepository = cellReadRepository;
         this.kgSearchRepository = kgSearchRepository;
@@ -61,6 +64,7 @@ public class ReadToolService {
         this.attachmentRepository = attachmentRepository;
         this.facetRepository = facetRepository;
         this.documentListRepository = documentListRepository;
+        this.mediaListRepository = mediaListRepository;
     }
 
     public Map<String, Object> status() {
@@ -219,6 +223,13 @@ public class ReadToolService {
         int clampedOffset = Math.max(offset, 0);
         return documentListRepository.listDocuments(
                 effectiveRealm, signal, topic, tags, status, sort, clampedLimit, clampedOffset);
+    }
+
+    public List<Map<String, Object>> listMedia(String realm, String sort, int limit, int offset) {
+        String effectiveRealm = (realm == null || realm.isBlank()) ? null : realm;
+        int clampedLimit = Math.min(Math.max(limit, 1), 500);
+        int clampedOffset = Math.max(offset, 0);
+        return mediaListRepository.listMedia(effectiveRealm, sort, clampedLimit, clampedOffset);
     }
 
     public Map<String, Object> wakeUp() {
