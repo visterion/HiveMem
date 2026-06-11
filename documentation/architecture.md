@@ -8,7 +8,7 @@ graph TB
         Auth["AuthFilter<br/><i>Token auth + role check + rate limit</i>"]
         ToolGate["ToolPermissionService<br/><i>Filter tools/list by role</i>"]
         Identity["Identity Injection<br/><i>created_by from token</i>"]
-        MCP["McpController<br/>:8421<br/><i>45 tools, Streamable HTTP</i>"]
+        MCP["McpController<br/>:8421<br/><i>46 tools, Streamable HTTP</i>"]
     end
 
     EmbSvc["External Embeddings Service<br/><i>HTTP API</i>"]
@@ -133,6 +133,19 @@ erDiagram
         TIMESTAMPTZ created_at
         TIMESTAMPTZ valid_until
     }
+    attachment_image_meta {
+        UUID attachment_id PK
+        INTEGER width
+        INTEGER height
+        TIMESTAMPTZ taken_at
+        TEXT camera_make
+        TEXT camera_model
+        REAL gps_lat
+        REAL gps_lon
+        SMALLINT orientation
+        TEXT place_name
+        TEXT geocode_status
+    }
 
     cells ||--o{ facts : "source_id"
     cells ||--o{ cells : "parent_id (revision chain)"
@@ -143,11 +156,39 @@ erDiagram
     cells ||--o{ access_log : "tracked"
     cells ||--o{ cell_attachments : "linked"
     attachments ||--o{ cell_attachments : "linked"
+    attachments ||--o| attachment_image_meta : "EXIF (images only)"
 ```
 
 ### Attachment ingestion
 
 Each file upload (via `upload_attachment` or `POST /api/attachments`) automatically creates a new `pending` Cell. For PDF files, the page count is determined at ingest (via Apache PDFBox) and stored in `attachments.page_count` (INTEGER, `null` for non-PDF types). This field is exposed in the `get_cell` `attachments[]` list, `get_attachment_info`, and `list_attachments` responses. The cell content is set to the text extracted from the file; if no text could be extracted, the original filename is used as a fallback. The Classifier agent picks up `pending` cells asynchronously and enriches them with summary, key points, insight, and tags. The link between the attachment and its extraction cell is recorded in `cell_attachments` with `extraction_source = true`. If the caller also supplies an existing `cell_id`, a `related_to` tunnel is created between the new extraction Cell and the supplied cell.
+
+### Image EXIF & geolocation
+
+Image attachments (`image/*`) get a row in `attachment_image_meta` (1:0..1 with
+`attachments`, only images get a row), populated synchronously at ingest by
+`ExifExtractor` (the `metadata-extractor` library): pixel `width`/`height`, capture
+date (`taken_at` from EXIF `DateTimeOriginal`, interpreted as UTC), `camera_make`/
+`camera_model`, GPS `gps_lat`/`gps_lon`, and EXIF `orientation`. Thumbnails are rotated
+upright per the EXIF orientation flag. EXIF failures never abort ingest.
+
+When GPS coordinates are present, ingest publishes a `GeocodeRequestedEvent` and
+`GeocodingService` (async, `@EventListener`) reverse-geocodes them to a `place_name`
+("City, CC") via a Nominatim endpoint, caching by rounded coordinates and throttling to
+≤1 request/second. The resolution state is tracked in `geocode_status`
+(`none` | `pending` | `done` | `failed`).
+
+A one-time idempotent startup backfill (`ImageMetaBackfillRunner`) populates metadata for
+images uploaded before this feature existed. The `list_media` MCP tool reads this table
+for the photo gallery.
+
+Configuration (`hivemem.geocoding.*`):
+
+| Property | Default | Purpose |
+|---|---|---|
+| `hivemem.geocoding.enabled` | `true` | Master switch for reverse-geocoding |
+| `hivemem.geocoding.base-url` | `https://nominatim.openstreetmap.org` | Reverse-geocode endpoint |
+| `hivemem.geocoding.user-agent` | `HiveMem/1.0 (+https://github.com/visterion/hivemem)` | Required by Nominatim usage policy |
 
 ### Saved searches
 
@@ -164,7 +205,7 @@ Every HiveMem tool is mapped to a specific role to ensure least privilege. Write
 | Category | Tools | Access Role | Data Flow | HITL Required? | Description |
 |---|---|---|---|---|---|
 | **Search** | `search`, `search_kg`, `quick_facts`, `time_machine`, `facet_count` | `reader` | Read Only | No | 6-signal semantic & keyword search. `search` supports optional `tags` (match-ANY array) and `status` filters. `facet_count` returns aggregate counts grouped by `tag`/`status`/`realm`/`year`/`signal`, plus `fact:<predicate>` fields (allow-listed: `vendor`, `party`, `amount_total`, `value_per_period`, `document_date`, `due_date`, `invoice_number`, `contract_number`). |
-| **Read** | `status`, `get_cell`, `list`, `traverse`, `wake_up`, `get_blueprint`, `history`, `pending_approvals`, `reading_list`, `list_agents`, `diary_read`, `list_attachments`, `get_attachment_info`, `list_saved_searches` | `reader` | Read Only | No | Navigation and context retrieval. `get_cell` supports `include=['confidence']` for the per-document average fact confidence (nullable). |
+| **Read** | `status`, `get_cell`, `list`, `traverse`, `wake_up`, `get_blueprint`, `history`, `pending_approvals`, `reading_list`, `list_agents`, `diary_read`, `list_attachments`, `get_attachment_info`, `list_saved_searches`, `list_media` | `reader` | Read Only | No | Navigation and context retrieval. `get_cell` supports `include=['confidence']` for the per-document average fact confidence (nullable). |
 | **Write** | `add_cell`, `kg_add`, `kg_invalidate`, `revise_cell`, `revise_fact`, `reclassify_cell`, `update_identity`, `update_blueprint`, `upload_attachment`, `save_search`, `delete_saved_search`, `add_tags`, `remove_tags`, `bulk_tag`, `bulk_reclassify` | `agent` | Propose Change | Yes (for Agents) | Append-only knowledge capture; tag management; saved-search persistence. |
 | **Tunnels** | `add_tunnel`, `remove_tunnel` | `agent` | Link Discovery | Yes | Cell-to-cell semantic linking. |
 | **Approval** | `approve_pending` | `admin` | Commit Change | Yes | Batch approve or reject pending agent writes. |
