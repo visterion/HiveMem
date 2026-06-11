@@ -1,5 +1,7 @@
 package com.hivemem;
 
+import com.hivemem.attachment.GeocodingService;
+import com.hivemem.attachment.ImageMetaBackfillRunner;
 import com.hivemem.auth.TokenService;
 import com.hivemem.embedding.EmbeddingClient;
 import com.hivemem.embedding.EmbeddingMigrationService;
@@ -60,6 +62,12 @@ class HiveMemApplicationTest {
 
     @MockitoBean
     private InstanceConfig instanceConfig;
+
+    @MockitoBean
+    private ImageMetaBackfillRunner imageMetaBackfillRunner;
+
+    @MockitoBean
+    private GeocodingService geocodingService;
 
     @Test
     void contextLoads() {

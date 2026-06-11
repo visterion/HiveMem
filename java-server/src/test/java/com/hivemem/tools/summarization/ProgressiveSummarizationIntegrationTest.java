@@ -13,6 +13,7 @@ import com.hivemem.tools.read.CellFieldSelection;
 import com.hivemem.attachment.AttachmentRepository;
 import com.hivemem.search.FacetRepository;
 import com.hivemem.search.DocumentListRepository;
+import com.hivemem.search.MediaListRepository;
 import com.hivemem.tools.read.ReadToolService;
 import com.hivemem.write.AdminToolRepository;
 import com.hivemem.write.AdminToolService;
@@ -625,6 +626,7 @@ class ProgressiveSummarizationIntegrationTest {
             CellSearchRepository.class,
             KgSearchRepository.class,
             DocumentListRepository.class,
+            MediaListRepository.class,
             AdminToolRepository.class,
             OpLogWriter.class,
             InstanceConfig.class,

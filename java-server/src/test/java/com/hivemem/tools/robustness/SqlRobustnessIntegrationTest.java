@@ -13,6 +13,7 @@ import com.hivemem.attachment.AttachmentRepository;
 import com.hivemem.search.FacetRepository;
 import com.hivemem.tools.read.ReadToolService;
 import com.hivemem.search.DocumentListRepository;
+import com.hivemem.search.MediaListRepository;
 import com.hivemem.write.WriteToolRepository;
 import com.hivemem.write.AdminToolRepository;
 import com.hivemem.write.AdminToolService;
@@ -245,6 +246,7 @@ class SqlRobustnessIntegrationTest {
             WriteToolRepository.class,
             ReadToolService.class,
             DocumentListRepository.class,
+            MediaListRepository.class,
             FacetRepository.class,
             AttachmentRepository.class,
             SearchWeightsProperties.class,
