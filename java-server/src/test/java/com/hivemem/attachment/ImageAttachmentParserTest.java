@@ -1,5 +1,9 @@
 package com.hivemem.attachment;
 
+import org.apache.commons.imaging.formats.jpeg.exif.ExifRewriter;
+import org.apache.commons.imaging.formats.tiff.constants.TiffTagConstants;
+import org.apache.commons.imaging.formats.tiff.write.TiffOutputDirectory;
+import org.apache.commons.imaging.formats.tiff.write.TiffOutputSet;
 import org.junit.jupiter.api.Test;
 
 import javax.imageio.ImageIO;
@@ -9,6 +13,7 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -17,6 +22,35 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ImageAttachmentParserTest {
 
     private final ImageAttachmentParser parser = new ImageAttachmentParser();
+
+    private static byte[] jpegWithOrientation(int w, int h, short orientation) throws Exception {
+        BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
+        ByteArrayOutputStream base = new ByteArrayOutputStream();
+        ImageIO.write(img, "JPEG", base);
+        TiffOutputSet set = new TiffOutputSet();
+        TiffOutputDirectory root = set.getOrCreateRootDirectory();
+        root.add(TiffTagConstants.TIFF_TAG_ORIENTATION, orientation);
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        new ExifRewriter().updateExifMetadataLossless(base.toByteArray(), out, set);
+        return out.toByteArray();
+    }
+
+    @Test
+    void orientation6SwapsThumbnailDimensions() throws Exception {
+        byte[] src = jpegWithOrientation(120, 80, (short) 6); // landscape, must become portrait
+        ParseResult r = parser.parse(new ByteArrayInputStream(src));
+        assertThat(r.hasThumbnail()).isTrue();
+        BufferedImage thumb = ImageIO.read(new ByteArrayInputStream(r.thumbnail()));
+        assertThat(thumb.getHeight()).isGreaterThan(thumb.getWidth());
+    }
+
+    @Test
+    void orientation1KeepsLandscape() throws Exception {
+        byte[] src = jpegWithOrientation(120, 80, (short) 1);
+        ParseResult r = parser.parse(new ByteArrayInputStream(src));
+        BufferedImage thumb = ImageIO.read(new ByteArrayInputStream(r.thumbnail()));
+        assertThat(thumb.getWidth()).isGreaterThan(thumb.getHeight());
+    }
 
     @Test
     void supports_imageMimeTypes() {
