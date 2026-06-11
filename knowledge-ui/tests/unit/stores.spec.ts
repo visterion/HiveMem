@@ -3,6 +3,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { useAuthStore } from '../../src/stores/auth'
 import { useUiStore } from '../../src/stores/ui'
 import { useCanvasStore } from '../../src/stores/canvas'
+import { resetApi } from '../../src/api/useApi'
 
 describe('stores', () => {
   beforeEach(() => setActivePinia(createPinia()))
@@ -21,10 +22,14 @@ describe('stores', () => {
   })
 
   it('canvas loadTopLevel populates realms + cells from api', async () => {
-    localStorage.setItem('hivemem_mock', 'true')
+    localStorage.setItem('hivemem_mock', 'true'); resetApi()
     const s = useCanvasStore()
     await s.loadTopLevel()
     expect(s.realms.length).toBeGreaterThan(0)
+    // streaming is async (long-poll); wait for the first batch to arrive
+    for (let i = 0; i < 60 && s.cells.length === 0; i++) {
+      await new Promise(r => setTimeout(r, 50))
+    }
     expect(s.cells.length).toBeGreaterThan(0)
   })
 })

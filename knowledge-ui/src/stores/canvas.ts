@@ -31,6 +31,20 @@ export const useCanvasStore = defineStore('canvas', {
     async _longPoll() {
       this.streamActive = true
       try {
+        // Mock mode: the real /api/gui/stream endpoint doesn't exist, so drive the
+        // graph from the mock client's hivemem_stream_next long-poll (one batch per
+        // call until done) — gives a progressive reveal in local dev.
+        if (localStorage.getItem('hivemem_mock') === 'true') {
+          const api = useApi()
+          let done = false
+          while (!done && !this._streamAbort) {
+            const resp = await api.call<StreamResponse>('hivemem_stream_next', { timeout_ms: 25000 })
+            if (resp.cells?.length) this.cells = [...this.cells, ...resp.cells]
+            if (resp.tunnels?.length) this.tunnels = [...this.tunnels, ...resp.tunnels]
+            done = resp.done
+          }
+          return
+        }
         const res = await fetch('/api/gui/stream', { credentials: 'same-origin' })
         if (res.status === 401) { window.location.href = '/login'; return }
         if (!res.ok) return
