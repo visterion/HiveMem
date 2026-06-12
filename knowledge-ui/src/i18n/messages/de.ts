@@ -91,7 +91,13 @@ export default {
     noPending: 'Keine offenen Queen-Vorschläge.',
     unavailable: 'Vistierie nicht erreichbar — die Queen ist evtl. deaktiviert.',
     events: 'Ereignisse',
-    run: 'Lauf {id}'
+    run: 'Lauf {id}',
+    openProposals: 'Offene Vorschläge',
+    queenSub: 'Warten auf deine Prüfung',
+    noProposals: 'Keine offenen Vorschläge',
+    kpiRuns: 'Läufe',
+    kpiProposals: 'Vorschläge',
+    kpiCost: 'Kosten',
   },
   keybindings: {
     hints: 'Cmd+K Suche · Esc zurück · Enter Reader'

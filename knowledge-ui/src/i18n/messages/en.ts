@@ -91,7 +91,13 @@ export default {
     noPending: 'No pending Queen proposals.',
     unavailable: 'Vistierie unreachable — the Queen may be disabled.',
     events: 'Events',
-    run: 'Run {id}'
+    run: 'Run {id}',
+    openProposals: 'Open proposals',
+    queenSub: 'Awaiting your review',
+    noProposals: 'No open proposals',
+    kpiRuns: 'Runs',
+    kpiProposals: 'Proposals',
+    kpiCost: 'Cost',
   },
   keybindings: {
     hints: 'Cmd+K search · Esc back · Enter reader'
