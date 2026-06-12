@@ -23,6 +23,15 @@ export default {
     logout: 'Log out',
     language: 'Language'
   },
+  photos: {
+    sub: 'Captured & ingested',
+    empty: 'No photos yet',
+    loadError: 'Could not load photos.',
+    exif: 'EXIF',
+    camera: 'Camera', resolution: 'Resolution', location: 'Location', size: 'Size', takenAt: 'Taken',
+    showInGraph: 'Show in graph',
+    today: 'Today', thisWeek: 'This week', thisMonth: 'This month',
+  },
   search: {
     placeholder: 'Type to search…',
     searching: 'Searching…',

@@ -16,7 +16,7 @@ const routes: RouteRecordRaw[] = [
       default: () => import('./components/realms/RealmsStage.vue'),
       panel: () => import('./components/realms/RealmsPanel.vue'),
     } },
-  { path: '/photos', name: 'photos', component: () => import('./pages/ComingSoon.vue'),
+  { path: '/photos', name: 'photos', component: () => import('./pages/PhotosRoute.vue'),
     meta: { title: 'nav.photos', icon: 'photos', full: true } },
   { path: '/scans', name: 'scans', meta: { title: 'nav.scans', icon: 'scans', full: false },
     components: {

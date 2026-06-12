@@ -23,6 +23,15 @@ export default {
     logout: 'Abmelden',
     language: 'Sprache'
   },
+  photos: {
+    sub: 'Aufgenommen & ingestiert',
+    empty: 'Noch keine Fotos',
+    loadError: 'Fotos konnten nicht geladen werden.',
+    exif: 'EXIF',
+    camera: 'Kamera', resolution: 'Auflösung', location: 'Ort', size: 'Größe', takenAt: 'Aufgenommen',
+    showInGraph: 'Im Graph zeigen',
+    today: 'Heute', thisWeek: 'Diese Woche', thisMonth: 'Diesen Monat',
+  },
   search: {
     placeholder: 'Zum Suchen tippen…',
     searching: 'Suche läuft…',
