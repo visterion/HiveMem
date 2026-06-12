@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onBeforeUnmount } from 'vue'
+import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import type { MediaItem } from '../../api/types'
@@ -9,13 +9,26 @@ import HmIcon from '../shell/HmIcon.vue'
 const props = defineProps<{ item: MediaItem }>()
 const emit = defineEmits<{ (e: 'close'): void; (e: 'next'): void; (e: 'prev'): void }>()
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const router = useRouter()
 const canvas = useCanvasStore()
 
 const DASH = '—'
 const contentUrl = computed(() =>
   props.item.attachment_id ? `/api/attachments/${props.item.attachment_id}/content` : null)
+
+// Gradient placeholder behind the full image (shown in mock/dev where /content 404s,
+// and while the real image loads). Reset the failed flag when the photo changes.
+const imgFailed = ref(false)
+watch(() => props.item.cell_id, () => { imgFailed.value = false })
+function gradientFor(seed: string): string {
+  let h = 0
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0
+  const a = h % 360
+  const b = (a + 40) % 360
+  return `linear-gradient(145deg, hsl(${a},55%,42%), hsl(${b},50%,30%))`
+}
+const bg = computed(() => gradientFor(props.item.cell_id))
 const camera = computed(() => {
   const parts = [props.item.camera_make, props.item.camera_model].filter(Boolean)
   return parts.length ? parts.join(' ') : DASH
@@ -31,7 +44,7 @@ const sizeText = computed(() => props.item.size_bytes
   ? `${(props.item.size_bytes / 1_048_576).toFixed(1)} MB` : DASH)
 const dateText = computed(() => {
   const iso = props.item.taken_at ?? props.item.created_at
-  return iso ? new Date(iso).toLocaleDateString() : DASH
+  return iso ? new Date(iso).toLocaleDateString(locale.value) : DASH
 })
 
 function showInGraph() {
@@ -56,8 +69,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
     <button class="lb-nav lb-prev" data-testid="lb-prev" @click.stop="emit('prev')">‹</button>
     <button class="lb-nav lb-next" data-testid="lb-next" @click.stop="emit('next')">›</button>
     <div class="lb-stage" @click.stop>
-      <div class="lb-img">
-        <img v-if="contentUrl" :src="contentUrl" alt="" />
+      <div class="lb-img" :style="{ background: bg }">
+        <img v-if="contentUrl" :src="contentUrl" alt="" :class="{ hidden: imgFailed }" @error="imgFailed = true" />
       </div>
       <div class="lb-meta">
         <div class="h-display" style="font-size:18px">{{ item.summary || item.cell_id }}</div>
@@ -90,8 +103,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 .lb-nav:hover { background:rgba(255,255,255,0.16); }
 .lb-stage { display:flex; gap:0; max-width:1100px; width:100%; max-height:80vh; border-radius:16px;
   overflow:hidden; box-shadow:var(--shadow-2); background:var(--bg-2); border:1px solid var(--line-2); }
-.lb-img { flex:1.6; min-height:460px; background:#000; display:grid; place-items:center; }
+.lb-img { flex:1.6; min-height:460px; display:grid; place-items:center; }
 .lb-img img { width:100%; height:100%; object-fit:contain; max-height:80vh; }
+.lb-img img.hidden { display:none; }
 .lb-meta { flex:1; padding:26px; max-width:320px; }
 .osm-link { color:var(--honey); text-decoration:none; }
 .osm-link:hover { text-decoration:underline; }

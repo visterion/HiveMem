@@ -7,7 +7,7 @@ import PhotoTile from '../components/media/PhotoTile.vue'
 import Lightbox from '../components/media/Lightbox.vue'
 import type { MediaItem } from '../api/types'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const media = useMediaStore()
 
 const stageEl = ref<HTMLElement | null>(null)
@@ -34,7 +34,7 @@ function labelFor(key: string): string {
   if (key === 'month') return t('photos.thisMonth')
   // 'YYYY-MM' → localized "Month YYYY"
   const m = key.match(/^(\d{4})-(\d{2})$/)
-  if (m) return new Date(Number(m[1]), Number(m[2]) - 1, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
+  if (m) return new Date(Number(m[1]), Number(m[2]) - 1, 1).toLocaleDateString(locale.value, { month: 'long', year: 'numeric' })
   return key
 }
 
