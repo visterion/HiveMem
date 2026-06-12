@@ -151,6 +151,27 @@ export interface DocumentRow {
   correspondent?: string | null
 }
 
+export interface MediaItem {
+  cell_id: string
+  attachment_id: string
+  realm: string
+  summary: string | null
+  tags: string[]
+  mime_type: string | null
+  size_bytes: number | null
+  created_at: string | null
+  taken_at: string | null
+  width: number | null
+  height: number | null
+  camera_make: string | null
+  camera_model: string | null
+  gps_lat: number | null
+  gps_lon: number | null
+  place_name: string | null
+  thumbnail_uri: string | null
+  content_uri: string | null
+}
+
 export interface FacetValue { value: string; count: number }
 export type FacetCounts = Record<string, FacetValue[]>
 

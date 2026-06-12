@@ -1,5 +1,5 @@
 import { palace as mockPalace } from '../data/mock'
-import type { ApiClient, HiveEvent, Cell, Realm, Signal, Tunnel, Fact, StatusSummary, Reference, SearchResult, DocumentRow, FacetValue, SavedSearch } from './types'
+import type { ApiClient, HiveEvent, Cell, Realm, Signal, Tunnel, Fact, StatusSummary, Reference, SearchResult, DocumentRow, FacetValue, SavedSearch, MediaItem } from './types'
 
 interface MockConfig { latencyMs?: [number, number]; eventInterval?: number }
 
@@ -31,6 +31,7 @@ export class MockApiClient implements ApiClient {
   // filter is stored as a JSON string to match the real backend contract (filter::text).
   private savedSearches: Array<Omit<SavedSearch, 'filter'> & { owner: string; filter: string }> = []
   private savedSearchCounter = 1
+  private mediaSeed: MediaItem[] | null = null
 
   constructor(config: MockConfig = {}) {
     this.config = { latencyMs: [50, 200], eventInterval: 15000, ...config }
@@ -64,6 +65,7 @@ export class MockApiClient implements ApiClient {
       remove_tags: (a: any) => this.removeTags(a),
       bulk_tag: (a: any) => this.bulkTag(a),
       bulk_reclassify: (a: any) => this.bulkReclassify(a),
+      list_media: (a: any) => this.listMedia(a),
     }
   }
 
@@ -421,6 +423,59 @@ export class MockApiClient implements ApiClient {
       { type: 'tunnel', id: 'p-2', description: 'c-99 → c-13 (refines): supersedes the older rename note',
         realm: 'hivemem', signal: null, created_by: 'queen', created_at: '2026-06-02T03:00:14Z' },
     ]
+  }
+
+  private buildMediaSeed(): MediaItem[] {
+    const makes: Array<[string, string]> = [
+      ['Apple', 'iPhone 16 Pro'], ['Google', 'Pixel 9 Pro'], ['Apple', 'iPhone 15'],
+    ]
+    // [daysAgo, width, height, hasGps]
+    const specs: Array<[number, number, number, boolean]> = [
+      [0, 4032, 3024, true], [0, 3024, 4032, true], [0, 4032, 3024, false],
+      [2, 3024, 4032, true], [5, 4032, 3024, false], [9, 4032, 3024, true],
+      [12, 3024, 4032, false], [20, 4032, 3024, true], [28, 4032, 3024, false],
+      [33, 3024, 4032, true], [40, 4032, 3024, true], [47, 4032, 3024, false],
+      [55, 3024, 4032, true], [62, 4032, 3024, false],
+    ]
+    const base = Date.parse('2026-06-12T12:00:00Z')
+    return specs.map(([daysAgo, w, h, hasGps], i) => {
+      const taken = new Date(base - daysAgo * 86400000).toISOString()
+      const [mk, md] = makes[i % makes.length]
+      const noExif = i % 4 === 2 // ~every 4th has null camera/taken to exercise "—"
+      const id = 'ph' + (i + 1)
+      return {
+        cell_id: 'media-' + id,
+        attachment_id: 'att-' + id,
+        realm: 'private',
+        summary: noExif ? null : 'Foto ' + (i + 1),
+        tags: ['subtype_photo_general'],
+        mime_type: 'image/jpeg',
+        size_bytes: 2_000_000 + i * 137_000,
+        created_at: taken,
+        taken_at: noExif ? null : taken,
+        width: w,
+        height: h,
+        camera_make: noExif ? null : mk,
+        camera_model: noExif ? null : md,
+        gps_lat: hasGps ? 49.4874 : null,
+        gps_lon: hasGps ? 8.4660 : null,
+        place_name: hasGps ? 'Mannheim, DE' : null,
+        thumbnail_uri: 'hivemem://attachments/att-' + id + '/thumbnail',
+        content_uri: 'hivemem://attachments/att-' + id + '/content',
+      }
+    })
+  }
+
+  private listMedia(args: { realm?: string; sort?: string; limit?: number; offset?: number }): MediaItem[] {
+    if (!this.mediaSeed) this.mediaSeed = this.buildMediaSeed()
+    let rows = this.mediaSeed.slice()
+    if (args.realm) rows = rows.filter(r => r.realm === args.realm)
+    const eff = (r: MediaItem) => r.taken_at ?? r.created_at ?? ''
+    rows.sort((a, b) => args.sort === 'oldest'
+      ? eff(a).localeCompare(eff(b)) : eff(b).localeCompare(eff(a)))
+    const offset = args.offset ?? 0
+    const limit = args.limit ?? 100
+    return rows.slice(offset, offset + limit)
   }
 }
 
