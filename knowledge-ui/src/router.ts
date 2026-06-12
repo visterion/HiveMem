@@ -23,7 +23,7 @@ const routes: RouteRecordRaw[] = [
       default: () => import('./components/scans/ScansResults.vue'),
       panel: () => import('./components/scans/ScansPanel.vue'),
     } },
-  { path: '/timemachine', name: 'timemachine', component: () => import('./pages/ComingSoon.vue'),
+  { path: '/timemachine', name: 'timemachine', component: () => import('./pages/TimeMachineRoute.vue'),
     meta: { title: 'nav.timemachine', icon: 'history', full: true } },
   { path: '/queen', name: 'queen', component: () => import('./pages/QueenRoute.vue'),
     meta: { title: 'nav.queen', icon: 'queen', full: true, role: 'admin' } },

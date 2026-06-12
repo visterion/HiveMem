@@ -136,4 +136,12 @@ export default {
     addTag: 'Tag hinzufügen',
     addTagPrompt: 'Neuen Tag eingeben:',
   },
+  timemachine: {
+    sub: 'Append-only · {from} → {present}',
+    present: 'Gegenwart',
+    validFrom: 'Gültig ab',
+    prose: 'Nichts wird je gelöscht. Ziehe den Regler, um den Wissensstand zu jedem Zeitpunkt zu sehen.',
+    cellsAsOf: '{n} Zellen per {date}',
+    empty: 'Noch keine Zellen',
+  },
 }

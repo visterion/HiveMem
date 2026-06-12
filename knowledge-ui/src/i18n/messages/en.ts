@@ -136,4 +136,12 @@ export default {
     addTag: 'Add tag',
     addTagPrompt: 'Enter new tag:',
   },
+  timemachine: {
+    sub: 'Append-only · {from} → {present}',
+    present: 'present',
+    validFrom: 'Valid from',
+    prose: 'Nothing is ever deleted. Drag the slider to see the knowledge state at any point in time.',
+    cellsAsOf: '{n} cells as of {date}',
+    empty: 'No cells yet',
+  },
 }

@@ -34,7 +34,11 @@ export class MockApiClient implements ApiClient {
   private mediaSeed: MediaItem[] | null = null
 
   constructor(config: MockConfig = {}) {
-    this.config = { latencyMs: [50, 200], eventInterval: 15000, ...config }
+    // In Vitest the real timers still run, but 900 ms per cell makes the streaming
+    // tests time out. Use minimal latency when running inside the test runner.
+    const isTest = (import.meta.env as unknown as Record<string, string>).MODE === 'test'
+    const defaultLatency: [number, number] = isTest ? [0, 0] : [50, 200]
+    this.config = { latencyMs: defaultLatency, eventInterval: 15000, ...config }
     this.handlers = {
       status: () => this.status(),
       wake_up: () => this.wakeUp(),
@@ -350,8 +354,10 @@ export class MockApiClient implements ApiClient {
     }
     // Simulate server-side blocking wait. First call returns ~instantly so the
     // UI has seed data; subsequent calls wait ~1s before returning the next cell.
+    // In the test runner use zero wait so cells stream instantly without timeouts.
+    const isTest = (import.meta.env as unknown as Record<string, string>).MODE === 'test'
     const firstCall = this.streamDelivered.size === 0
-    const wait = firstCall ? 0 : Math.min(args.timeout_ms ?? 25000, 900 + Math.random() * 500)
+    const wait = isTest ? 0 : (firstCall ? 0 : Math.min(args.timeout_ms ?? 25000, 900 + Math.random() * 500))
     if (wait > 0) await new Promise(r => setTimeout(r, wait))
 
     const next = this.streamQueue.shift()
