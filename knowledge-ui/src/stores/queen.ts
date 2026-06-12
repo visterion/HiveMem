@@ -17,12 +17,14 @@ export const useQueenStore = defineStore('queen', {
       this.loading = true
       try {
         const api = useApi()
-        const list = await api.call<QueenRunList>('queen_runs')
+        const [list, pending] = await Promise.all([
+          api.call<QueenRunList>('queen_runs'),
+          api.call<PendingApproval[]>('pending_approvals'),
+        ])
         this.runs = list.items
         this.total = list.total
         this.costAvailable = list.costAvailable
         this.unavailable = !!list.unavailable
-        const pending = await api.call<PendingApproval[]>('pending_approvals')
         this.pending = pending.filter(p => p.created_by === 'queen')
       } finally {
         this.loading = false

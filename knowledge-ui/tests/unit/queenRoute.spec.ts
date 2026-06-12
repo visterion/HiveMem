@@ -1,43 +1,59 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
-import { defineComponent, h } from 'vue'
-import { createVuetify } from 'vuetify'
-import * as components from 'vuetify/components'
-import * as directives from 'vuetify/directives'
-import { resetApi } from '../../src/api/useApi'
 import QueenRoute from '../../src/pages/QueenRoute.vue'
+import { resetApi } from '../../src/api/useApi'
 import { i18n } from '../../src/i18n'
 
-// VNavigationDrawer needs layout context — wrap in VApp to satisfy it
-const { VApp } = components
+const opts = { global: { plugins: [i18n], stubs: { HmIcon: true } } }
 
-describe('QueenRoute', () => {
+function dataRows(w: any) {
+  return w.findAll('.qtable .qrow').filter((r: any) => !r.classes('qhead'))
+}
+async function mountReady() {
+  const w = mount(QueenRoute, opts)
+  for (let i = 0; i < 60 && dataRows(w).length === 0; i++) {
+    await new Promise(r => setTimeout(r, 25)); await flushPromises()
+  }
+  return w
+}
+
+describe('QueenRoute (restyled)', () => {
   beforeEach(() => {
     i18n.global.locale.value = 'de'
     setActivePinia(createPinia())
     localStorage.setItem('hivemem_mock', 'true')
     resetApi()
-    // Use fake timers to control the mock client's latency setTimeout calls
-    vi.useFakeTimers()
   })
 
-  afterEach(() => {
-    vi.useRealTimers()
+  it('renders KPIs and one run row per run with a status pill, no Vuetify', async () => {
+    const w = await mountReady()
+    expect(w.find('.kpi').exists()).toBe(true)
+    expect(dataRows(w).length).toBeGreaterThanOrEqual(3)
+    expect(w.text()).toContain('isolated-cell-bee')
+    expect(w.findAll('.qstatus').length).toBeGreaterThanOrEqual(3)
+    expect(w.html()).not.toContain('v-table')
   })
 
-  it('renders the run feed and pending proposals from the mock client', async () => {
-    const vuetify = createVuetify({ components, directives })
-    const AppWrapper = defineComponent({
-      render: () => h(VApp, () => h(QueenRoute)),
-    })
-    const wrapper = mount(AppWrapper, { global: { plugins: [vuetify, i18n] } })
-    // Advance fake timers past the mock client's latency (up to 200 ms)
-    await vi.advanceTimersByTimeAsync(300)
-    await flushPromises()
-    const text = wrapper.text()
-    expect(text).toContain('Queen-Aktivität')
-    expect(text).toContain('isolated-cell-bee')
-    expect(text).toContain('Offene Vorschläge')
+  it('renders proposal cards and accepting one removes it', async () => {
+    const w = await mountReady()
+    const before = w.findAll('.prop-card').length
+    expect(before).toBeGreaterThanOrEqual(1)
+    await w.find('.prop-card .prop-actions .btn').trigger('click')
+    for (let i = 0; i < 60 && w.findAll('.prop-card').length === before; i++) {
+      await new Promise(r => setTimeout(r, 25)); await flushPromises()
+    }
+    expect(w.findAll('.prop-card').length).toBe(before - 1)
+  })
+
+  it('opens the run-detail overlay with summary on row click', async () => {
+    const w = await mountReady()
+    await dataRows(w)[0].trigger('click')
+    for (let i = 0; i < 60 && !w.find('.q-detail').exists(); i++) {
+      await new Promise(r => setTimeout(r, 25)); await flushPromises()
+    }
+    const ov = w.find('.q-detail')
+    expect(ov.exists()).toBe(true)
+    expect(ov.text()).toContain('Surveyed')
   })
 })
