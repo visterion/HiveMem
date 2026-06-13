@@ -38,10 +38,13 @@ defineEmits<{ (e: 'toggle-panel'): void }>()
 <style scoped>
 .topbar { height:56px; flex:none; display:flex; align-items:center; gap:14px; padding:0 20px;
   border-bottom:1px solid var(--line); background:color-mix(in srgb, var(--bg-0) 80%, transparent);
-  backdrop-filter:blur(8px); z-index:10; }
-.crumbs { display:flex; align-items:center; gap:9px; font-size:13.5px; color:var(--text-1); }
-.crumbs .sep { color:var(--text-3); display:inline-flex; } .crumbs b { color:var(--text-0); font-weight:600; }
-.topbar-actions { margin-left:auto; display:flex; align-items:center; gap:8px; }
+  backdrop-filter:blur(8px); z-index:10; overflow:hidden; }
+.crumbs { display:flex; align-items:center; gap:9px; font-size:13.5px; color:var(--text-1);
+  min-width:0; flex:1 1 auto; overflow:hidden; }
+.crumbs > span:first-child { flex:none; } .crumbs .sep { flex:none; }
+.crumbs .sep { color:var(--text-3); display:inline-flex; }
+.crumbs b { color:var(--text-0); font-weight:600; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.topbar-actions { margin-left:auto; display:flex; align-items:center; gap:8px; flex:none; }
 .toggle { display:inline-flex; background:var(--bg-3); border:1px solid var(--line); border-radius:9px; padding:3px; gap:2px; }
 .toggle button { padding:4px 9px; border-radius:6px; font-size:12.5px; color:var(--text-2); display:grid; place-items:center;
   background:none; border:none; cursor:pointer; }
