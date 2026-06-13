@@ -21,7 +21,22 @@ export default {
     role: 'Rolle: {role}',
     mockMode: 'Mock-Modus',
     logout: 'Abmelden',
-    language: 'Sprache'
+    language: 'Sprache',
+    sovEyebrow: 'Einstellungen',
+    sovTitle: 'Souveränität & Routing',
+    accountSection: 'Konto & Sitzung',
+    routingSection: 'Souveränität & Routing',
+    routingNote: 'Serverseitig konfiguriert (application.yml).',
+    statusOn: 'An',
+    statusOff: 'Aus',
+    routing: {
+      forceLocal: { nm: 'Lokale Modelle erzwingen', sub: 'legal & medical verlassen nie diese Maschine' },
+      autoSummarizer: { nm: 'Auto-Summarizer', sub: 'Lange Zellen werden zusammengefasst & eingebettet' },
+      ocr: { nm: 'OCR für Scans (Tesseract)', sub: 'Scan-only-PDFs durchsuchbar machen' },
+      consumption: { nm: 'Consumption-Folder', sub: 'SMB-Ordner überwachen & auto-trennen' },
+      queenCron: { nm: 'Queen periodisch (cron)', sub: 'Nächtlicher Lauf um 04:00' },
+      cloudLlm: { nm: 'Cloud-LLM-Calls erlauben', sub: 'Nur für nicht-sensible Realms' },
+    },
   },
   photos: {
     sub: 'Aufgenommen & ingestiert',

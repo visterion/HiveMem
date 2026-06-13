@@ -21,7 +21,22 @@ export default {
     role: 'Role: {role}',
     mockMode: 'Mock mode',
     logout: 'Log out',
-    language: 'Language'
+    language: 'Language',
+    sovEyebrow: 'Settings',
+    sovTitle: 'Sovereignty & Routing',
+    accountSection: 'Account & Session',
+    routingSection: 'Sovereignty & Routing',
+    routingNote: 'Configured at deployment (application.yml).',
+    statusOn: 'On',
+    statusOff: 'Off',
+    routing: {
+      forceLocal: { nm: 'Force local models', sub: 'legal & medical never leave this machine' },
+      autoSummarizer: { nm: 'Auto-summarizer', sub: 'Long cells are summarized & embedded' },
+      ocr: { nm: 'OCR for scans (Tesseract)', sub: 'Make scan-only PDFs searchable' },
+      consumption: { nm: 'Consumption folder', sub: 'Watch an SMB folder & auto-separate' },
+      queenCron: { nm: 'Queen periodic (cron)', sub: 'Nightly run at 04:00' },
+      cloudLlm: { nm: 'Allow cloud LLM calls', sub: 'Only for non-sensitive realms' },
+    },
   },
   photos: {
     sub: 'Captured & ingested',
