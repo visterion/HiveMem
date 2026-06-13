@@ -73,4 +73,21 @@ function isActive(name: string) { return route.name === name }
   font-size:12.5px; white-space:nowrap; opacity:0; pointer-events:none; transition:opacity .14s, transform .14s;
   z-index:60; box-shadow:var(--shadow-1); }
 .rail-btn:hover .rail-tip { opacity:1; transform:translateY(-50%) translateX(0); }
+
+@media (max-width: 959px) {
+  .rail {
+    grid-column: 1 / -1;
+    position: fixed; left: 0; right: 0; bottom: 0; top: auto;
+    flex-direction: row; align-items: center; gap: 2px;
+    height: auto; padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+    border-right: none; border-top: 1px solid var(--line);
+    overflow-x: auto; overflow-y: hidden; z-index: 40;
+    -webkit-overflow-scrolling: touch;
+  }
+  .rail .logo { display: none; }
+  .rail-spacer { display: none; }
+  .rail-group { flex-direction: row; gap: 2px; }
+  .rail-btn { min-width: 44px; height: 44px; flex: none; }
+  .rail-tip { display: none; }
+}
 </style>

@@ -61,3 +61,12 @@ body {
 }
 .fade-in { animation:fadeIn .35s ease both; }
 @keyframes fadeIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
+
+@media (max-width: 959px) {
+  .app {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr;
+  }
+  /* leave room for the fixed bottom rail strip + iOS home indicator */
+  .stage { padding-bottom: calc(60px + env(safe-area-inset-bottom)); }
+}
