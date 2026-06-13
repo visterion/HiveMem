@@ -1,7 +1,7 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 
 const routes: RouteRecordRaw[] = [
-  { path: '/', name: 'search', meta: { title: 'nav.search', icon: 'search', full: false },
+  { path: '/', name: 'search', meta: { title: 'nav.search', icon: 'search', full: false, mobilePrimary: 'panel' },
     components: {
       default: () => import('./components/knowledge/KnowledgeReader.vue'),
       panel: () => import('./components/knowledge/SearchPanel.vue'),

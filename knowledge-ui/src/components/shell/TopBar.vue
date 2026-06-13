@@ -10,10 +10,15 @@ const route = useRoute()
 const { t, locale } = useI18n()
 const prefs = usePrefsStore()
 const title = computed(() => t((route.meta?.title as string) || 'nav.search'))
+defineProps<{ canFilter?: boolean }>()
+defineEmits<{ (e: 'toggle-panel'): void }>()
 </script>
 
 <template>
   <div class="topbar">
+    <button v-if="canFilter" class="tb-filter" data-test="mobile-filter" @click="$emit('toggle-panel')">
+      <HmIcon name="scans" :size="18" />
+    </button>
     <div class="crumbs">
       <span>HiveMem</span><span class="sep"><HmIcon name="chevron" :size="14" /></span><b>{{ title }}</b>
     </div>
@@ -41,4 +46,6 @@ const title = computed(() => t((route.meta?.title as string) || 'nav.search'))
 .toggle button { padding:4px 9px; border-radius:6px; font-size:12.5px; color:var(--text-2); display:grid; place-items:center;
   background:none; border:none; cursor:pointer; }
 .toggle button.on { background:var(--bg-0); color:var(--honey); box-shadow:var(--shadow-1); }
+.tb-filter { background:var(--bg-3); border:1px solid var(--line); border-radius:9px; width:38px; height:34px;
+  display:grid; place-items:center; color:var(--text-1); cursor:pointer; flex:none; }
 </style>
