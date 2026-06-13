@@ -39,7 +39,8 @@ class AdminControllerTest {
         instanceConfig = mock(InstanceConfig.class);
         tokenService = mock(TokenService.class);
         when(instanceConfig.instanceId()).thenReturn(INSTANCE_ID);
-        controller = new AdminController(instanceConfig, tokenService);
+        controller = new AdminController(instanceConfig, tokenService,
+                mock(com.hivemem.attachment.AttachmentChunkRepairService.class));
     }
 
     // ── identity ───────────────────────────────────────────────────────────

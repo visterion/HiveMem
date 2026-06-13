@@ -82,6 +82,20 @@ The `seaweedfs_data` Docker volume must be backed up together with the PostgreSQ
 
 SeaweedFS is included in `docker-compose.yml` as a sidecar service. No additional configuration needed for the default setup.
 
+> **Note:** The S3 client runs with `chunkedEncodingEnabled(false)`. SeaweedFS does not decode SigV4 streaming (`aws-chunked`) request bodies, so the AWS SDK's default chunked signing would otherwise bake the chunk framing into the stored object and corrupt every JPEG/PDF. Do not re-enable it.
+
+### Repairing aws-chunked-corrupted objects
+
+Objects uploaded before the `chunkedEncodingEnabled(false)` fix carry the `aws-chunked` framing inside the stored bytes (thumbnails render black, PDFs won't open). Repair them once, **after** deploying the fixed image, with an admin token:
+
+```bash
+curl -s -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
+  https://<host>/admin/attachments/repair-chunked
+# → {"scanned":N,"repaired_originals":x,"repaired_thumbnails":y,"failed":0}
+```
+
+The sweep is idempotent — it detects and skips already-clean objects, so it is safe to re-run.
+
 ## Debugging
 
 ```bash

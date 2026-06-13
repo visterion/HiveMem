@@ -136,6 +136,20 @@ public class AttachmentRepository {
         return out;
     }
 
+    public record StorageKeys(UUID id, String mimeType, String s3KeyOriginal, String s3KeyThumbnail) {}
+
+    /** All live attachments with their S3 keys — used by the aws-chunked repair sweep. */
+    public List<StorageKeys> findAllStorageKeys() {
+        return dsl.fetch(
+                "SELECT id, mime_type, s3_key_original, s3_key_thumbnail "
+                + "FROM attachments WHERE deleted_at IS NULL ORDER BY created_at")
+                .map(r -> new StorageKeys(
+                        r.get("id", UUID.class),
+                        r.get("mime_type", String.class),
+                        r.get("s3_key_original", String.class),
+                        r.get("s3_key_thumbnail", String.class)));
+    }
+
     public void updateThumbnailKey(UUID attachmentId, String s3KeyThumbnail) {
         dsl.execute("UPDATE attachments SET s3_key_thumbnail = ? WHERE id = ?",
                 s3KeyThumbnail, attachmentId);

@@ -648,4 +648,31 @@ async function approve() {
 .dm-btn:hover { background: var(--bg-4, rgba(255,255,255,.12)); }
 .dm-btn.approve { background: rgba(0,200,100,.15); color: var(--good, #00c864); border-color: var(--good, #00c864); }
 .dm-btn.approve:hover { background: rgba(0,200,100,.25); }
+
+/* ── Mobile: the fixed two-column layout squeezes the info column off-screen.
+   Stack to a single full-screen column with a capped preview and scroll. ──── */
+@media (max-width: 700px) {
+  .docoverlay { align-items: stretch; justify-content: stretch; }
+  .docmodal {
+    flex-direction: column;
+    width: 100vw;
+    max-width: 100vw;
+    height: 100dvh;
+    max-height: 100dvh;
+    border-radius: 0;
+    border: none;
+  }
+  .dm-preview {
+    flex: 0 0 auto;
+    height: 34vh;
+    padding: 14px;
+  }
+  .dm-side {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding: 16px 16px calc(16px + env(safe-area-inset-bottom));
+  }
+  /* Title can wrap on mobile instead of truncating to an ellipsis. */
+  .dm-title { white-space: normal; }
+}
 </style>

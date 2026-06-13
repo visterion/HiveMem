@@ -8,6 +8,7 @@ import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.core.sync.ResponseTransformer;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.S3Configuration;
 import software.amazon.awssdk.services.s3.model.*;
 
 import jakarta.annotation.PostConstruct;
@@ -37,6 +38,14 @@ public class SeaweedFsClient {
                 .region(Region.US_EAST_1)
                 .credentialsProvider(credentials)
                 .forcePathStyle(true)
+                // SeaweedFS does not decode SigV4 streaming (`aws-chunked`) request
+                // bodies, so the AWS SDK's default chunked signing leaves the
+                // `<size>;chunk-signature=…` framing baked into the stored object —
+                // corrupting every thumbnail/original (JPEG/PDF won't decode).
+                // Disabling chunked encoding sends a single, non-streamed body.
+                .serviceConfiguration(S3Configuration.builder()
+                        .chunkedEncodingEnabled(false)
+                        .build())
                 .build();
         ensureBucket();
     }

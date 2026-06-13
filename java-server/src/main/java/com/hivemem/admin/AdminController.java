@@ -18,10 +18,13 @@ public class AdminController {
 
     private final InstanceConfig instanceConfig;
     private final TokenService tokenService;
+    private final com.hivemem.attachment.AttachmentChunkRepairService chunkRepair;
 
-    public AdminController(InstanceConfig instanceConfig, TokenService tokenService) {
+    public AdminController(InstanceConfig instanceConfig, TokenService tokenService,
+                           com.hivemem.attachment.AttachmentChunkRepairService chunkRepair) {
         this.instanceConfig = instanceConfig;
         this.tokenService = tokenService;
+        this.chunkRepair = chunkRepair;
     }
 
     @GetMapping("/identity")
@@ -62,6 +65,18 @@ public class AdminController {
         } catch (IllegalStateException e) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", e.getMessage()));
         }
+    }
+
+    /** One-time repair of attachments whose stored S3 object still has aws-chunked framing. */
+    @PostMapping("/attachments/repair-chunked")
+    public ResponseEntity<?> repairChunked(HttpServletRequest request) {
+        if (!isAdmin(request)) return forbidden();
+        var r = chunkRepair.repairAll();
+        return ResponseEntity.ok(Map.of(
+                "scanned", r.scanned(),
+                "repaired_originals", r.repairedOriginals(),
+                "repaired_thumbnails", r.repairedThumbnails(),
+                "failed", r.failed()));
     }
 
     private static boolean isAdmin(HttpServletRequest request) {
