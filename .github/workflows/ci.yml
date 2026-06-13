@@ -59,3 +59,43 @@ jobs:
           files: java-server/target/site/jacoco/jacoco.xml
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: knowledge-ui
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: knowledge-ui/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build (vue-tsc type gate + vite build)
+        run: npm run build
+
+      - name: Unit tests (Vitest)
+        run: npm run test:unit
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: E2E tests (Playwright)
+        run: npm run test:e2e
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: knowledge-ui/playwright-report/
+          retention-days: 7
+          if-no-files-found: ignore
