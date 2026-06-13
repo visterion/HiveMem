@@ -10,11 +10,14 @@ export const useUiStore = defineStore('ui', {
     theme: 'dark' as 'dark' | 'light',
     searchQuery: '',
     showLoginDialog: false,
-    toast: null as null | { kind: 'info' | 'success' | 'error'; text: string }
+    toast: null as null | { kind: 'info' | 'success' | 'error'; text: string },
+    mobileDrawerOpen: false,
   }),
   actions: {
     pushToast(kind: 'info' | 'success' | 'error', text: string) {
       this.toast = { kind, text }
-    }
+    },
+    setDrawer(open: boolean) { this.mobileDrawerOpen = open },
+    toggleDrawer() { this.mobileDrawerOpen = !this.mobileDrawerOpen },
   }
 })
