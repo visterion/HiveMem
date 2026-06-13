@@ -74,7 +74,7 @@ function logout() { void auth.logout() }
   </div>
 </template>
 
-<style>
+<style scoped>
 .page { flex:1; overflow-y:auto; min-height:0; height:100%; }
 .set-wrap { padding:34px 44px; max-width:720px; margin:0 auto; }
 .h-eyebrow { font-size:11.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--text-2); font-weight:600; }

@@ -23,7 +23,7 @@ describe('SettingsRoute', () => {
     expect(text).toContain('admin')
     expect(text).toContain('Souveränität & Routing')
     expect(text).toContain('Lokale Modelle erzwingen')
-    expect(w.html()).not.toContain('v-')
+    expect(w.html()).not.toContain('<v-') // no Vuetify component tags (data-v- scoped attrs are fine)
   })
 
   it('routing items are read-only status badges (no interactive switch beyond mock-mode)', () => {
