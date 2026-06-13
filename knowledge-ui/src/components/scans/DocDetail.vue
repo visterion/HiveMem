@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onUnmounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { DocumentRow } from '../../api/types'
+import type { DocumentRow, Cell } from '../../api/types'
 import { useApi } from '../../api/useApi'
 import { useReaderStore } from '../../stores/reader'
 import { useScansStore } from '../../stores/scans'
+import { useCellStore } from '../../stores/cell'
 import { cellLabel } from '../../api/cellLabel'
 import DocThumb from './DocThumb.vue'
 import HmIcon from '../shell/HmIcon.vue'
@@ -14,6 +15,7 @@ const props = withDefaults(defineProps<{ d: DocumentRow; q?: string }>(), { q: '
 const { t } = useI18n()
 const reader = useReaderStore()
 const scans = useScansStore()
+const cells = useCellStore()
 
 const content = ref('')
 const cellTags = ref<string[]>(props.d.tags ?? [])
@@ -138,7 +140,19 @@ onMounted(() => window.addEventListener('keydown', onKey))
 onUnmounted(() => window.removeEventListener('keydown', onKey))
 
 // ── Actions ───────────────────────────────────────────────────────────────────
-function openOriginal() {
+// The fullscreen Reader renders entirely from cellStore.current, never from
+// reader.cellId. A scan row is never loaded into the cellStore (it comes from the
+// scans store), so we must fetch the full cell — with content (OCR) + attachments
+// (the original PDF/image) — and seed the cellStore before opening the reader.
+// Otherwise the reader shows a blank shell or a stale, unrelated cell.
+async function openOriginal() {
+  try {
+    const full = await useApi().call<Cell>('get_cell', {
+      cell_id: props.d.id,
+      include: ['content', 'tags', 'attachments'],
+    })
+    await cells.open(full)
+  } catch { /* still open the reader; it can fall back to attachments via ensureAttachments */ }
   reader.openReader(props.d.id)
 }
 
