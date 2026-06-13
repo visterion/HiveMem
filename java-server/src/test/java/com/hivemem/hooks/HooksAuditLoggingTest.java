@@ -1,6 +1,6 @@
 package com.hivemem.hooks;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import com.hivemem.auth.AuthFilter;
 import com.hivemem.auth.AuthPrincipal;
 import com.hivemem.auth.AuthRole;

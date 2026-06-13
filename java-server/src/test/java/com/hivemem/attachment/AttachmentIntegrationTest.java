@@ -89,7 +89,7 @@ class AttachmentIntegrationTest {
     @Autowired MockMvc mockMvc;
     @Autowired org.jooq.DSLContext dsl;
 
-    private static final com.fasterxml.jackson.databind.ObjectMapper OM = new com.fasterxml.jackson.databind.ObjectMapper();
+    private static final tools.jackson.databind.ObjectMapper OM = new tools.jackson.databind.ObjectMapper();
 
     private static final AuthPrincipal WRITER = new AuthPrincipal("test-writer", AuthRole.WRITER);
     private static final AuthPrincipal READER = new AuthPrincipal("test-reader", AuthRole.READER);
