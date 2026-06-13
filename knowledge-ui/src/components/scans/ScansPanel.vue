@@ -3,11 +3,13 @@ import { computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useScansStore } from '../../stores/scans'
 import type { FacetKey } from '../../stores/scans'
+import { useUiStore } from '../../stores/ui'
 import FacetGroup from './FacetGroup.vue'
 import HmIcon from '../shell/HmIcon.vue'
 
 const { t } = useI18n()
 const store = useScansStore()
+const ui = useUiStore()
 
 const totalDocs = computed(() => {
   const statusCounts = store.facetCounts.status
@@ -51,7 +53,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="panel scans-panel">
+  <div class="panel scans-panel" :class="{ open: ui.mobileDrawerOpen }">
     <div class="panel-head">
       <div>
         <div class="panel-title">{{ t('nav.scans') }}</div>
@@ -281,4 +283,12 @@ onMounted(() => {
 }
 .sv-row:hover .sv-del { opacity: 1; }
 .sv-del:hover { color: var(--danger, #ff4444); background: var(--bg-3); }
+@media (max-width: 959px) {
+  .panel {
+    grid-column: 1; width: min(88vw, 366px); position: fixed; top: 0; bottom: 0; left: 0;
+    z-index: 50; transform: translateX(-100%); transition: transform .2s ease;
+    box-shadow: var(--shadow-2); padding-bottom: calc(60px + env(safe-area-inset-bottom));
+  }
+  .panel.open { transform: translateX(0); }
+}
 </style>

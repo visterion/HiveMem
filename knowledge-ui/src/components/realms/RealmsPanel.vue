@@ -3,10 +3,12 @@ import { onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useRealmsStore } from '../../stores/realms'
+import { useUiStore } from '../../stores/ui'
 import RealmHex from './RealmHex.vue'
 import HmIcon from '../shell/HmIcon.vue'
 
 const store = useRealmsStore()
+const ui = useUiStore()
 const router = useRouter()
 const { t } = useI18n()
 
@@ -15,7 +17,7 @@ function open(id: string) { router.push({ path: '/', query: { realm: id } }) }
 </script>
 
 <template>
-  <div class="panel">
+  <div class="panel" :class="{ open: ui.mobileDrawerOpen }">
     <div class="panel-head">
       <div>
         <div class="panel-title">{{ t('realms.title') }}</div>
@@ -49,4 +51,12 @@ function open(id: string) { router.push({ path: '/', query: { realm: id } }) }
 .nm { font-size:14px; color:var(--text-0); font-weight:500; text-transform:capitalize; }
 .ct { font-size:11.5px; color:var(--text-2); margin-top:2px; }
 .lock { color:var(--text-2); display:flex; }
+@media (max-width: 959px) {
+  .panel {
+    grid-column: 1; width: min(88vw, 366px); position: fixed; top: 0; bottom: 0; left: 0;
+    z-index: 50; transform: translateX(-100%); transition: transform .2s ease;
+    box-shadow: var(--shadow-2); padding-bottom: calc(60px + env(safe-area-inset-bottom));
+  }
+  .panel.open { transform: translateX(0); }
+}
 </style>

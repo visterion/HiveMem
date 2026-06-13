@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n'
 import { useApi } from '../../api/useApi'
 import type { SearchResult } from '../../api/types'
 import { useCellStore } from '../../stores/cell'
+import { useUiStore } from '../../stores/ui'
 import { cellLabel } from '../../api/cellLabel'
 import { paletteForRealm } from '../../composables/realmPalette'
 import ScoreRing from './ScoreRing.vue'
@@ -15,6 +16,7 @@ const results = ref<SearchResult[]>([])
 const loading = ref(false)
 const typeF = ref('all')
 const cellStore = useCellStore()
+const ui = useUiStore()
 const route = useRoute()
 const router = useRouter()
 const { t } = useI18n()
@@ -63,7 +65,7 @@ function typeLabel(ty: string) { return ty === 'all' ? t('knowledge.allTypes') :
 </script>
 
 <template>
-  <div class="panel">
+  <div class="panel" :class="{ open: ui.mobileDrawerOpen }">
     <div class="panel-head">
       <div>
         <div class="panel-title">{{ t('nav.search') }}</div>
@@ -141,4 +143,12 @@ function typeLabel(ty: string) { return ty === 'all' ? t('knowledge.allTypes') :
 .dot { width:7px; height:7px; border-radius:2px; transform:rotate(45deg); flex:none; }
 .row-score { font-family:var(--font-mono); font-size:11px; color:var(--honey); flex:none; padding-top:2px; }
 .hint { color:var(--text-2); padding:8px 12px; font-size:13px; }
+@media (max-width: 959px) {
+  .panel {
+    grid-column: 1; width: min(88vw, 366px); position: fixed; top: 0; bottom: 0; left: 0;
+    z-index: 50; transform: translateX(-100%); transition: transform .2s ease;
+    box-shadow: var(--shadow-2); padding-bottom: calc(60px + env(safe-area-inset-bottom));
+  }
+  .panel.open { transform: translateX(0); }
+}
 </style>

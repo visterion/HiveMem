@@ -82,4 +82,11 @@ function showGraph() { router.push({ name: 'graph' }) }
 .btn:hover { background:var(--honey-bright); }
 .btn.ghost { background:var(--bg-3); color:var(--text-0); border:1px solid var(--line-2); }
 .btn.ghost:hover { background:var(--bg-4); }
+@media (max-width: 959px) {
+  .inspector {
+    grid-column: 1; width: auto; position: fixed; inset: 0; z-index: 60;
+    border-left: none; overflow-y: auto;
+    padding-bottom: calc(60px + env(safe-area-inset-bottom));
+  }
+}
 </style>
