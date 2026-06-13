@@ -25,12 +25,16 @@ describe('MockApiClient', () => {
     expect(cell.id).toBe(all[0].id)
   })
 
-  it('subscribe returns unsubscribe function and emits events', async () => {
+  it('subscribe returns a working unsubscribe and ticker stays silent', async () => {
+    // Streaming moved to the hivemem_stream_next long-poll; the subscribe ticker is
+    // intentionally silent (see MockApiClient.startTicker). Subscribers attach without
+    // error and receive no synthetic events.
     const c = new MockApiClient({ eventInterval: 10 })
     const events: string[] = []
     const unsub = c.subscribe(e => events.push(e.type))
+    expect(typeof unsub).toBe('function')
     await new Promise(r => setTimeout(r, 50))
     unsub()
-    expect(events.length).toBeGreaterThan(0)
+    expect(events.length).toBe(0)
   })
 })

@@ -11,7 +11,11 @@ describe('HttpApiClient', () => {
       const body = JSON.parse(init.body as string)
       expect(body.method).toBe('tools/call')
       expect(body.params.name).toBe('status')
-      return new Response(JSON.stringify({ jsonrpc: '2.0', id: body.id, result: { drawer_count: 42 } }))
+      // Real MCP tools/call envelope: payload is JSON in result.content[0].text
+      return new Response(JSON.stringify({
+        jsonrpc: '2.0', id: body.id,
+        result: { content: [{ type: 'text', text: JSON.stringify({ drawer_count: 42 }) }] },
+      }))
     })
     vi.stubGlobal('fetch', fetchMock)
     const c = new HttpApiClient({ endpoint: '/mcp', token: 'test-token' })
@@ -29,8 +33,12 @@ describe('HttpApiClient', () => {
 
   it('subscribe polls status and emits on change', async () => {
     let t = '2026-04-19T12:00:00Z'
+    // Real MCP tools/call envelope: status payload is JSON in result.content[0].text
     vi.stubGlobal('fetch', vi.fn(async () =>
-      new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { last_activity: t } }))
+      new Response(JSON.stringify({
+        jsonrpc: '2.0', id: 1,
+        result: { content: [{ type: 'text', text: JSON.stringify({ last_activity: t }) }] },
+      }))
     ))
     const c = new HttpApiClient({ endpoint: '/mcp', token: 't', pollMs: 10 })
     const events: string[] = []
