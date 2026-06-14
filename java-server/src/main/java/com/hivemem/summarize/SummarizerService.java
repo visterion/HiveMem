@@ -21,6 +21,8 @@ import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 
@@ -38,7 +40,8 @@ public class SummarizerService {
      * yields "steuerrelevant"). Reused by the backfill.
      */
     static String taxTagFor(String language, String instanceDefault) {
-        String lang = (language == null || language.isBlank()) ? instanceDefault : language;
+        String fallback = (instanceDefault == null || instanceDefault.isBlank()) ? "de" : instanceDefault;
+        String lang = (language == null || language.isBlank()) ? fallback : language;
         return "en".equalsIgnoreCase(lang.trim()) ? "tax-relevant" : "steuerrelevant";
     }
 
@@ -141,10 +144,10 @@ public class SummarizerService {
             // Set the cell's valid_from from the document's own date, if the LLM gave a usable one.
             result.facts().stream()
                     .filter(f -> "document_date".equals(f.predicate()))
-                    .max(java.util.Comparator.comparingDouble(FactSpec::confidence))
+                    .max(Comparator.comparingDouble(FactSpec::confidence))
                     .flatMap(f -> DocumentDateParser.parse(f.object()))
                     .ifPresent(d -> repo.setValidFrom(
-                            targetId, d.atStartOfDay().atOffset(java.time.ZoneOffset.UTC)));
+                            targetId, d.atStartOfDay().atOffset(ZoneOffset.UTC)));
 
             repo.removeNeedsSummaryTag(cellId);
             if (newId != null) repo.removeNeedsSummaryTag(newId);
