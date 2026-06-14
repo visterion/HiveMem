@@ -186,6 +186,42 @@ public class SummarizerService {
         return titled;
     }
 
+    /**
+     * One-shot backfill for existing documents: set valid_from from an already-stored
+     * document_date fact (no LLM), and tax-tag via a cheap summary-only classification.
+     * Budget-gated. Idempotent — processed cells get the 'tax_scanned' marker and are not
+     * returned again. NOTE: cells without a stored document_date fact are NOT re-extracted
+     * from full text here (too expensive); only their tax tag is backfilled.
+     */
+    public int backfillTaxAndDate(int limit) {
+        int processed = 0;
+        for (UUID id : repo.findDocumentsNeedingTaxScan(limit)) {
+            if (!budget.canSpend()) {
+                log.info("Tax/date backfill stopped early: budget exhausted after {} cells", processed);
+                break;
+            }
+            try {
+                String dateFact = repo.findDocumentDateFact(id);
+                if (dateFact != null) {
+                    DocumentDateParser.parse(dateFact).ifPresent(d -> repo.setValidFrom(
+                            id, d.atStartOfDay().atOffset(ZoneOffset.UTC)));
+                }
+                String summary = repo.findSummary(id);
+                if (summary != null && !summary.isBlank()) {
+                    var c = anthropic.classifyTaxRelevance(summary);
+                    if (c.taxRelevant()) {
+                        repo.applyTag(id, taxTagFor(c.language(), props.getLanguage()));
+                    }
+                }
+                repo.applyTag(id, "tax_scanned");
+                processed++;
+            } catch (Exception e) {
+                log.warn("Tax/date backfill failed for cell {}: {}", id, e.getMessage());
+            }
+        }
+        return processed;
+    }
+
     private ExtractionProfile pickProfile(UUID cellId, String content) {
         if (!extractionProps.isEnabled()) {
             return profileRegistry.fallback();

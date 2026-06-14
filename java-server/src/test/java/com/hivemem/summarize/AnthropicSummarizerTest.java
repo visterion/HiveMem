@@ -258,6 +258,26 @@ class AnthropicSummarizerTest {
     }
 
     @Test
+    void classifyTaxRelevanceParsesJson() {
+        mock.stubComplete("{\\\"tax_relevant\\\":true,\\\"language\\\":\\\"de\\\"}");
+
+        AnthropicSummarizer.TaxClassification c =
+                summarizer.classifyTaxRelevance("Eine Spendenquittung über 50 EUR.");
+
+        assertThat(c.taxRelevant()).isTrue();
+        assertThat(c.language()).isEqualTo("de");
+    }
+
+    @Test
+    void classifyTaxRelevanceDefaultsFalseOnEmpty() {
+        mock.stubComplete("{}");
+
+        AnthropicSummarizer.TaxClassification c = summarizer.classifyTaxRelevance("noise");
+
+        assertThat(c.taxRelevant()).isFalse();
+    }
+
+    @Test
     void summarizeWithProfileTreatsMissingFactsAsEmpty() {
         mock.stubComplete(
                 "{\\\"summary\\\":\\\"x\\\",\\\"key_points\\\":[],\\\"insight\\\":null,\\\"tags\\\":[]}");

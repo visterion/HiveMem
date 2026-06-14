@@ -98,6 +98,20 @@ public class AdminController {
         return ResponseEntity.ok(Map.of("titled", titled));
     }
 
+    /** One-shot: backfill tax tags + valid_from for existing documents. */
+    @PostMapping("/backfill-tax-date")
+    public ResponseEntity<?> backfillTaxDate(@RequestParam(value = "limit", defaultValue = "200") int limit,
+                                             HttpServletRequest request) {
+        if (!isAdmin(request)) return forbidden();
+        SummarizerService svc = summarizer.getIfAvailable();
+        if (svc == null) {
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                    .body(Map.of("error", "summarizer disabled"));
+        }
+        int processed = svc.backfillTaxAndDate(limit);
+        return ResponseEntity.ok(Map.of("processed", processed));
+    }
+
     private static boolean isAdmin(HttpServletRequest request) {
         AuthPrincipal principal = (AuthPrincipal) request.getAttribute(AuthFilter.PRINCIPAL_ATTRIBUTE);
         return principal != null && principal.role() == AuthRole.ADMIN;

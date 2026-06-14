@@ -221,6 +221,51 @@ public class AnthropicSummarizer {
         return line.isBlank() ? null : line;
     }
 
+    /** Result of the cheap backfill tax classifier. */
+    public record TaxClassification(boolean taxRelevant, String language) {}
+
+    /**
+     * Cheap classifier for the backfill: given a document summary, decide tax relevance and
+     * detect the language. Mirrors generateTitle's tiny-output pattern; returns
+     * {@code (false, null)} on an empty/blank response.
+     */
+    public TaxClassification classifyTaxRelevance(String summary) {
+        if (summary == null || summary.isBlank()) return new TaxClassification(false, null);
+        String system = "You classify documents for a personal knowledge base. "
+                + "Decide whether the document could matter for a private German income-tax "
+                + "return (invoices for craftsman/services, donation receipts, salary statements, "
+                + "tax certificates, insurance premiums, medical/care costs, childcare, pension "
+                + "contributions, capital gains, deductible-expense receipts). When in doubt, false. "
+                + "Reply with ONLY this JSON: {\"tax_relevant\": true|false, \"language\": \"<iso-639-1>\"}.";
+        Map<String, Object> body = Map.of(
+                "agent_name", agentName,
+                "purpose", "classify_tax",
+                "realm", "documents",
+                "model", model,
+                "system", system,
+                "messages", List.of(Map.of("role", "user", "content", summary)),
+                "max_tokens", 32
+        );
+        JsonNode resp = client.post()
+                .uri("/llm/complete")
+                .header("Authorization", "Bearer " + tenantToken)
+                .header("content-type", "application/json")
+                .body(body)
+                .retrieve()
+                .body(JsonNode.class);
+        if (resp == null) return new TaxClassification(false, null);
+        String text = resp.path("text").asText(null);
+        if (text == null || text.isBlank()) return new TaxClassification(false, null);
+        try {
+            JsonNode parsed = MAPPER.readTree(stripJsonFences(text));
+            boolean tax = parsed.path("tax_relevant").asBoolean(false);
+            String lang = parsed.hasNonNull("language") ? parsed.path("language").asText() : null;
+            return new TaxClassification(tax, lang);
+        } catch (Exception e) {
+            return new TaxClassification(false, null);
+        }
+    }
+
     /**
      * Maps an ISO 639-1 language code to the English language name used in the (English) system
      * prompt. Unknown values pass through unchanged so an unmapped code or an already-spelled
