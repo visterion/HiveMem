@@ -93,6 +93,49 @@ public class SummarizerRepository {
         dsl.execute("UPDATE cells SET topic = ? WHERE id = ?", topic, id);
     }
 
+    /** Set the cell's valid_from (the document's own date). Direct row update, like setTopic. */
+    public void setValidFrom(UUID id, java.time.OffsetDateTime validFrom) {
+        dsl.execute("UPDATE cells SET valid_from = ?::timestamptz WHERE id = ?", validFrom, id);
+    }
+
+    /** Append a tag if not already present (idempotent). */
+    public void applyTag(UUID id, String tag) {
+        dsl.execute(
+                "UPDATE cells SET tags = "
+                + "  CASE WHEN ? = ANY(tags) THEN tags ELSE array_append(tags, ?) END "
+                + "WHERE id = ?", tag, tag, id);
+    }
+
+    /**
+     * The highest-confidence committed document_date fact for a cell (its source_id), or null.
+     * Used by the tax/date backfill to set valid_from without a fresh LLM call.
+     */
+    public String findDocumentDateFact(UUID cellId) {
+        return dsl.fetchOptional(
+                "SELECT \"object\" FROM facts "
+                + "WHERE source_id = ? AND predicate = 'document_date' AND status = 'committed' "
+                + "AND valid_until IS NULL "
+                + "ORDER BY confidence DESC NULLS LAST LIMIT 1", cellId)
+                .map(r -> r.get("object", String.class))
+                .orElse(null);
+    }
+
+    /**
+     * Documents not yet processed by the tax/date backfill: have a summary, are current, and
+     * lack the 'tax_scanned' marker tag. Idempotent finder (marker is set after processing).
+     */
+    public List<UUID> findDocumentsNeedingTaxScan(int limit) {
+        var rows = dsl.fetch(
+                "SELECT id FROM cells WHERE realm='documents' "
+                + "AND summary IS NOT NULL AND summary <> '' "
+                + "AND status='committed' AND valid_until IS NULL "
+                + "AND ('tax_scanned' != ALL(tags) OR tags IS NULL) "
+                + "ORDER BY created_at DESC LIMIT ?", limit);
+        List<UUID> ids = new ArrayList<>();
+        for (Record r : rows) ids.add(r.get(0, UUID.class));
+        return ids;
+    }
+
     /**
      * Documents that already have a summary but no title yet (topic IS NULL) — the targets of the
      * one-shot title backfill. Such cells never re-enter the summarize path (it skips cells that

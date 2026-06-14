@@ -126,6 +126,40 @@ class SummarizerRepositoryIntegrationTest {
         assertThat(repo.findCellAttachmentMeta(cellId)).isEmpty();
     }
 
+    @Test
+    void setValidFromUpdatesCell() {
+        UUID id = insertCell("content for validfrom", null);
+        repo.setValidFrom(id, java.time.OffsetDateTime.parse("2025-03-09T00:00:00Z"));
+
+        var row = dsl.fetchOne("SELECT valid_from FROM cells WHERE id = ?", id);
+        assertThat(row.get("valid_from", java.time.OffsetDateTime.class).toLocalDate())
+                .isEqualTo(java.time.LocalDate.of(2025, 3, 9));
+    }
+
+    @Test
+    void applyTagIsIdempotent() {
+        UUID id = insertCell("content for tag", null);
+        repo.applyTag(id, "steuerrelevant");
+        repo.applyTag(id, "steuerrelevant");
+
+        var tags = dsl.fetchOne("SELECT tags FROM cells WHERE id = ?", id)
+                .get("tags", String[].class);
+        assertThat(tags).containsOnlyOnce("steuerrelevant");
+    }
+
+    @Test
+    void findDocumentsNeedingTaxScanExcludesTaggedCells() {
+        UUID tagged = insertCell("tagged doc", "summary");
+        dsl.execute("UPDATE cells SET realm='documents', tags=ARRAY['tax_scanned'] WHERE id=?", tagged);
+
+        UUID untagged = insertCell("untagged doc", "summary");
+        dsl.execute("UPDATE cells SET realm='documents' WHERE id=?", untagged);
+
+        var ids = repo.findDocumentsNeedingTaxScan(10);
+        assertThat(ids).contains(untagged);
+        assertThat(ids).doesNotContain(tagged);
+    }
+
     private UUID insertCell(String content, String summary) {
         UUID id = UUID.randomUUID();
         dsl.execute("""
