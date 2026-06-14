@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useGestureZoom } from '../../composables/useGestureZoom'
 import ViewerToolbar from './ViewerToolbar.vue'
 
@@ -10,7 +10,48 @@ const scalePct = computed(() => Math.round(z.scale.value * 100))
 
 const error = ref(false)
 const page = ref(1)
-const pageCount = ref(1) // images are always single-page; pdf sets this in a later task
+const pageCount = ref(1) // images are always single-page; pdf sets this on load
+
+const canvas = ref<HTMLCanvasElement>()
+const surface = ref<HTMLElement>()
+let pdfDoc: any = null
+
+async function loadPdf() {
+  try {
+    const pdfjs: any = await import('pdfjs-dist')
+    pdfjs.GlobalWorkerOptions.workerSrc =
+      new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString()
+    pdfDoc = await pdfjs.getDocument(props.url).promise
+    pageCount.value = pdfDoc.numPages
+    await renderPage(1)
+  } catch {
+    error.value = true
+  }
+}
+
+async function renderPage(n: number) {
+  if (!pdfDoc || !canvas.value) return
+  try {
+    const pdfPage = await pdfDoc.getPage(n)
+    const dpr = window.devicePixelRatio || 1
+    const base = pdfPage.getViewport({ scale: 1 })
+    const fitW = (surface.value?.clientWidth || base.width)
+    const fit = Math.max(0.1, fitW / base.width)
+    const vp = pdfPage.getViewport({ scale: fit * dpr })
+    const cv = canvas.value
+    cv.width = Math.floor(vp.width)
+    cv.height = Math.floor(vp.height)
+    cv.style.width = Math.floor(vp.width / dpr) + 'px'
+    cv.style.height = Math.floor(vp.height / dpr) + 'px'
+    const ctx = cv.getContext('2d')!
+    await pdfPage.render({ canvasContext: ctx, viewport: vp }).promise
+  } catch {
+    error.value = true
+  }
+}
+
+onMounted(() => { if (props.kind === 'pdf') loadPdf() })
+onBeforeUnmount(() => { pdfDoc?.cleanup?.(); pdfDoc?.destroy?.() })
 
 // ── pointer gestures ──────────────────────────────────────────────────────────
 const pointers = new Map<number, { x: number; y: number }>()
@@ -78,9 +119,10 @@ function download() {
   a.remove()
 }
 
-// page nav (wired for pdf in a later task; no-ops for images)
-function prev() { if (page.value > 1) { page.value--; z.reset() } }
-function next() { if (page.value < pageCount.value) { page.value++; z.reset() } }
+// page nav
+function prev() { if (page.value > 1) page.value-- }
+function next() { if (page.value < pageCount.value) page.value++ }
+watch(page, n => { z.reset(); if (props.kind === 'pdf') renderPage(n) })
 </script>
 
 <template>
@@ -93,6 +135,7 @@ function next() { if (page.value < pageCount.value) { page.value++; z.reset() } 
     />
 
     <div
+      ref="surface"
       class="dv-surface"
       @pointerdown="onPointerDown" @pointermove="onPointerMove"
       @pointerup="onPointerUp" @pointercancel="onPointerCancel"
@@ -112,7 +155,13 @@ function next() { if (page.value < pageCount.value) { page.value++; z.reset() } 
         :alt="filename || ''"
         @error="error = true"
       >
-      <!-- pdf canvas added in a later task -->
+      <canvas
+        v-else-if="kind === 'pdf'"
+        ref="canvas"
+        data-test="dv-canvas"
+        class="dv-content"
+        :style="{ transform: z.transform.value }"
+      ></canvas>
     </div>
   </div>
 </template>

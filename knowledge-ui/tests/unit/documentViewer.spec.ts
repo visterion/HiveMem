@@ -3,9 +3,22 @@ import { mount, flushPromises } from '@vue/test-utils'
 import DocumentViewer from '../../src/components/readers/DocumentViewer.vue'
 import { i18n } from '../../src/i18n'
 
-// pdf.js is dynamically imported only on the pdf path; mock it so the module
-// graph resolves even when these image-path tests run.
-vi.mock('pdfjs-dist', () => ({ GlobalWorkerOptions: {}, getDocument: vi.fn() }))
+// Controllable pdf.js mock: 3-page document, render resolves immediately.
+const { renderMock, getPageMock, getDocumentMock } = vi.hoisted(() => {
+  const renderMock = vi.fn(() => ({ promise: Promise.resolve() }))
+  const getPageMock = vi.fn(async () => ({
+    getViewport: ({ scale }: { scale: number }) => ({ width: 600 * scale, height: 800 * scale }),
+    render: renderMock,
+  }))
+  const getDocumentMock = vi.fn(() => ({
+    promise: Promise.resolve({ numPages: 3, getPage: getPageMock }),
+  }))
+  return { renderMock, getPageMock, getDocumentMock }
+})
+vi.mock('pdfjs-dist', () => ({
+  GlobalWorkerOptions: { workerSrc: '' },
+  getDocument: getDocumentMock,
+}))
 
 function mountViewer(props: Record<string, unknown>) {
   return mount(DocumentViewer, {
@@ -41,5 +54,31 @@ describe('DocumentViewer (image)', () => {
   it('does not render page controls for a single image', () => {
     const w = mountViewer({})
     expect(w.find('[data-test="vt-pages"]').exists()).toBe(false)
+  })
+})
+
+describe('DocumentViewer (pdf)', () => {
+  function mountPdf() {
+    return mount(DocumentViewer, {
+      props: { kind: 'pdf', url: '/api/attachments/p/content', filename: 'doc.pdf' },
+      global: { plugins: [i18n] },
+    })
+  }
+
+  it('renders a canvas and shows page controls with the document page count', async () => {
+    const w = mountPdf()
+    await flushPromises()
+    expect(w.find('canvas[data-test="dv-canvas"]').exists()).toBe(true)
+    expect(w.find('[data-test="vt-pages"]').text()).toContain('1 / 3')
+  })
+
+  it('next advances the page number and re-renders', async () => {
+    renderMock.mockClear()
+    const w = mountPdf()
+    await flushPromises()
+    await w.find('[data-test="vt-next"]').trigger('click')
+    await flushPromises()
+    expect(w.find('[data-test="vt-pages"]').text()).toContain('2 / 3')
+    expect(renderMock).toHaveBeenCalled()
   })
 })
