@@ -12,10 +12,24 @@ const error = ref(false)
 const page = ref(1)
 const pageCount = ref(1) // images are always single-page; pdf sets this on load
 
+// GPU-safe maximum texture dimension; bitmaps never exceed this on the long side.
+const MAX_CANVAS_DIM = 4096
+// Zoom factor the current PDF bitmap was rasterized at. Live pinch/zoom only
+// changes the CSS transform (smooth, GPU); once the zoom settles we re-rasterize
+// the page at this scale so the document stays crisp instead of CSS-upscaled.
+const renderScale = ref(1)
+
+// Images carry the full zoom in the CSS transform. The PDF canvas is rasterized
+// at renderScale, so its transform only needs the residual zoom (scale / renderScale).
+const canvasTransform = computed(
+  () => `translate(${z.tx.value}px, ${z.ty.value}px) scale(${z.scale.value / renderScale.value})`,
+)
+
 const canvas = ref<HTMLCanvasElement>()
 const surface = ref<HTMLElement>()
 let pdfDoc: any = null
 let renderTask: { promise: Promise<void>; cancel?: () => void } | null = null
+let zoomTimer: ReturnType<typeof setTimeout> | null = null
 
 async function loadPdf() {
   try {
@@ -41,15 +55,24 @@ async function renderPage(n: number) {
     const base = pdfPage.getViewport({ scale: 1 })
     const fitW = (surface.value?.clientWidth || base.width)
     const fit = Math.max(0.1, fitW / base.width)
-    const vp = pdfPage.getViewport({ scale: fit * dpr })
+    // CSS size: page fits the surface width at zoom 1 and grows with renderScale.
+    const cssScale = fit * renderScale.value
+    // Device size: oversample by the device pixel ratio and the current zoom so a
+    // zoomed-in page is rasterized at its real resolution rather than stretched.
+    // Clamp the long side to a GPU-safe texture dimension.
+    let devScale = cssScale * dpr
+    const longest = Math.max(base.width, base.height)
+    if (longest * devScale > MAX_CANVAS_DIM) devScale = MAX_CANVAS_DIM / longest
     const cv = canvas.value
-    cv.width = Math.floor(vp.width)
-    cv.height = Math.floor(vp.height)
-    cv.style.width = Math.floor(vp.width / dpr) + 'px'
-    cv.style.height = Math.floor(vp.height / dpr) + 'px'
+    const devVp = pdfPage.getViewport({ scale: devScale })
+    const cssVp = pdfPage.getViewport({ scale: cssScale })
+    cv.width = Math.floor(devVp.width)
+    cv.height = Math.floor(devVp.height)
+    cv.style.width = Math.floor(cssVp.width) + 'px'
+    cv.style.height = Math.floor(cssVp.height) + 'px'
     const ctx = cv.getContext('2d')
     if (!ctx) { error.value = true; return }
-    const task = pdfPage.render({ canvasContext: ctx, viewport: vp })
+    const task = pdfPage.render({ canvasContext: ctx, viewport: devVp })
     renderTask = task
     await task.promise
     renderTask = null
@@ -67,12 +90,31 @@ watch(() => `${props.kind}|${props.url}`, () => {
   error.value = false
   page.value = 1
   pageCount.value = 1 // re-set by loadPdf for PDFs; stays 1 for images
+  renderScale.value = 1
+  if (zoomTimer) { clearTimeout(zoomTimer); zoomTimer = null }
   z.reset()
   if (props.kind === 'pdf') loadPdf()
 })
 
+// Re-rasterize the PDF at the new zoom once the gesture settles, so deep zoom
+// stays sharp. Debounced to avoid thrashing during a continuous pinch.
+watch(() => z.scale.value, () => {
+  if (props.kind !== 'pdf') return
+  if (zoomTimer) clearTimeout(zoomTimer)
+  zoomTimer = setTimeout(() => {
+    zoomTimer = null
+    const target = Math.min(z.maxScale, Math.max(1, z.scale.value))
+    if (Math.abs(target - renderScale.value) < 0.1) return
+    renderScale.value = target
+    renderPage(page.value)
+  }, 180)
+})
+
 onMounted(() => { if (props.kind === 'pdf') loadPdf() })
-onBeforeUnmount(() => { renderTask?.cancel?.(); pdfDoc?.cleanup?.(); pdfDoc?.destroy?.() })
+onBeforeUnmount(() => {
+  if (zoomTimer) clearTimeout(zoomTimer)
+  renderTask?.cancel?.(); pdfDoc?.cleanup?.(); pdfDoc?.destroy?.()
+})
 
 // ── pointer gestures ──────────────────────────────────────────────────────────
 const pointers = new Map<number, { x: number; y: number }>()
@@ -143,7 +185,12 @@ function download() {
 // page nav
 function prev() { if (page.value > 1) page.value-- }
 function next() { if (page.value < pageCount.value) page.value++ }
-watch(page, n => { z.reset(); if (props.kind === 'pdf') renderPage(n) })
+watch(page, n => {
+  z.reset()
+  renderScale.value = 1
+  if (zoomTimer) { clearTimeout(zoomTimer); zoomTimer = null }
+  if (props.kind === 'pdf') renderPage(n)
+})
 </script>
 
 <template>
@@ -170,7 +217,7 @@ watch(page, n => { z.reset(); if (props.kind === 'pdf') renderPage(n) })
       <img
         v-else-if="kind === 'image'"
         data-test="dv-image"
-        class="dv-content"
+        class="dv-content dv-image"
         :src="url"
         :style="{ transform: z.transform.value }"
         :alt="filename || ''"
@@ -181,7 +228,7 @@ watch(page, n => { z.reset(); if (props.kind === 'pdf') renderPage(n) })
         ref="canvas"
         data-test="dv-canvas"
         class="dv-content"
-        :style="{ transform: z.transform.value }"
+        :style="{ transform: canvasTransform }"
       ></canvas>
     </div>
   </div>
@@ -194,7 +241,12 @@ watch(page, n => { z.reset(); if (props.kind === 'pdf') renderPage(n) })
   display: flex; align-items: center; justify-content: center;
   touch-action: none; /* we handle gestures ourselves */
 }
-.dv-content { max-width: 100%; max-height: 100%; transform-origin: center center; will-change: transform; }
+/* Shared: the zoom transform pivots around the element centre. */
+.dv-content { transform-origin: center center; will-change: transform; }
+/* Images fit the surface at zoom 1; the zoom transform grows them past it. */
+.dv-image { max-width: 100%; max-height: 100%; }
+/* The PDF canvas sizes itself explicitly (re-rasterised per zoom level), so it
+   must NOT be clamped to the surface — once zoomed in its CSS box exceeds it. */
 .dv-error { color: var(--text-2, #aaa); text-align: center; padding: 40px; }
 .dv-error a { color: var(--cyber, #8ab4f8); display: inline-block; margin-top: 10px; }
 </style>

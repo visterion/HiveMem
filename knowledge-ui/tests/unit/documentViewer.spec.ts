@@ -97,6 +97,26 @@ describe('DocumentViewer (pdf)', () => {
     expect(getDocumentMock).toHaveBeenCalledTimes(1)
   })
 
+  it('re-renders the pdf at a higher resolution when zoomed in (crisp zoom, not CSS upscale)', async () => {
+    vi.useFakeTimers()
+    try {
+      const w = mountPdf()
+      await vi.runOnlyPendingTimersAsync()
+      await flushPromises()
+      const cv = w.find('canvas[data-test="dv-canvas"]').element as HTMLCanvasElement
+      const baseWidth = cv.width
+      expect(baseWidth).toBeGreaterThan(0)
+      // Zoom in well past the re-render threshold.
+      for (let i = 0; i < 4; i++) await w.find('[data-test="vt-zoom-in"]').trigger('click')
+      // Let the debounced re-render fire.
+      await vi.advanceTimersByTimeAsync(400)
+      await flushPromises()
+      expect(cv.width).toBeGreaterThan(baseWidth)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('clears page controls when switching from a multi-page pdf to an image', async () => {
     const w = mountPdf()
     await flushPromises()

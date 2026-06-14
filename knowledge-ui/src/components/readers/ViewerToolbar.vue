@@ -28,7 +28,12 @@ const { t } = useI18n()
       <button class="vt-btn" data-test="vt-zoom-in" :title="t('reader.viewer.zoomIn')" @click="$emit('zoomIn')">+</button>
     </div>
 
-    <button class="vt-btn vt-dl" data-test="vt-download" :title="t('reader.viewer.download')" @click="$emit('download')">⬇</button>
+    <button class="vt-btn vt-dl" data-test="vt-download" :title="t('reader.viewer.download')" @click="$emit('download')">
+      <svg class="vt-ic" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12 3v10m0 0 4-4m-4 4-4-4" />
+        <path d="M5 17v2a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2" />
+      </svg>
+    </button>
   </div>
 </template>
 
@@ -52,7 +57,14 @@ const { t } = useI18n()
 }
 .vt-btn:hover { background: var(--bg-3, rgba(255,255,255,.08)); }
 .vt-pageno, .vt-pct { min-width: 56px; text-align: center; font-variant-numeric: tabular-nums; }
-.vt-dl { margin-left: auto; }
+.vt-dl {
+  margin-left: auto;
+  min-width: 40px; min-height: 40px;
+  border: 1px solid var(--line, #2a2a3a);
+  color: var(--text-2, #b8b8c8);
+}
+.vt-dl:hover { background: var(--bg-3, rgba(255,255,255,.08)); color: var(--text-1, #eee); border-color: var(--accent, #8ab4f8); }
+.vt-ic { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 @media (max-width: 700px) {
   .vt { gap: 8px; padding: 4px 6px; }
   .vt-pageno, .vt-pct { min-width: 48px; font-size: 12px; }
