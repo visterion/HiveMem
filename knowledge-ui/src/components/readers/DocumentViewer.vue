@@ -17,6 +17,7 @@ const pointers = new Map<number, { x: number; y: number }>()
 let startDist = 0
 let startScale = 1
 let lastTapTs = 0
+let wasPinching = false
 
 function dist(a: { x: number; y: number }, b: { x: number; y: number }) {
   return Math.hypot(a.x - b.x, a.y - b.y)
@@ -28,6 +29,7 @@ function onPointerDown(e: PointerEvent) {
     const [a, b] = [...pointers.values()]
     startDist = dist(a, b)
     startScale = z.scale.value
+    wasPinching = true
   }
 }
 function onPointerMove(e: PointerEvent) {
@@ -45,9 +47,20 @@ function onPointerMove(e: PointerEvent) {
 function onPointerUp(e: PointerEvent) {
   pointers.delete(e.pointerId)
   if (pointers.size < 2) startDist = 0
-  // double-tap detection
+  // Only a clean single-finger lift counts as a tap. Lifting fingers from a pinch
+  // would otherwise be misread as a double-tap (two quick pointerups), so a pinch
+  // cancels tap tracking entirely.
+  if (pointers.size !== 0) return
+  if (wasPinching) { wasPinching = false; lastTapTs = 0; return }
   const now = Date.now()
   if (now - lastTapTs < 300) { z.toggleZoom(); lastTapTs = 0 } else { lastTapTs = now }
+}
+function onPointerCancel(e: PointerEvent) {
+  pointers.delete(e.pointerId)
+  if (pointers.size < 2) startDist = 0
+  // A cancelled pointer (palm rejection, OS interruption) is not a tap.
+  wasPinching = false
+  lastTapTs = 0
 }
 function onWheel(e: WheelEvent) {
   if (!e.ctrlKey) return
@@ -82,7 +95,7 @@ function next() { if (page.value < pageCount.value) { page.value++; z.reset() } 
     <div
       class="dv-surface"
       @pointerdown="onPointerDown" @pointermove="onPointerMove"
-      @pointerup="onPointerUp" @pointercancel="onPointerUp"
+      @pointerup="onPointerUp" @pointercancel="onPointerCancel"
       @wheel="onWheel" @dblclick="onDblClick"
     >
       <div v-if="error" class="dv-error" data-test="dv-error">
