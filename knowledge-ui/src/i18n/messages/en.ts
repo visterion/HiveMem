@@ -88,6 +88,15 @@ export default {
       date: 'Date:',
       parseError: 'Failed to parse email.'
     },
+    viewer: {
+      prevPage: 'Previous page',
+      nextPage: 'Next page',
+      zoomIn: 'Zoom in',
+      zoomOut: 'Zoom out',
+      download: 'Download original',
+      close: 'Close',
+      loadError: 'Could not load the document.',
+    },
     imageAlt: 'Original document'
   },
   queen: {

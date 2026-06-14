@@ -88,6 +88,15 @@ export default {
       date: 'Datum:',
       parseError: 'E-Mail konnte nicht gelesen werden.'
     },
+    viewer: {
+      prevPage: 'Vorherige Seite',
+      nextPage: 'Nächste Seite',
+      zoomIn: 'Vergrößern',
+      zoomOut: 'Verkleinern',
+      download: 'Original herunterladen',
+      close: 'Schließen',
+      loadError: 'Dokument konnte nicht geladen werden.',
+    },
     imageAlt: 'Originaldokument'
   },
   queen: {
