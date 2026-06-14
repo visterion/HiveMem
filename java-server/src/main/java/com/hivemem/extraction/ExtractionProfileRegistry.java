@@ -10,9 +10,10 @@ public class ExtractionProfileRegistry {
 
     private static final ExtractionProfile SYNTHETIC_OTHER = new ExtractionProfile(
             "other",
-            "Du analysierst ein Dokument unbekannten Typs. Identifiziere Hauptthema und Schlüsselbegriffe.",
+            "Du analysierst ein Dokument unbekannten Typs. Identifiziere Hauptthema und Schlüsselbegriffe. "
+                    + "Wenn ein Ausstellungs-/Briefdatum erkennbar ist, gib es als document_date aus.",
             java.util.List.of("topic"),
-            java.util.List.of("key_term", "sentiment"),
+            java.util.List.of("document_date", "key_term", "sentiment"),
             null,
             java.util.List.of()
     );

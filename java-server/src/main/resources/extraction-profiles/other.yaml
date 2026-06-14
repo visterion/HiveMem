@@ -3,7 +3,11 @@ prompt: |
   Du analysierst ein Dokument unbekannten Typs.
   Identifiziere das Hauptthema (topic) und Schlüsselbegriffe (key_term — pro Begriff
   ein eigener Fact mit predicate=key_term).
+  Wenn ein Ausstellungs-/Briefdatum erkennbar ist, gib es als document_date aus.
 required_facts: [topic]
-optional_facts: [key_term, sentiment]
+optional_facts:
+  - document_date
+  - key_term
+  - sentiment
 summary_template: null
 tags_to_apply: []

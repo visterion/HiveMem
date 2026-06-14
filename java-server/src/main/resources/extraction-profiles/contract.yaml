@@ -7,6 +7,7 @@ prompt: |
   Kündigungsfrist (notice_period) ist kritisch — extrahiere sie sorgfältig.
 required_facts: [party, start_date]
 optional_facts:
+  - document_date
   - end_date
   - notice_period
   - value_per_period

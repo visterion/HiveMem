@@ -2,8 +2,10 @@ type: image-document-scan
 prompt: |
   Foto/Scan eines Dokuments (Brief, Rechnung, Vertrag): transkribiere den
   vollständigen sichtbaren Text wörtlich in Lese-Reihenfolge. Tabellen als
-  Markdown-Tabellen.
+  Markdown-Tabellen. Wenn ein Ausstellungs-/Briefdatum erkennbar ist, gib es als
+  document_date aus.
 required_facts: []
-optional_facts: []
+optional_facts:
+  - document_date
 summary_template: null
 tags_to_apply: [document, has_text]
