@@ -6,9 +6,7 @@ export const useReaderStore = defineStore('reader', {
   state: () => ({
     open: false,
     cellId: null as string | null,
-    activeTab: 'markdown' as ReaderTab,
-    pdfPage: 1,
-    pdfZoom: 1
+    activeTab: 'markdown' as ReaderTab
   }),
   actions: {
     openReader(cellId: string) { this.cellId = cellId; this.open = true; this.activeTab = 'markdown' },

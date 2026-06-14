@@ -96,4 +96,14 @@ describe('DocumentViewer (pdf)', () => {
     await flushPromises()
     expect(getDocumentMock).toHaveBeenCalledTimes(1)
   })
+
+  it('clears page controls when switching from a multi-page pdf to an image', async () => {
+    const w = mountPdf()
+    await flushPromises()
+    expect(w.find('[data-test="vt-pages"]').text()).toContain('1 / 3')
+    // Switch the same viewer instance to a single-page image attachment.
+    await w.setProps({ kind: 'image', url: '/api/attachments/img/content', filename: 'p.png' })
+    await flushPromises()
+    expect(w.find('[data-test="vt-pages"]').exists()).toBe(false)
+  })
 })

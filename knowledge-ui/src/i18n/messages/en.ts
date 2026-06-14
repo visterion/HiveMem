@@ -94,10 +94,8 @@ export default {
       zoomIn: 'Zoom in',
       zoomOut: 'Zoom out',
       download: 'Download original',
-      close: 'Close',
       loadError: 'Could not load the document.',
-    },
-    imageAlt: 'Original document'
+    }
   },
   queen: {
     activity: 'Queen activity',

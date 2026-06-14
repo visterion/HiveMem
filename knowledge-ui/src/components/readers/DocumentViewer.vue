@@ -66,6 +66,7 @@ watch(() => `${props.kind}|${props.url}`, () => {
   pdfDoc = null
   error.value = false
   page.value = 1
+  pageCount.value = 1 // re-set by loadPdf for PDFs; stays 1 for images
   z.reset()
   if (props.kind === 'pdf') loadPdf()
 })
