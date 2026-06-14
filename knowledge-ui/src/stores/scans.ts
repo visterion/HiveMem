@@ -197,8 +197,11 @@ export const useScansStore = defineStore('scans', {
       const reader = useReaderStore()
       let initialTab = 'info'
       try {
+        // include REPLACES get_cell's default field set, so the layers (summary/
+        // key_points/insight) must be listed explicitly or the overview tab loses them.
         const full = await useApi().call<Cell>('get_cell', {
-          cell_id: id, include: ['content', 'tags', 'attachments'],
+          cell_id: id,
+          include: ['content', 'summary', 'key_points', 'insight', 'tags', 'attachments'],
         })
         await cells.open(full)
         const firstAtt = full.attachments?.[0]?.id

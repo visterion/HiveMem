@@ -174,6 +174,22 @@ describe('scans store', () => {
     expect(reader.cellId).toBe(id)
   })
 
+  it('openDocument fetches the summary layers (include replaces get_cell defaults)', async () => {
+    const s = useScansStore()
+    const lp = s.load(); await vi.advanceTimersByTimeAsync(300); await lp
+    const id = s.results[0].id
+
+    const api = (await import('../../src/api/useApi')).useApi()
+    const spy = vi.spyOn(api, 'call')
+    const p = s.openDocument(id); await vi.advanceTimersByTimeAsync(300); await p
+
+    const getCellCall = spy.mock.calls.find(c => c[0] === 'get_cell')
+    expect(getCellCall).toBeDefined()
+    const include = (getCellCall![1] as any).include as string[]
+    // Without these explicitly, the server drops the layers (include overrides defaults).
+    expect(include).toEqual(expect.arrayContaining(['summary', 'key_points', 'insight', 'content', 'attachments']))
+  })
+
   it('bulkReclassify calls bulk_reclassify then clears selection + reloads', async () => {
     const s = useScansStore()
     const p0 = s.load(); await vi.advanceTimersByTimeAsync(300); await p0
