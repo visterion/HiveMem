@@ -37,4 +37,25 @@ describe('Reader', () => {
     await flushPromises()
     expect(reader.open).toBe(false)
   })
+
+  it('pops the history sentinel when the reader is closed out-of-band', async () => {
+    const back = vi.spyOn(history, 'back').mockImplementation(() => {})
+    const cell = useCellStore()
+    cell.cache.set('c1', {
+      cell: { id: 'c1', content: '# hi', attachments: [] } as any,
+      facts: [], tunnels: [],
+    })
+    cell.currentId = 'c1'
+    const reader = useReaderStore()
+    reader.openReader('c1')
+
+    mount(Reader, { global: { plugins: [i18n], stubs: { teleport: true } } })
+    await flushPromises()
+
+    // Close NOT via requestClose (e.g. a route guard calling the store action).
+    reader.close()
+    await flushPromises()
+    // disarm() consumed the pushed sentinel so it can't linger in the back-stack.
+    expect(back).toHaveBeenCalledTimes(1)
+  })
 })

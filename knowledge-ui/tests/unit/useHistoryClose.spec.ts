@@ -51,4 +51,24 @@ describe('useHistoryClose', () => {
     requestClose()
     expect(onClose).toHaveBeenCalledTimes(1)
   })
+
+  it('disarm() while armed pops the sentinel without re-calling onClose', () => {
+    const back = vi.spyOn(history, 'back').mockImplementation(() => {})
+    const onClose = vi.fn()
+    const { arm, disarm } = useHistoryClose(onClose)
+    arm()
+    disarm() // host already closed out-of-band; just clean up our history entry
+    expect(back).toHaveBeenCalledTimes(1)
+    expect(onClose).not.toHaveBeenCalled()
+    // listeners are gone: a later popstate must not call onClose
+    window.dispatchEvent(new PopStateEvent('popstate'))
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('disarm() when not armed is a no-op', () => {
+    const back = vi.spyOn(history, 'back').mockImplementation(() => {})
+    const { disarm } = useHistoryClose(() => {})
+    disarm()
+    expect(back).not.toHaveBeenCalled()
+  })
 })

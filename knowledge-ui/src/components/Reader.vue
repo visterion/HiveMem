@@ -19,10 +19,11 @@ function kindOf(tab: string) { return attachments.value.find(a => a.id === tab)?
 function urlOf(tab: string) { return attachments.value.find(a => a.id === tab)?.url ?? '' }
 function filenameOf(tab: string) { return attachments.value.find(a => a.id === tab)?.title ?? '' }
 
-const { arm, requestClose } = useHistoryClose(() => reader.close())
+const { arm, requestClose, disarm } = useHistoryClose(() => reader.close())
 
-// Arm history-close sentinel when the reader opens.
-watch(() => reader.open, (open) => { if (open) arm() }, { immediate: true })
+// Arm the history-close sentinel when the reader opens; clean it up if the reader
+// is closed out-of-band (e.g. a route guard) without going through requestClose.
+watch(() => reader.open, (open) => { if (open) arm(); else disarm() }, { immediate: true })
 
 // When the reader opens for a cell, make sure its attachments are loaded.
 watch(() => reader.open && cellStore.currentId, (id) => {
