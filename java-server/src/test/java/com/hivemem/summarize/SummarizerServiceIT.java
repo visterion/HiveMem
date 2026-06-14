@@ -36,6 +36,9 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 
+import java.time.OffsetDateTime;
+
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
 
@@ -153,6 +156,43 @@ class SummarizerServiceIT {
             assertTrue(rs.getBoolean("is_current"), "the original cell stays current (not superseded)");
             assertNull(rs.getString("summary"), "summary stays null");
             assertFalse(rs.getBoolean("has_tag"), "needs_summary must be removed (gave up), not re-added");
+        }
+    }
+
+    /**
+     * Tax-relevance tag and valid_from: when the LLM marks a document as tax-relevant and
+     * provides a document_date fact, summarizeOne must apply the "steuerrelevant" tag (for
+     * German instance default) and set valid_from to the document date.
+     */
+    @Test
+    void taxRelevantDoc_appliesTagAndSetsValidFrom() throws Exception {
+        UUID id = seedLongCell();
+
+        String inner = "{"
+                + "\"document_type\":\"invoice\","
+                + "\"summary\":\"Malerrechnung.\","
+                + "\"key_points\":[],"
+                + "\"insight\":null,"
+                + "\"tags\":[],"
+                + "\"language\":\"de\","
+                + "\"tax_relevant\":true,"
+                + "\"facts\":[{\"predicate\":\"document_date\",\"object\":\"2025-03-09\",\"confidence\":0.9}]"
+                + "}";
+        mockVistierie.stubComplete(inner.replace("\"", "\\\""));
+
+        buildService().summarizeOne(id);
+
+        try (Connection c = conn(); Statement st = c.createStatement();
+             ResultSet rs = st.executeQuery(
+                     "SELECT tags, valid_from FROM cells WHERE valid_until IS NULL ORDER BY created_at DESC LIMIT 1")) {
+            assertTrue(rs.next(), "Expected a revised, current cell row");
+
+            List<String> tags = toList(rs.getArray("tags"));
+            assertThat(tags).contains("steuerrelevant");
+
+            OffsetDateTime actual = rs.getObject("valid_from", OffsetDateTime.class);
+            assertThat(actual.toInstant())
+                    .isEqualTo(OffsetDateTime.parse("2025-03-09T00:00:00Z").toInstant());
         }
     }
 

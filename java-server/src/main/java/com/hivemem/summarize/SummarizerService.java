@@ -32,6 +32,16 @@ public class SummarizerService {
     private static final AuthPrincipal SYSTEM_PRINCIPAL =
             new AuthPrincipal("system-summarizer", AuthRole.ADMIN);
 
+    /**
+     * Canonical tax tag for the content language: en → "tax-relevant", de → "steuerrelevant".
+     * Unknown/blank language falls back to the instance default language (so a German instance
+     * yields "steuerrelevant"). Reused by the backfill.
+     */
+    static String taxTagFor(String language, String instanceDefault) {
+        String lang = (language == null || language.isBlank()) ? instanceDefault : language;
+        return "en".equalsIgnoreCase(lang.trim()) ? "tax-relevant" : "steuerrelevant";
+    }
+
     private final SummarizerProperties props;
     private final ExtractionProperties extractionProps;
     private final SummarizerRepository repo;
@@ -122,6 +132,19 @@ public class SummarizerService {
 
             // Persist facts.
             persistFacts(targetId, result.facts());
+
+            // Tax-relevance tag (language-correct).
+            if (result.taxRelevant()) {
+                repo.applyTag(targetId, taxTagFor(result.language(), props.getLanguage()));
+            }
+
+            // Set the cell's valid_from from the document's own date, if the LLM gave a usable one.
+            result.facts().stream()
+                    .filter(f -> "document_date".equals(f.predicate()))
+                    .max(java.util.Comparator.comparingDouble(FactSpec::confidence))
+                    .flatMap(f -> DocumentDateParser.parse(f.object()))
+                    .ifPresent(d -> repo.setValidFrom(
+                            targetId, d.atStartOfDay().atOffset(java.time.ZoneOffset.UTC)));
 
             repo.removeNeedsSummaryTag(cellId);
             if (newId != null) repo.removeNeedsSummaryTag(newId);
