@@ -55,10 +55,12 @@ describe('knowledge SearchPanel', () => {
     await vi.advanceTimersByTimeAsync(500)
     await flushPromises()
 
-    // The clear-btn should appear because activeFilterCount > 0
+    // The clear-btn should appear because activeFilterCount > 0 (realm facet preselected)
     expect(w.find('.clear-btn').exists()).toBe(true)
-    const rows = w.findAll('.row')
-    expect(rows.length).toBeGreaterThanOrEqual(0)
+    // The deep-link preselects exactly 1 facet — clear-btn shows the count
+    expect(w.find('.clear-btn').text()).toContain('(1)')
+    // Deep-link switches sort away from 'relevance' → sort-btn must NOT show 'Relevanz'/'Relevance'
+    expect(w.find('.sort-btn').text()).not.toMatch(/Relevanz|Relevance/i)
   })
 
   it('clear-btn clears facets and hides itself', async () => {
@@ -88,6 +90,7 @@ describe('knowledge SearchPanel', () => {
     await w.find('.sort-btn').trigger('click')
     await flushPromises()
     const opts = w.findAll('.sort-pop button')
-    expect(opts.length).toBeGreaterThanOrEqual(0)
+    // SearchPanel defines exactly 4 sort options: relevance / newest / oldest / title
+    expect(opts.length).toBe(4)
   })
 })

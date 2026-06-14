@@ -53,8 +53,6 @@ export default {
     hudPlaceholder: 'Search…',
     comingSoon: 'Coming soon',
     stats: '{cells} cells · {facts} facts · {realms} realms',
-    withinRealm: 'searching within {realm}',
-    clearRealm: 'Remove realm filter',
   },
   realms: {
     sizeMetric: 'SIZE METRIC',
