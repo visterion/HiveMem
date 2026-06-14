@@ -18,9 +18,11 @@ const thumbUrl = (d: DocumentRow) => d.has_thumbnail && d.attachment_id ? `/api/
   </div>
 </template>
 <style scoped>
-.docthumb { position:relative; height:152px; background:var(--bg-0); border-radius:9px; border:1px solid var(--line); display:grid; place-items:center; overflow:hidden; }
+.docthumb { position:relative; height:124px; background:var(--bg-0); border-radius:9px; border:1px solid var(--line); display:grid; place-items:center; overflow:hidden; }
 .docthumb.big { height:100%; }
-.dt-img { width:100%; height:100%; object-fit:cover; }
+/* contain (not cover): show the whole first page, never a cropped/zoomed slice.
+   The letterbox sits on a paper-white field so a portrait page reads as a document. */
+.dt-img { width:100%; height:100%; object-fit:contain; object-position:center top; background:#f7f4ed; }
 .dt-paper { width:108px; height:138px; background:#f7f4ed; border-radius:4px; overflow:hidden; box-shadow:0 8px 20px -8px rgba(0,0,0,.55); display:flex; flex-direction:column; }
 .dt-header { height:26px; flex:none; opacity:.9; background:var(--honey-deep); }
 .dt-lines { padding:10px 11px; display:flex; flex-direction:column; gap:5px; position:relative; flex:1; }

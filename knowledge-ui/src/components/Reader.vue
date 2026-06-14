@@ -3,7 +3,7 @@ import { computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useReaderStore } from '../stores/reader'
 import { useCellStore } from '../stores/cell'
-import MarkdownTab from './readers/MarkdownTab.vue'
+import DocInfoTab from './readers/DocInfoTab.vue'
 import EmlTab from './readers/EmlTab.vue'
 import DocumentViewer from './readers/DocumentViewer.vue'
 import { buildAttachmentTabs } from './readers/attachmentTabs'
@@ -37,14 +37,14 @@ watch(() => reader.open && cellStore.currentId, (id) => {
       <header>
         <v-btn icon="mdi-arrow-left" variant="text" @click="requestClose()" />
         <v-tabs v-model="reader.activeTab" density="compact" color="primary">
-          <v-tab value="markdown">{{ t('reader.markdown') }}</v-tab>
+          <v-tab value="info">{{ t('reader.info') }}</v-tab>
           <v-tab v-for="a in attachments" :key="a.id" :value="a.id">{{ a.title }}</v-tab>
         </v-tabs>
         <v-spacer />
         <v-btn icon="mdi-pencil" variant="text" disabled :title="t('reader.editorTooltip')" />
       </header>
       <main class="reader-body">
-        <MarkdownTab v-if="reader.activeTab === 'markdown'" :content="cellStore.current.cell.content" />
+        <DocInfoTab v-if="reader.activeTab === 'info'" />
         <DocumentViewer
           v-else-if="kindOf(reader.activeTab) === 'pdf' || kindOf(reader.activeTab) === 'image'"
           :url="urlOf(reader.activeTab)"

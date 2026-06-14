@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useScansStore } from '../../stores/scans'
 import type { FacetKey } from '../../stores/scans'
@@ -7,7 +7,6 @@ import { useApi } from '../../api/useApi'
 import DocCard from './DocCard.vue'
 import DocTable from './DocTable.vue'
 import SortMenu from './SortMenu.vue'
-import DocDetail from './DocDetail.vue'
 import HmIcon from '../shell/HmIcon.vue'
 
 const { t } = useI18n()
@@ -61,12 +60,6 @@ async function onBulkRealm() {
   if (!realm?.trim()) return
   await store.bulkReclassify(realm.trim())
 }
-
-const openDoc = computed(() =>
-  store.results.find(d => d.id === store.openId)
-  || store.filtered.find(d => d.id === store.openId)
-  || null
-)
 
 // All facet keys that can have active values
 const FACET_KEYS: FacetKey[] = ['tag', 'status', 'realm', 'year', 'signal', 'correspondent']
@@ -155,7 +148,7 @@ onMounted(() => { store.reload() })
             :d="d"
             :q="store.query"
             :selected="store.selection.has(d.id)"
-            @open="store.open(d.id)"
+            @open="store.openDocument(d.id)"
             @select="store.toggleSelect(d.id)"
           />
         </div>
@@ -166,7 +159,7 @@ onMounted(() => { store.reload() })
           :rows="store.filtered"
           :q="store.query"
           :selection="store.selection"
-          @open="store.open"
+          @open="store.openDocument"
           @select="store.toggleSelect"
         />
       </template>
@@ -195,9 +188,6 @@ onMounted(() => { store.reload() })
         </button>
       </div>
     </div>
-
-    <!-- Detail overlay -->
-    <DocDetail v-if="openDoc" :d="openDoc" :q="store.query" />
   </div>
 </template>
 

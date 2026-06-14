@@ -1,6 +1,8 @@
 import { defineStore } from 'pinia'
 import { useApi } from '../api/useApi'
-import type { DocumentRow, FacetCounts, SavedSearch } from '../api/types'
+import { useCellStore } from './cell'
+import { useReaderStore } from './reader'
+import type { Cell, DocumentRow, FacetCounts, SavedSearch } from '../api/types'
 
 export type FacetKey = 'tag' | 'status' | 'realm' | 'year' | 'signal' | 'correspondent'
 export interface SavedView { id: string; name: string; icon?: string; filter: Partial<Record<FacetKey, string[]>> }
@@ -184,5 +186,25 @@ export const useScansStore = defineStore('scans', {
     clearSelection() { this.selection = new Set() },
     open(id: string) { this.openId = id },
     closeDetail() { this.openId = null },
+
+    // Open a scan straight into the fullscreen document view. Fetches the full cell
+    // (content + layers + attachments) and seeds the cellStore so the reader renders
+    // the right document, then jumps to the scanned page (first attachment) — the
+    // layered overview lives one tab away. Replaces the old click→detail-modal step.
+    async openDocument(id: string) {
+      this.openId = id
+      const cells = useCellStore()
+      const reader = useReaderStore()
+      let initialTab = 'info'
+      try {
+        const full = await useApi().call<Cell>('get_cell', {
+          cell_id: id, include: ['content', 'tags', 'attachments'],
+        })
+        await cells.open(full)
+        const firstAtt = full.attachments?.[0]?.id
+        if (firstAtt) initialTab = firstAtt
+      } catch { /* open the reader anyway; it falls back via ensureAttachments */ }
+      reader.openReader(id, initialTab)
+    },
   },
 })

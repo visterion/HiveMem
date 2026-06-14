@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useScansStore } from '../../src/stores/scans'
+import { useCellStore } from '../../src/stores/cell'
+import { useReaderStore } from '../../src/stores/reader'
 import { resetApi } from '../../src/api/useApi'
 
 describe('scans store', () => {
@@ -155,6 +157,21 @@ describe('scans store', () => {
 
     const updated = s.results.find(r => r.id === 'doc-invoice-001')
     expect(updated?.tags).toContain('archived')
+  })
+
+  it('openDocument seeds the cellStore and opens the reader for the same cell', async () => {
+    const s = useScansStore()
+    const p0 = s.load(); await vi.advanceTimersByTimeAsync(300); await p0
+    const id = s.results[0].id
+
+    const p1 = s.openDocument(id); await vi.advanceTimersByTimeAsync(300); await p1
+
+    const cells = useCellStore()
+    const reader = useReaderStore()
+    expect(s.openId).toBe(id)
+    expect(cells.currentId).toBe(id)
+    expect(reader.open).toBe(true)
+    expect(reader.cellId).toBe(id)
   })
 
   it('bulkReclassify calls bulk_reclassify then clears selection + reloads', async () => {

@@ -72,6 +72,7 @@ export default {
   },
   reader: {
     markdown: 'Markdown',
+    info: 'Übersicht',
     download: 'Datei herunterladen',
     editorTooltip: 'Editor — SP4',
     openReader: 'Reader öffnen',
