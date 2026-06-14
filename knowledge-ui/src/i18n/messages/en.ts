@@ -132,6 +132,11 @@ export default {
   },
   knowledge: {
     selectCell: 'Select a cell', selectCellSub: 'Pick a result on the left to read it.', results: 'results', allTypes: 'All',
+    facetsRealm: 'Realm',
+    facetsSignal: 'Type',
+    facetsTag: 'Tag',
+    sortRelevance: 'Relevance',
+    clearFilters: 'Clear filters',
   },
   scans: {
     savedViews: 'Saved views', allDocs: 'All documents', items: 'documents', searchDocs: 'Search documents…',

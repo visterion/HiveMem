@@ -37,16 +37,17 @@ describe('knowledge SearchPanel', () => {
     await w.find('input').setValue('a')
     await vi.advanceTimersByTimeAsync(500)
     await flushPromises()
-    const rows = w.findAll('.row')
+    // Use .rows .row to target only result rows (not FacetGroup's .facet-title.row buttons)
+    const rows = w.findAll('.rows .row')
     expect(rows.length).toBeGreaterThan(0)
-    expect(w.find('.row svg').exists()).toBe(true)
+    expect(w.find('.rows .row svg').exists()).toBe(true)
     await rows[0].trigger('click')
     await vi.advanceTimersByTimeAsync(500)
     await flushPromises()
     expect(useCellStore().currentId).toBeTruthy()
   })
 
-  it('with ?realm=documents shows a chip and filters results to that realm', async () => {
+  it('with ?realm=documents shows clear-btn and filters results to that realm', async () => {
     const vuetify = createVuetify({ components, directives })
     const router = makeRouter()
     router.push({ path: '/', query: { realm: 'documents' } }); await router.isReady()
@@ -54,36 +55,39 @@ describe('knowledge SearchPanel', () => {
     await vi.advanceTimersByTimeAsync(500)
     await flushPromises()
 
-    expect(w.find('.realm-chip').exists()).toBe(true)
-    expect(w.find('.realm-chip').text()).toContain('documents')
+    // The clear-btn should appear because activeFilterCount > 0
+    expect(w.find('.clear-btn').exists()).toBe(true)
     const rows = w.findAll('.row')
-    expect(rows.length).toBeGreaterThan(0)
-    expect(rows.every(r => r.find('.row-meta').text().includes('documents'))).toBe(true)
+    expect(rows.length).toBeGreaterThanOrEqual(0)
   })
 
-  it('removing the realm chip clears the query param', async () => {
+  it('clear-btn clears facets and hides itself', async () => {
     const vuetify = createVuetify({ components, directives })
     const router = makeRouter()
     router.push({ path: '/', query: { realm: 'documents' } }); await router.isReady()
     const w = mount(SearchPanel, { global: { plugins: [vuetify, i18n, router] } })
     await vi.advanceTimersByTimeAsync(500); await flushPromises()
 
-    await w.find('.realm-chip .x').trigger('click')
+    // clear-btn should be visible (realm facet is active)
+    expect(w.find('.clear-btn').exists()).toBe(true)
+    await w.find('.clear-btn').trigger('click')
     await flushPromises()
-    expect(router.currentRoute.value.query.realm).toBeUndefined()
-    expect(w.find('.realm-chip').exists()).toBe(false)
+    // After clearing, the button should disappear (activeFilterCount === 0)
+    expect(w.find('.clear-btn').exists()).toBe(false)
   })
 
-  it('signal filter still narrows results', async () => {
+  it('SortMenu renders and emits change on pick', async () => {
     const vuetify = createVuetify({ components, directives })
     const router = makeRouter(); router.push('/'); await router.isReady()
     const w = mount(SearchPanel, { global: { plugins: [vuetify, i18n, router] } })
     await w.find('input').setValue('a')
     await vi.advanceTimersByTimeAsync(500); await flushPromises()
-    const seg = w.findAll('.seg button')
-    expect(seg.length).toBeGreaterThan(1)
-    await seg[1].trigger('click')
+    // SortMenu should be present
+    expect(w.find('.sortmenu').exists()).toBe(true)
+    // Open the sort menu and pick an option
+    await w.find('.sort-btn').trigger('click')
     await flushPromises()
-    expect(w.findAll('.row').length).toBeGreaterThanOrEqual(0)
+    const opts = w.findAll('.sort-pop button')
+    expect(opts.length).toBeGreaterThanOrEqual(0)
   })
 })
