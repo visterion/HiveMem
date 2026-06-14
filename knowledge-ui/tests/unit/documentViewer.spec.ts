@@ -1,10 +1,10 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeAll } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import DocumentViewer from '../../src/components/readers/DocumentViewer.vue'
 import { i18n } from '../../src/i18n'
 
 // Controllable pdf.js mock: 3-page document, render resolves immediately.
-const { renderMock, getDocumentMock } = vi.hoisted(() => {
+const { getPageMock, getDocumentMock } = vi.hoisted(() => {
   const renderMock = vi.fn(() => ({ promise: Promise.resolve() }))
   const getPageMock = vi.fn(async () => ({
     getViewport: ({ scale }: { scale: number }) => ({ width: 600 * scale, height: 800 * scale }),
@@ -13,7 +13,13 @@ const { renderMock, getDocumentMock } = vi.hoisted(() => {
   const getDocumentMock = vi.fn(() => ({
     promise: Promise.resolve({ numPages: 3, getPage: getPageMock }),
   }))
-  return { renderMock, getDocumentMock }
+  return { getPageMock, getDocumentMock }
+})
+
+// happy-dom has no canvas 2d implementation (getContext returns null), which would
+// trip the viewer's null-context guard. Stub a minimal context for the pdf tests.
+beforeAll(() => {
+  HTMLCanvasElement.prototype.getContext = vi.fn(() => ({})) as unknown as typeof HTMLCanvasElement.prototype.getContext
 })
 vi.mock('pdfjs-dist', () => ({
   GlobalWorkerOptions: { workerSrc: '' },
@@ -72,13 +78,22 @@ describe('DocumentViewer (pdf)', () => {
     expect(w.find('[data-test="vt-pages"]').text()).toContain('1 / 3')
   })
 
-  it('next advances the page number and re-renders', async () => {
-    renderMock.mockClear()
+  it('next advances the page number and re-renders that page', async () => {
     const w = mountPdf()
     await flushPromises()
+    getPageMock.mockClear()
     await w.find('[data-test="vt-next"]').trigger('click')
     await flushPromises()
     expect(w.find('[data-test="vt-pages"]').text()).toContain('2 / 3')
-    expect(renderMock).toHaveBeenCalled()
+    expect(getPageMock).toHaveBeenLastCalledWith(2)
+  })
+
+  it('reloads the document when the url prop changes', async () => {
+    const w = mountPdf()
+    await flushPromises()
+    getDocumentMock.mockClear()
+    await w.setProps({ url: '/api/attachments/q/content' })
+    await flushPromises()
+    expect(getDocumentMock).toHaveBeenCalledTimes(1)
   })
 })

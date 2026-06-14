@@ -15,6 +15,7 @@ const pageCount = ref(1) // images are always single-page; pdf sets this on load
 const canvas = ref<HTMLCanvasElement>()
 const surface = ref<HTMLElement>()
 let pdfDoc: any = null
+let renderTask: { promise: Promise<void>; cancel?: () => void } | null = null
 
 async function loadPdf() {
   try {
@@ -30,6 +31,9 @@ async function loadPdf() {
 }
 
 async function renderPage(n: number) {
+  // Cancel an in-flight render so rapid page changes can't paint out of order.
+  renderTask?.cancel?.()
+  renderTask = null
   if (!pdfDoc || !canvas.value) return
   try {
     const pdfPage = await pdfDoc.getPage(n)
@@ -43,15 +47,31 @@ async function renderPage(n: number) {
     cv.height = Math.floor(vp.height)
     cv.style.width = Math.floor(vp.width / dpr) + 'px'
     cv.style.height = Math.floor(vp.height / dpr) + 'px'
-    const ctx = cv.getContext('2d')!
-    await pdfPage.render({ canvasContext: ctx, viewport: vp }).promise
-  } catch {
-    error.value = true
+    const ctx = cv.getContext('2d')
+    if (!ctx) { error.value = true; return }
+    const task = pdfPage.render({ canvasContext: ctx, viewport: vp })
+    renderTask = task
+    await task.promise
+    renderTask = null
+  } catch (e: any) {
+    // A cancelled render is expected when the page changes mid-flight; ignore it.
+    if (e?.name !== 'RenderingCancelledException') error.value = true
   }
 }
 
+// Reload when the attachment changes (the reader reuses one viewer instance
+// across attachment tabs, so url/kind can change without a remount).
+watch(() => `${props.kind}|${props.url}`, () => {
+  pdfDoc?.destroy?.()
+  pdfDoc = null
+  error.value = false
+  page.value = 1
+  z.reset()
+  if (props.kind === 'pdf') loadPdf()
+})
+
 onMounted(() => { if (props.kind === 'pdf') loadPdf() })
-onBeforeUnmount(() => { pdfDoc?.cleanup?.(); pdfDoc?.destroy?.() })
+onBeforeUnmount(() => { renderTask?.cancel?.(); pdfDoc?.cleanup?.(); pdfDoc?.destroy?.() })
 
 // ── pointer gestures ──────────────────────────────────────────────────────────
 const pointers = new Map<number, { x: number; y: number }>()
