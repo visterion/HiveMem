@@ -12,6 +12,8 @@ public record SummaryResult(
         List<String> tags,
         String documentType,
         List<FactSpec> facts,
+        String language,
+        boolean taxRelevant,
         int inputTokens,
         int outputTokens
 ) {

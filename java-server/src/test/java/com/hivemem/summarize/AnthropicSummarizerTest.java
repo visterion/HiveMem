@@ -235,6 +235,29 @@ class AnthropicSummarizerTest {
     }
 
     @Test
+    void parsesLanguageAndTaxRelevant() {
+        mock.stubComplete(
+                "{\\\"summary\\\":\\\"Handwerkerrechnung.\\\",\\\"key_points\\\":[],\\\"insight\\\":null," +
+                "\\\"tags\\\":[],\\\"facts\\\":[],\\\"language\\\":\\\"de\\\",\\\"tax_relevant\\\":true}");
+
+        SummaryResult r = summarizer.summarize("Rechnung über Malerarbeiten", minimalProfile());
+
+        assertThat(r.language()).isEqualTo("de");
+        assertThat(r.taxRelevant()).isTrue();
+    }
+
+    @Test
+    void taxRelevantDefaultsFalseWhenAbsent() {
+        mock.stubComplete(
+                "{\\\"summary\\\":\\\"s\\\",\\\"key_points\\\":[],\\\"insight\\\":null,\\\"tags\\\":[],\\\"facts\\\":[]}");
+
+        SummaryResult r = summarizer.summarize("x", minimalProfile());
+
+        assertThat(r.taxRelevant()).isFalse();
+        assertThat(r.language()).isNull();
+    }
+
+    @Test
     void summarizeWithProfileTreatsMissingFactsAsEmpty() {
         mock.stubComplete(
                 "{\\\"summary\\\":\\\"x\\\",\\\"key_points\\\":[],\\\"insight\\\":null,\\\"tags\\\":[]}");

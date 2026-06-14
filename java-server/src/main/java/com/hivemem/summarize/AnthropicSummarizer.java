@@ -26,16 +26,31 @@ public class AnthropicSummarizer {
               "key_points": ["3-5 bullets, each ≤ 80 chars"],
               "insight": "1 sentence ≤ 200 chars, the non-obvious takeaway, or null",
               "tags": ["up to 5 lowercase kebab-case tags"],
+              "language": "ISO 639-1 code of the cell content's language (e.g. 'de', 'en')",
+              "tax_relevant": true,
               "facts": [
                  {"predicate": "<from required/optional list>", "object": "<value>", "confidence": 0.0-1.0}
               ]
             }
 
             Rules:
+            - "language": the language the cell content is written in, as a two-letter ISO 639-1
+              code. This is the same language you use for "summary"/"key_points".
+            - "tax_relevant": true if this document could plausibly matter for a private German
+              income-tax return — e.g. craftsman/service invoices (Handwerkerleistungen),
+              donation receipts (Spendenquittungen), salary/wage statements (Lohn-/Gehalts-
+              abrechnung), tax certificates (Steuerbescheinigung), insurance premiums
+              (Kranken-/Pflege-/Haftpflicht-/BU-Versicherung), medical/care costs, childcare,
+              pension/retirement contributions (Vorsorgeaufwendungen), capital gains, or other
+              deductible expense receipts (Werbungskosten). When in doubt, return false.
             - Always include every required_facts entry as a fact (use confidence < 0.5 when unsure).
             - Multi-valued attributes (e.g. multiple parties on a contract) become multiple facts
               with the same predicate, one per value.
             - Object values are strings. Dates as ISO-8601 (YYYY-MM-DD). Amounts without currency.
+            - For "document_date": use the document's OWN issue/creation date (Rechnungsdatum,
+              Ausstellungsdatum, Briefdatum) — NOT the due date, payment date, service period, or
+              print date. Read German numeric dates day-first (e.g. "14.06.2026" = 14 June 2026;
+              "14. Juni 2026" = 2026-06-14).
             - If the document does not match the provided document type, return your best guess
               for document_type and adjust facts accordingly.
             - If content is too sparse, return facts: [] and key_points: [].
@@ -155,13 +170,15 @@ public class AnthropicSummarizer {
         String documentType = parsed.hasNonNull("document_type")
                 ? parsed.path("document_type").asText() : null;
         List<FactSpec> facts = asFactList(parsed.path("facts"));
+        String language = parsed.hasNonNull("language") ? parsed.path("language").asText() : null;
+        boolean taxRelevant = parsed.path("tax_relevant").asBoolean(false);
 
         // Vistierie usage fields are camelCase (inputTokens / outputTokens)
         int inputTokens = resp.path("usage").path("inputTokens").asInt(0);
         int outputTokens = resp.path("usage").path("outputTokens").asInt(0);
 
         return new SummaryResult(title, summary, keyPoints, insight, tags,
-                documentType, facts, inputTokens, outputTokens);
+                documentType, facts, language, taxRelevant, inputTokens, outputTokens);
     }
 
     /**
