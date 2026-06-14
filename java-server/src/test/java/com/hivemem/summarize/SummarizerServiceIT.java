@@ -189,6 +189,7 @@ class SummarizerServiceIT {
 
             List<String> tags = toList(rs.getArray("tags"));
             assertThat(tags).contains("steuerrelevant");
+            assertThat(tags).contains("tax_scanned");
 
             OffsetDateTime actual = rs.getObject("valid_from", OffsetDateTime.class);
             assertThat(actual.toInstant())

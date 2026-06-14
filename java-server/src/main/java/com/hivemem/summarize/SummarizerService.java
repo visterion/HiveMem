@@ -149,6 +149,10 @@ public class SummarizerService {
                     .ifPresent(d -> repo.setValidFrom(
                             targetId, d.atStartOfDay().atOffset(ZoneOffset.UTC)));
 
+            // The new-doc path already performed tax tagging + valid_from above, so mark the cell
+            // as scanned — this decouples it from the one-shot backfill (no redundant re-classify).
+            repo.applyTag(targetId, "tax_scanned");
+
             repo.removeNeedsSummaryTag(cellId);
             if (newId != null) repo.removeNeedsSummaryTag(newId);
         } catch (HttpClientErrorException.TooManyRequests e) {
