@@ -132,8 +132,9 @@ class SummarizerRepositoryIntegrationTest {
         repo.setValidFrom(id, java.time.OffsetDateTime.parse("2025-03-09T00:00:00Z"));
 
         var row = dsl.fetchOne("SELECT valid_from FROM cells WHERE id = ?", id);
-        assertThat(row.get("valid_from", java.time.OffsetDateTime.class).toLocalDate())
-                .isEqualTo(java.time.LocalDate.of(2025, 3, 9));
+        java.time.OffsetDateTime actual = row.get("valid_from", java.time.OffsetDateTime.class);
+        assertThat(actual.toInstant())
+                .isEqualTo(java.time.OffsetDateTime.parse("2025-03-09T00:00:00Z").toInstant());
     }
 
     @Test

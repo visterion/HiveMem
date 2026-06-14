@@ -4,6 +4,7 @@ import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.springframework.stereotype.Repository;
 
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -94,7 +95,7 @@ public class SummarizerRepository {
     }
 
     /** Set the cell's valid_from (the document's own date). Direct row update, like setTopic. */
-    public void setValidFrom(UUID id, java.time.OffsetDateTime validFrom) {
+    public void setValidFrom(UUID id, OffsetDateTime validFrom) {
         dsl.execute("UPDATE cells SET valid_from = ?::timestamptz WHERE id = ?", validFrom, id);
     }
 
