@@ -4,10 +4,10 @@ import { useI18n } from 'vue-i18n'
 import { useReaderStore } from '../stores/reader'
 import { useCellStore } from '../stores/cell'
 import MarkdownTab from './readers/MarkdownTab.vue'
-import PdfTab from './readers/PdfTab.vue'
 import EmlTab from './readers/EmlTab.vue'
-import ImageTab from './readers/ImageTab.vue'
+import DocumentViewer from './readers/DocumentViewer.vue'
 import { buildAttachmentTabs } from './readers/attachmentTabs'
+import { useHistoryClose } from '../composables/useHistoryClose'
 
 const reader = useReaderStore()
 const cellStore = useCellStore()
@@ -17,6 +17,12 @@ const attachments = computed(() => buildAttachmentTabs(cellStore.current?.cell.a
 
 function kindOf(tab: string) { return attachments.value.find(a => a.id === tab)?.kind }
 function urlOf(tab: string) { return attachments.value.find(a => a.id === tab)?.url ?? '' }
+function filenameOf(tab: string) { return attachments.value.find(a => a.id === tab)?.title ?? '' }
+
+const { arm, requestClose } = useHistoryClose(() => reader.close())
+
+// Arm history-close sentinel when the reader opens.
+watch(() => reader.open, (open) => { if (open) arm() }, { immediate: true })
 
 // When the reader opens for a cell, make sure its attachments are loaded.
 watch(() => reader.open && cellStore.currentId, (id) => {
@@ -28,7 +34,7 @@ watch(() => reader.open && cellStore.currentId, (id) => {
   <v-dialog v-model="reader.open" fullscreen transition="dialog-bottom-transition" persistent>
     <div class="reader-shell" v-if="cellStore.current">
       <header>
-        <v-btn icon="mdi-arrow-left" variant="text" @click="reader.close()" />
+        <v-btn icon="mdi-arrow-left" variant="text" @click="requestClose()" />
         <v-tabs v-model="reader.activeTab" density="compact" color="primary">
           <v-tab value="markdown">{{ t('reader.markdown') }}</v-tab>
           <v-tab v-for="a in attachments" :key="a.id" :value="a.id">{{ a.title }}</v-tab>
@@ -38,8 +44,12 @@ watch(() => reader.open && cellStore.currentId, (id) => {
       </header>
       <main class="reader-body">
         <MarkdownTab v-if="reader.activeTab === 'markdown'" :content="cellStore.current.cell.content" />
-        <PdfTab v-else-if="kindOf(reader.activeTab) === 'pdf'" :url="urlOf(reader.activeTab)" />
-        <ImageTab v-else-if="kindOf(reader.activeTab) === 'image'" :url="urlOf(reader.activeTab)" />
+        <DocumentViewer
+          v-else-if="kindOf(reader.activeTab) === 'pdf' || kindOf(reader.activeTab) === 'image'"
+          :url="urlOf(reader.activeTab)"
+          :kind="kindOf(reader.activeTab) as 'pdf' | 'image'"
+          :filename="filenameOf(reader.activeTab)"
+        />
         <EmlTab v-else-if="kindOf(reader.activeTab) === 'eml'" :url="urlOf(reader.activeTab)" />
         <div v-else-if="kindOf(reader.activeTab) === 'other'" class="download-fallback">
           <a :href="urlOf(reader.activeTab)" download>{{ t('reader.download') }}</a>
