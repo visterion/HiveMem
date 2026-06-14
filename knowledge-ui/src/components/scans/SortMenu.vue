@@ -2,11 +2,13 @@
 import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import HmIcon from '../shell/HmIcon.vue'
-const props = defineProps<{ sort: string }>()
+const props = defineProps<{ sort: string; options?: [string, string][] }>()
 const emit = defineEmits<{ (e:'change', v:string): void }>()
 const { t } = useI18n()
 const open = ref(false)
-const opts = computed<[string,string][]>(() => [['newest', t('scans.newestFirst')],['oldest', t('scans.oldestFirst')],['title', t('scans.titleAZ')]])
+const opts = computed<[string,string][]>(() => props.options ?? [
+  ['newest', t('scans.newestFirst')], ['oldest', t('scans.oldestFirst')], ['title', t('scans.titleAZ')],
+])
 const cur = computed(() => opts.value.find(o => o[0] === props.sort))
 function pick(k:string){ emit('change', k); open.value = false }
 </script>
