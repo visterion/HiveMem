@@ -1,19 +1,12 @@
-import { onBeforeUnmount } from 'vue'
-
-// Module-level: only one armed instance at a time (one viewer open).
-// Storing teardown here lets a new arm() displace a stale armed instance.
-let _activeTeardown: (() => void) | null = null
+import { getCurrentInstance, onBeforeUnmount } from 'vue'
 
 export function useHistoryClose(onClose: () => void) {
   let armed = false
-  let controller: AbortController | null = null
 
   function teardown() {
-    controller?.abort()
-    controller = null
-    if (_activeTeardown === _myTeardown) _activeTeardown = null
+    window.removeEventListener('popstate', handlePop)
+    window.removeEventListener('keydown', handleKey)
   }
-  function _myTeardown() { teardown() }
   function handlePop() {
     if (!armed) return
     armed = false
@@ -25,22 +18,21 @@ export function useHistoryClose(onClose: () => void) {
   }
   function arm() {
     if (armed) return
-    // Displace any stale armed instance (test isolation / single-viewer guarantee)
-    _activeTeardown?.()
     armed = true
-    controller = new AbortController()
-    const { signal } = controller
-    _activeTeardown = _myTeardown
     history.pushState({ hmViewer: true }, '')
-    window.addEventListener('popstate', handlePop, { signal })
-    window.addEventListener('keydown', handleKey, { signal })
+    window.addEventListener('popstate', handlePop)
+    window.addEventListener('keydown', handleKey)
   }
   function requestClose() {
     if (armed) history.back() // -> popstate -> handlePop -> onClose
     else onClose()
   }
 
-  onBeforeUnmount(() => { if (armed) { armed = false; teardown() } })
+  // Guarded so the composable is also safe to call outside a component setup
+  // (e.g. unit tests) without emitting a lifecycle warning.
+  if (getCurrentInstance()) {
+    onBeforeUnmount(() => { if (armed) { armed = false; teardown() } })
+  }
 
   return { arm, requestClose }
 }

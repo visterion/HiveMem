@@ -3,7 +3,12 @@ import { useHistoryClose } from '../../src/composables/useHistoryClose'
 
 describe('useHistoryClose', () => {
   beforeEach(() => { vi.restoreAllMocks() })
-  afterEach(() => { vi.restoreAllMocks() })
+  afterEach(() => {
+    // Drain any instance still armed because a test mocked history.back (so the
+    // real popstate never fired). Keeps window listeners from leaking between tests.
+    window.dispatchEvent(new PopStateEvent('popstate'))
+    vi.restoreAllMocks()
+  })
 
   it('arm() pushes a history sentinel', () => {
     const push = vi.spyOn(history, 'pushState')
