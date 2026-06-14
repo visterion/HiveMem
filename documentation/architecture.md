@@ -163,6 +163,30 @@ erDiagram
 
 Each file upload (via `upload_attachment` or `POST /api/attachments`) automatically creates a new `pending` Cell. For PDF files, the page count is determined at ingest (via Apache PDFBox) and stored in `attachments.page_count` (INTEGER, `null` for non-PDF types). This field is exposed in the `get_cell` `attachments[]` list, `get_attachment_info`, and `list_attachments` responses. The cell content is set to the text extracted from the file; if no text could be extracted, the original filename is used as a fallback. The Classifier agent picks up `pending` cells asynchronously and enriches them with summary, key points, insight, and tags. The link between the attachment and its extraction cell is recorded in `cell_attachments` with `extraction_source = true`. If the caller also supplies an existing `cell_id`, a `related_to` tunnel is created between the new extraction Cell and the supplied cell.
 
+### Document enrichment — summarizer output fields
+
+The summarizer LLM is called once per ingested document. In addition to the narrative layers (summary, key points, insight) it now emits two additional structured fields:
+
+| Field | Type | Description |
+|---|---|---|
+| `language` | ISO 639-1 string | Detected content language (e.g. `de`, `en`). Empty/null if the LLM cannot determine it. |
+| `tax_relevant` | boolean | Whether the document is relevant for tax purposes (invoices, receipts, contracts with financial implications, etc.). |
+
+**Tax tagging:** When `tax_relevant` is `true`, the enrichment pipeline applies a language-correct tag to the cell:
+
+| Content language | Tag applied |
+|---|---|
+| `en` | `tax-relevant` |
+| `de` (or unknown / blank) | `steuerrelevant` |
+
+Unknown or blank language falls back to the instance default language (`HIVEMEM_LANGUAGE`, default `de`), so the fallback tag is `steuerrelevant` on a standard German-language instance.
+
+**Document date → `valid_from`:** The extraction profiles (invoice, contract, other, image-document-scan) request a `document_date` fact from the LLM. If the fact is present, it is parsed by `DocumentDateParser`:
+
+- Accepted formats: `YYYY-MM-DD` (strict ISO), `YYYY-MM` (expanded to first of month), `YYYY` (expanded to Jan 1).
+- Plausibility window: `1970-01-01` … today + 1 day. Values outside the window are discarded.
+- When a valid date is parsed, the cell's `valid_from` is set to that date so that timeline views and sort-by-date reflect the document's own date rather than the ingest timestamp.
+
 ### Image EXIF & geolocation
 
 Image attachments (`image/*`) get a row in `attachment_image_meta` (1:0..1 with
@@ -323,3 +347,15 @@ The user can switch language in Settings; that choice is stored in `localStorage
 The summarizer's output-language default inherits the same global value
 (`hivemem.summarize.language` defaults to `${HIVEMEM_LANGUAGE}`), but keeps its own
 override `HIVEMEM_SUMMARIZE_LANGUAGE`.
+
+## Admin backfill endpoints
+
+One-shot idempotent endpoints (all require the `admin` role) for retroactively enriching
+existing documents without re-deploying or re-ingesting files.
+
+| Endpoint | Query param | Response fields | Purpose |
+|---|---|---|---|
+| `POST /admin/backfill-titles` | `limit` (default 200) | `titled` | Give already-summarized documents that have no topic/title a short LLM-generated title. |
+| `POST /admin/backfill-tax-date` | `limit` (default 200) | `processed` | Set `valid_from` from an existing stored `document_date` fact and apply the appropriate tax tag (`steuerrelevant` / `tax-relevant`) via a cheap summary-only classifier. Cells without a stored `document_date` fact are **not** re-extracted from full text (too expensive); only the tax tag is backfilled for those. Idempotent: processed cells receive the marker tag `tax_scanned` and are skipped on subsequent runs. |
+
+Both endpoints return HTTP 503 `{"error":"summarizer disabled"}` when the summarizer bean is not available (i.e. `HIVEMEM_VISTIERIE_URL` is unset).
