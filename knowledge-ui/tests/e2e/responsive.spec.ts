@@ -84,24 +84,26 @@ test.describe('mobile flows (390)', () => {
     await expect(page.locator('.panel.open')).toBeVisible()
   })
 
-  test('document detail modal stacks to a single on-screen column (regression: side column off-screen)', async ({ page }) => {
+  test('tapping a scan opens the fullscreen document view within the viewport', async ({ page }) => {
     await gotoMock(page, '/scans')
     await page.waitForTimeout(700)
+    // Tapping the thumbnail opens the document directly (no intermediate detail modal).
     await page.locator('.doccard .dc-thumb').first().click()
-    const modal = page.locator('.docmodal')
-    await expect(modal).toBeVisible()
-    // Mobile layout stacks vertically rather than the desktop two-column row.
-    await expect(modal).toHaveCSS('flex-direction', 'column')
-    // The info column must sit fully within the viewport — the bug squeezed it
-    // to a sliver that overflowed the right edge.
-    const side = await page.locator('.dm-side').boundingBox()
-    expect(side!.x).toBeGreaterThanOrEqual(0)
-    expect(side!.x + side!.width).toBeLessThanOrEqual(391)
-    expect(side!.width).toBeGreaterThan(300)
-    // No page-level horizontal overflow while the modal is open.
+    const reader = page.locator('.reader-shell')
+    await expect(reader).toBeVisible()
+    // No page-level horizontal overflow while the fullscreen reader is open.
     const overflow = await page.evaluate(() =>
       document.documentElement.scrollWidth - document.documentElement.clientWidth)
     expect(overflow).toBeLessThanOrEqual(1)
+  })
+
+  test('tapping a scan title opens the overview tab (summaries + raw text)', async ({ page }) => {
+    await gotoMock(page, '/scans')
+    await page.waitForTimeout(700)
+    await page.locator('.doccard .dc-body').first().click()
+    await expect(page.locator('.reader-shell')).toBeVisible()
+    // The overview tab (DocInfoTab) is the active landing view for a title tap.
+    await expect(page.locator('.dinfo')).toBeVisible()
   })
 })
 
