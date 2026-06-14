@@ -4,7 +4,7 @@ import DocumentViewer from '../../src/components/readers/DocumentViewer.vue'
 import { i18n } from '../../src/i18n'
 
 // Controllable pdf.js mock: 3-page document, render resolves immediately.
-const { renderMock, getPageMock, getDocumentMock } = vi.hoisted(() => {
+const { renderMock, getDocumentMock } = vi.hoisted(() => {
   const renderMock = vi.fn(() => ({ promise: Promise.resolve() }))
   const getPageMock = vi.fn(async () => ({
     getViewport: ({ scale }: { scale: number }) => ({ width: 600 * scale, height: 800 * scale }),
@@ -13,7 +13,7 @@ const { renderMock, getPageMock, getDocumentMock } = vi.hoisted(() => {
   const getDocumentMock = vi.fn(() => ({
     promise: Promise.resolve({ numPages: 3, getPage: getPageMock }),
   }))
-  return { renderMock, getPageMock, getDocumentMock }
+  return { renderMock, getDocumentMock }
 })
 vi.mock('pdfjs-dist', () => ({
   GlobalWorkerOptions: { workerSrc: '' },
