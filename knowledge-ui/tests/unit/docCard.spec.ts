@@ -14,9 +14,17 @@ describe('DocCard + DocTable', () => {
     expect(w.text()).toContain('Mietvertrag 2025')
     expect(w.find('.docthumb').exists()).toBe(true)
     await w.find('.dc-thumb').trigger('click')
-    expect(w.emitted('open')).toBeTruthy()
+    expect(w.emitted('open')).toBeTruthy()        // thumbnail → document viewer
+    await w.find('.dc-body').trigger('click')
+    expect(w.emitted('openInfo')).toBeTruthy()    // text → overview (summaries + raw text)
     await w.find('.dc-check').trigger('click')
     expect(w.emitted('select')).toBeTruthy()
+  })
+
+  it('DocCard title prefers the LLM short title (topic) over the summary', () => {
+    const titled = { ...row, topic: 'Schornsteinfeger-Rechnung 2025' }
+    const w = mount(DocCard, { props: { d: titled, q: '', selected: false }, global: { plugins: [i18n] } })
+    expect(w.find('.dc-title').text()).toBe('Schornsteinfeger-Rechnung 2025')
   })
   it('DocTable renders a row and emits open on title click', async () => {
     const w = mount(DocTable, { props: { rows: [row], q: '', selection: new Set<string>() }, global: { plugins: [i18n] } })

@@ -5,6 +5,7 @@ import com.hivemem.extraction.FactSpec;
 import java.util.List;
 
 public record SummaryResult(
+        String title,
         String summary,
         List<String> keyPoints,
         String insight,

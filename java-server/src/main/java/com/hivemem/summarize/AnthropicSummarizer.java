@@ -21,6 +21,7 @@ public class AnthropicSummarizer {
             Respond with ONLY this JSON, no surrounding prose:
             {
               "document_type": "invoice|contract|other",
+              "title": "a concise human title, ≤ 6 words, no quotes (e.g. 'Schornsteinfeger-Rechnung 2025'); avoid dates/ids unless they identify the document",
               "summary": "1-2 sentences, ≤ 250 chars, capturing the cell's purpose",
               "key_points": ["3-5 bullets, each ≤ 80 chars"],
               "insight": "1 sentence ≤ 200 chars, the non-obvious takeaway, or null",
@@ -146,6 +147,7 @@ public class AnthropicSummarizer {
             throw new IllegalStateException("Failed to parse summarizer JSON: " + text, e);
         }
 
+        String title = parsed.hasNonNull("title") ? parsed.path("title").asText() : null;
         String summary = parsed.path("summary").asText(null);
         List<String> keyPoints = asStringList(parsed.path("key_points"));
         String insight = parsed.hasNonNull("insight") ? parsed.path("insight").asText() : null;
@@ -158,8 +160,48 @@ public class AnthropicSummarizer {
         int inputTokens = resp.path("usage").path("inputTokens").asInt(0);
         int outputTokens = resp.path("usage").path("outputTokens").asInt(0);
 
-        return new SummaryResult(summary, keyPoints, insight, tags,
+        return new SummaryResult(title, summary, keyPoints, insight, tags,
                 documentType, facts, inputTokens, outputTokens);
+    }
+
+    /**
+     * Cheap title-only completion used to backfill a short title for already-summarized cells
+     * (which never re-enter the full summarize path). Input is the existing summary, output is a
+     * handful of tokens; the model returns the bare title, which we strip of fences/quotes.
+     * Returns null on an empty/blank response.
+     */
+    public String generateTitle(String summary) {
+        if (summary == null || summary.isBlank()) return null;
+        String system = "You title documents for a personal knowledge base. "
+                + "Given a document summary, reply with ONLY a concise title of at most 6 words. "
+                + "No quotes, no punctuation at the ends, no prose, no explanation. "
+                + "Write the title in the same language as the summary.";
+        Map<String, Object> body = Map.of(
+                "agent_name", agentName,
+                "purpose", "title_cell",
+                "realm", "documents",
+                "model", model,
+                "system", system,
+                "messages", List.of(Map.of("role", "user", "content", summary)),
+                "max_tokens", 32
+        );
+        JsonNode resp = client.post()
+                .uri("/llm/complete")
+                .header("Authorization", "Bearer " + tenantToken)
+                .header("content-type", "application/json")
+                .body(body)
+                .retrieve()
+                .body(JsonNode.class);
+        if (resp == null) return null;
+        String text = resp.path("text").asText(null);
+        if (text == null || text.isBlank()) return null;
+        // Take the first non-empty line, drop code fences and surrounding quotes.
+        String line = text.strip();
+        if (line.startsWith("```")) line = stripJsonFences(line);
+        int nl = line.indexOf('\n');
+        if (nl >= 0) line = line.substring(0, nl);
+        line = line.strip().replaceAll("^[\"'»«„]+", "").replaceAll("[\"'»«„]+$", "").strip();
+        return line.isBlank() ? null : line;
     }
 
     /**

@@ -148,7 +148,8 @@ onMounted(() => { store.reload() })
             :d="d"
             :q="store.query"
             :selected="store.selection.has(d.id)"
-            @open="store.openDocument(d.id)"
+            @open="store.openDocument(d.id, 'document')"
+            @openInfo="store.openDocument(d.id, 'info')"
             @select="store.toggleSelect(d.id)"
           />
         </div>

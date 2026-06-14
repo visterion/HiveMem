@@ -32,3 +32,11 @@ export function cellLabel(c: LabelableCell): string {
   if (topic) return topic
   return '#' + c.id.slice(0, 8)
 }
+
+// Short display name for a document: the LLM-generated title lives in `topic`. Fall back to the
+// (truncated) summary/snippet label when a document has not been titled yet.
+export function docName(c: LabelableCell): string {
+  const topic = c.topic?.trim()
+  if (topic) return topic
+  return cellLabel(c)
+}

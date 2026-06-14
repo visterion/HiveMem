@@ -115,6 +115,11 @@ public class SummarizerService {
                     ? result.documentType() : extractionProps.getDefaultFallbackType();
             repo.setDocumentType(targetId, docType);
 
+            // Store the short LLM title in topic (the document's display name).
+            if (result.title() != null && !result.title().isBlank()) {
+                repo.setTopic(targetId, result.title().trim());
+            }
+
             // Persist facts.
             persistFacts(targetId, result.facts());
 
@@ -126,6 +131,33 @@ public class SummarizerService {
         } catch (Exception e) {
             log.warn("Summarize failed for cell {}: {}", cellId, e.getMessage());
         }
+    }
+
+    /**
+     * One-shot backfill: give already-summarized documents (topic IS NULL) a short title via a
+     * cheap title-only LLM call derived from their existing summary. Budget-gated; returns the
+     * number of cells titled. Idempotent — a titled cell is no longer returned by the finder.
+     */
+    public int backfillTitles(int limit) {
+        int titled = 0;
+        for (UUID id : repo.findDocumentsNeedingTitle(limit)) {
+            if (!budget.canSpend()) {
+                log.info("Title backfill stopped early: budget exhausted after {} cells", titled);
+                break;
+            }
+            try {
+                String summary = repo.findSummary(id);
+                if (summary == null || summary.isBlank()) continue;
+                String title = anthropic.generateTitle(summary);
+                if (title != null && !title.isBlank()) {
+                    repo.setTopic(id, title.trim());
+                    titled++;
+                }
+            } catch (Exception e) {
+                log.warn("Title backfill failed for cell {}: {}", id, e.getMessage());
+            }
+        }
+        return titled;
     }
 
     private ExtractionProfile pickProfile(UUID cellId, String content) {

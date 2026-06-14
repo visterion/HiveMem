@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import type { DocumentRow } from '../../api/types'
-import { cellLabel } from '../../api/cellLabel'
+import { docName } from '../../api/cellLabel'
 import DocThumb from './DocThumb.vue'
 import Snippet from './Snippet.vue'
 import HmIcon from '../shell/HmIcon.vue'
 
 const props = defineProps<{ d: DocumentRow; q: string; selected: boolean }>()
-const emit = defineEmits<{ (e: 'open'): void; (e: 'select'): void }>()
+const emit = defineEmits<{ (e: 'open'): void; (e: 'openInfo'): void; (e: 'select'): void }>()
 
 function formatDate(iso: string): string {
   return iso.slice(0, 10).split('-').reverse().join('.')
@@ -26,12 +26,12 @@ function formatDate(iso: string): string {
       <HmIcon name="check" :size="13" />
     </button>
 
-    <!-- Card body -->
-    <div class="dc-body" @click="emit('open')">
-      <div class="dc-title">{{ cellLabel(d) }}</div>
+    <!-- Card body — tapping the text opens the overview (summaries + raw text). -->
+    <div class="dc-body" @click="emit('openInfo')">
+      <div class="dc-title">{{ docName(d) }}</div>
       <div class="dc-corr">
         <HmIcon name="scans" :size="12" />
-        <span>{{ d.topic || '—' }}</span>
+        <span>{{ d.correspondent || '—' }}</span>
       </div>
       <Snippet :text="d.summary || ''" :q="q" />
       <div class="dc-tags">

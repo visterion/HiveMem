@@ -4,8 +4,10 @@ import com.hivemem.auth.AuthFilter;
 import com.hivemem.auth.AuthPrincipal;
 import com.hivemem.auth.AuthRole;
 import com.hivemem.auth.TokenService;
+import com.hivemem.summarize.SummarizerService;
 import com.hivemem.sync.InstanceConfig;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -19,12 +21,15 @@ public class AdminController {
     private final InstanceConfig instanceConfig;
     private final TokenService tokenService;
     private final com.hivemem.attachment.AttachmentChunkRepairService chunkRepair;
+    private final ObjectProvider<SummarizerService> summarizer;
 
     public AdminController(InstanceConfig instanceConfig, TokenService tokenService,
-                           com.hivemem.attachment.AttachmentChunkRepairService chunkRepair) {
+                           com.hivemem.attachment.AttachmentChunkRepairService chunkRepair,
+                           ObjectProvider<SummarizerService> summarizer) {
         this.instanceConfig = instanceConfig;
         this.tokenService = tokenService;
         this.chunkRepair = chunkRepair;
+        this.summarizer = summarizer;
     }
 
     @GetMapping("/identity")
@@ -77,6 +82,20 @@ public class AdminController {
                 "repaired_originals", r.repairedOriginals(),
                 "repaired_thumbnails", r.repairedThumbnails(),
                 "failed", r.failed()));
+    }
+
+    /** One-shot: give already-summarized documents (topic IS NULL) a short LLM title. */
+    @PostMapping("/backfill-titles")
+    public ResponseEntity<?> backfillTitles(@RequestParam(value = "limit", defaultValue = "200") int limit,
+                                            HttpServletRequest request) {
+        if (!isAdmin(request)) return forbidden();
+        SummarizerService svc = summarizer.getIfAvailable();
+        if (svc == null) {
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                    .body(Map.of("error", "summarizer disabled"));
+        }
+        int titled = svc.backfillTitles(limit);
+        return ResponseEntity.ok(Map.of("titled", titled));
     }
 
     private static boolean isAdmin(HttpServletRequest request) {

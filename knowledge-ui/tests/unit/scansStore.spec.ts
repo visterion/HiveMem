@@ -174,6 +174,16 @@ describe('scans store', () => {
     expect(reader.cellId).toBe(id)
   })
 
+  it('openDocument focus="info" lands on the overview tab, not the document', async () => {
+    const s = useScansStore()
+    const p0 = s.load(); await vi.advanceTimersByTimeAsync(300); await p0
+    const id = s.results[0].id
+    const p = s.openDocument(id, 'info'); await vi.advanceTimersByTimeAsync(300); await p
+    const reader = useReaderStore()
+    expect(reader.open).toBe(true)
+    expect(reader.activeTab).toBe('info')
+  })
+
   it('openDocument fetches the summary layers (include replaces get_cell defaults)', async () => {
     const s = useScansStore()
     const lp = s.load(); await vi.advanceTimersByTimeAsync(300); await lp

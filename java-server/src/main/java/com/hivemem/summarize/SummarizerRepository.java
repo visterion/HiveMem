@@ -88,6 +88,35 @@ public class SummarizerRepository {
         dsl.execute("UPDATE cells SET document_type = ? WHERE id = ?", documentType, id);
     }
 
+    /** Store the short LLM-generated title in the cell's topic column. */
+    public void setTopic(UUID id, String topic) {
+        dsl.execute("UPDATE cells SET topic = ? WHERE id = ?", topic, id);
+    }
+
+    /**
+     * Documents that already have a summary but no title yet (topic IS NULL) — the targets of the
+     * one-shot title backfill. Such cells never re-enter the summarize path (it skips cells that
+     * already have a summary), so they need this dedicated, cheap title-only pass.
+     */
+    public List<UUID> findDocumentsNeedingTitle(int limit) {
+        var rows = dsl.fetch(
+                "SELECT id FROM cells WHERE realm='documents' AND topic IS NULL "
+                + "AND summary IS NOT NULL AND summary <> '' "
+                + "AND status='committed' AND valid_until IS NULL "
+                + "ORDER BY created_at DESC LIMIT ?", limit);
+        List<UUID> ids = new ArrayList<>();
+        for (Record r : rows) ids.add(r.get(0, UUID.class));
+        return ids;
+    }
+
+    /** The committed summary for a cell, or null. Used by the title backfill. */
+    public String findSummary(UUID id) {
+        return dsl.fetchOptional(
+                "SELECT summary FROM cells WHERE id = ? AND status='committed' AND valid_until IS NULL", id)
+                .map(r -> r.get("summary", String.class))
+                .orElse(null);
+    }
+
     /**
      * Look up the source-attachment's MIME type and filename for a cell, joining via
      * cell_attachments.extraction_source=true. Returns empty if cell has no source attachment.

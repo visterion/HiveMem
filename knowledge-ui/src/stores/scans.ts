@@ -191,7 +191,10 @@ export const useScansStore = defineStore('scans', {
     // (content + layers + attachments) and seeds the cellStore so the reader renders
     // the right document, then jumps to the scanned page (first attachment) — the
     // layered overview lives one tab away. Replaces the old click→detail-modal step.
-    async openDocument(id: string) {
+    // focus 'document' lands on the scanned page (first attachment); 'info' lands on the
+    // overview tab (summaries + raw text). Tapping the thumbnail wants the document, tapping
+    // the title/text wants the info — the viewer stays reachable via its tab either way.
+    async openDocument(id: string, focus: 'document' | 'info' = 'document') {
       this.openId = id
       const cells = useCellStore()
       const reader = useReaderStore()
@@ -205,7 +208,7 @@ export const useScansStore = defineStore('scans', {
         })
         await cells.open(full)
         const firstAtt = full.attachments?.[0]?.id
-        if (firstAtt) initialTab = firstAtt
+        if (focus === 'document' && firstAtt) initialTab = firstAtt
       } catch { /* open the reader anyway; it falls back via ensureAttachments */ }
       reader.openReader(id, initialTab)
     },

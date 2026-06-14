@@ -110,6 +110,31 @@ class AnthropicSummarizerTest {
     }
 
     @Test
+    void parsesShortTitle() {
+        mock.stubComplete(
+                "{\\\"title\\\":\\\"Schornsteinfeger-Rechnung 2025\\\",\\\"summary\\\":\\\"s\\\"," +
+                "\\\"key_points\\\":[],\\\"insight\\\":null,\\\"tags\\\":[],\\\"facts\\\":[]}");
+
+        SummaryResult r = summarizer.summarize("content", minimalProfile());
+
+        assertThat(r.title()).isEqualTo("Schornsteinfeger-Rechnung 2025");
+    }
+
+    @Test
+    void generateTitleReturnsShortTitleFromSummary() {
+        mock.stubComplete("Schornsteinfeger-Rechnung 2025");
+        String title = summarizer.generateTitle("Rechnung von Schornsteinfegermeister Matthias Fischer …");
+        assertThat(title).isEqualTo("Schornsteinfeger-Rechnung 2025");
+    }
+
+    @Test
+    void generateTitleStripsSurroundingQuotes() {
+        mock.stubComplete("\\\"Debeka Beitragsanpassung 2026\\\"");
+        String title = summarizer.generateTitle("Debeka Beitragsänderung …");
+        assertThat(title).isEqualTo("Debeka Beitragsanpassung 2026");
+    }
+
+    @Test
     void parsesMarkdownFencedJsonResponse() {
         // LLMs frequently wrap JSON in ```json … ``` despite the prompt; the summarizer must
         // tolerate it (regression: readTree on the fenced text threw "Failed to parse").

@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useCellStore } from '../../stores/cell'
 import { useScansStore } from '../../stores/scans'
 import { useApi } from '../../api/useApi'
-import { cellLabel } from '../../api/cellLabel'
+import { docName } from '../../api/cellLabel'
 import MarkdownTab from './MarkdownTab.vue'
 import HmIcon from '../shell/HmIcon.vue'
 
@@ -60,7 +60,7 @@ async function approve() {
 
 <template>
   <div v-if="cell" class="dinfo">
-    <h1 class="di-title">{{ cellLabel(cell) }}</h1>
+    <h1 class="di-title">{{ docName(cell) }}</h1>
 
     <div class="di-chips">
       <span class="chip">{{ cell.realm }}</span>

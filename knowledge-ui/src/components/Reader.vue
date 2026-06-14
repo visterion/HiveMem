@@ -15,6 +15,14 @@ const { t } = useI18n()
 
 const attachments = computed(() => buildAttachmentTabs(cellStore.current?.cell.attachments))
 
+// A scan's single attachment is the document itself, so label its tab with the document's
+// short title (topic) instead of the raw machine filename. Extra attachments keep their names.
+function tabLabel(a: { id: string; title: string }, index: number): string {
+  const topic = cellStore.current?.cell.topic?.trim()
+  if (index === 0 && topic) return topic
+  return a.title
+}
+
 function kindOf(tab: string) { return attachments.value.find(a => a.id === tab)?.kind }
 function urlOf(tab: string) { return attachments.value.find(a => a.id === tab)?.url ?? '' }
 function filenameOf(tab: string) { return attachments.value.find(a => a.id === tab)?.title ?? '' }
@@ -38,7 +46,7 @@ watch(() => reader.open && cellStore.currentId, (id) => {
         <v-btn icon="mdi-arrow-left" variant="text" @click="requestClose()" />
         <v-tabs v-model="reader.activeTab" density="compact" color="primary">
           <v-tab value="info">{{ t('reader.info') }}</v-tab>
-          <v-tab v-for="a in attachments" :key="a.id" :value="a.id">{{ a.title }}</v-tab>
+          <v-tab v-for="(a, i) in attachments" :key="a.id" :value="a.id">{{ tabLabel(a, i) }}</v-tab>
         </v-tabs>
         <v-spacer />
         <v-btn icon="mdi-pencil" variant="text" disabled :title="t('reader.editorTooltip')" />
