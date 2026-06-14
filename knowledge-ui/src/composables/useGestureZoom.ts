@@ -24,8 +24,10 @@ export function useGestureZoom(opts: GestureZoomOptions = {}) {
   }
 
   function applyScale(s: number) {
-    scale.value = clamp(s)
-    if (scale.value === minScale) { tx.value = 0; ty.value = 0 }
+    const clamped = clamp(s)
+    scale.value = clamped
+    // Back at minScale there is nothing to pan, so drop any accumulated offset.
+    if (clamped === minScale) { tx.value = 0; ty.value = 0 }
   }
 
   function zoomBy(factor: number) { applyScale(scale.value * factor) }

@@ -33,6 +33,8 @@ describe('useGestureZoom', () => {
 
   it('panBy accumulates translate only while zoomed', () => {
     const z = useGestureZoom()
+    z.panBy(99, 99) // no-op while at minScale
+    expect(z.tx.value).toBe(0); expect(z.ty.value).toBe(0)
     z.setScale(3)
     z.panBy(5, 5); z.panBy(5, -2)
     expect(z.tx.value).toBe(10); expect(z.ty.value).toBe(3)
