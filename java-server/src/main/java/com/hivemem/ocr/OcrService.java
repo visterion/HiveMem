@@ -6,6 +6,7 @@ import com.hivemem.attachment.VisionBudgetTracker;
 import com.hivemem.attachment.VisionClient;
 import com.hivemem.auth.AuthPrincipal;
 import com.hivemem.auth.AuthRole;
+import com.hivemem.consumption.DocumentDedupService;
 import com.hivemem.write.WriteToolService;
 import org.jooq.DSLContext;
 import org.slf4j.Logger;
@@ -39,6 +40,7 @@ public class OcrService {
     private final WriteToolService writeService;
     private final VisionClient visionClient;
     private final VisionBudgetTracker visionBudget;
+    private final DocumentDedupService dedup; // may be null (tests / dedup unavailable)
 
     @Autowired
     public OcrService(OcrProperties props,
@@ -47,13 +49,15 @@ public class OcrService {
                       WriteToolService writeService,
                       VisionClient visionClient,
                       AttachmentProperties attachmentProps,
-                      DSLContext dsl) {
+                      DSLContext dsl,
+                      DocumentDedupService dedup) {
         this(props, repo, seaweed, writeService, visionClient,
                 (dsl != null && attachmentProps != null)
                         ? new VisionBudgetTracker(dsl, attachmentProps.getVisionDailyBudgetUsd())
                         : null,
                 new TesseractRunner(props.getTesseractPath()),
-                new PdfPageRasterizer());
+                new PdfPageRasterizer(),
+                dedup);
     }
 
     OcrService(OcrProperties props,
@@ -63,7 +67,8 @@ public class OcrService {
                VisionClient visionClient,
                VisionBudgetTracker visionBudget,
                TesseractRunner tesseract,
-               PdfPageRasterizer rasterizer) {
+               PdfPageRasterizer rasterizer,
+               DocumentDedupService dedup) {
         this.props = props;
         this.repo = repo;
         this.seaweed = seaweed;
@@ -72,6 +77,7 @@ public class OcrService {
         this.writeService = writeService;
         this.visionClient = visionClient;
         this.visionBudget = visionBudget;
+        this.dedup = dedup;
     }
 
     @Async
@@ -152,7 +158,12 @@ public class OcrService {
             repo.removeOcrPendingTag(cellId);
             Object newIdObj = reviseResult.get("new_id");
             if (newIdObj != null) {
-                repo.removeOcrPendingTag(UUID.fromString(newIdObj.toString()));
+                UUID newId = UUID.fromString(newIdObj.toString());
+                repo.removeOcrPendingTag(newId);
+                // Content-based dedup of re-scanned documents: acts on the OCR'd revision.
+                if (dedup != null) {
+                    dedup.findAndDiscardDuplicate(newId);
+                }
             }
         } catch (Exception e) {
             log.error("OCR failed for cell {}: {}", cellId, e.getMessage(), e);

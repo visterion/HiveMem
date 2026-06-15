@@ -160,7 +160,7 @@ class OcrServiceIT {
 
         OcrService service = new OcrService(
                 ocrProps, ocrRepo, seaweed, writeService,
-                /*visionClient*/ null, /*attachmentProps*/ null, /*dsl*/ null);
+                /*visionClient*/ null, /*attachmentProps*/ null, /*dsl*/ null, /*dedup*/ null);
 
         // 5. Run OCR
         service.processOne(cellId, s3Key);

@@ -3,6 +3,7 @@ package com.hivemem.ocr;
 import com.hivemem.attachment.SeaweedFsClient;
 import com.hivemem.attachment.VisionBudgetTracker;
 import com.hivemem.attachment.VisionClient;
+import com.hivemem.consumption.DocumentDedupService;
 import com.hivemem.write.WriteToolService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -34,6 +35,7 @@ class OcrServiceVisionFallbackTest {
     private VisionBudgetTracker visionBudget;
     private TesseractRunner tesseract;
     private PdfPageRasterizer rasterizer;
+    private DocumentDedupService dedup;
 
     @BeforeEach
     void setUp() throws Exception {
@@ -62,11 +64,13 @@ class OcrServiceVisionFallbackTest {
                 .thenReturn(Map.of("new_id", UUID.randomUUID().toString()));
         when(visionClient.isEnabled()).thenReturn(true);
         when(visionBudget.canSpend()).thenReturn(true);
+        dedup = mock(DocumentDedupService.class);
+        when(dedup.findAndDiscardDuplicate(any())).thenReturn(java.util.Optional.empty());
     }
 
     private OcrService build() {
         return new OcrService(props, repo, seaweed, writeService,
-                visionClient, visionBudget, tesseract, rasterizer);
+                visionClient, visionBudget, tesseract, rasterizer, dedup);
     }
 
     @Test
@@ -151,5 +155,17 @@ class OcrServiceVisionFallbackTest {
         // Falls back to whatever Tesseract produced (sparse but non-empty)
         assertTrue(captor.getValue().contains("ab"),
                 "Expected sparse Tesseract output retained, got: " + captor.getValue());
+    }
+
+    @Test
+    void runsDedupOnNewRevision() throws Exception {
+        when(tesseract.ocr(any(), anyString(), anyInt())).thenReturn("plenty of recognized text here");
+        UUID newId = UUID.randomUUID();
+        when(writeService.reviseCell(any(), any(), anyString(), any()))
+                .thenReturn(Map.of("new_id", newId.toString()));
+
+        build().processOne(UUID.randomUUID(), "key");
+
+        verify(dedup).findAndDiscardDuplicate(eq(newId));
     }
 }
