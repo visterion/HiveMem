@@ -219,6 +219,19 @@ Configuration (`hivemem.geocoding.*`):
 
 The `saved_searches` table persists named filter presets for the Scans explorer UI. Each row belongs to an `owner` (token name) and stores the filter state as a `JSONB` blob. Soft-deletion is handled via `valid_until`; active rows have `valid_until IS NULL`. An index on `(owner) WHERE valid_until IS NULL` keeps lookups fast per user.
 
+### Content dedup (re-scans)
+
+After OCR writes a scanned cell's text and recomputes its embedding, `DocumentDedupService` runs a two-stage check against current committed scan cells (`source LIKE 'consumption:%'`): pgvector cosine recall (`recall-threshold`) then a normalized character-4-gram Jaccard gate (`text-threshold`). A confirmed re-scan (matching a strictly older cell) is soft-deleted, its attachment binary is removed if no other live cell references it, and a `duplicate_of` tunnel links it to the original. The check is best-effort: any error keeps the document. Note: byte-identical re-uploads are already deduped earlier by SHA-256 in `AttachmentService.ingest`; this step covers same-content/different-bytes re-scans.
+
+Configuration (`hivemem.consumption.dedup.*`):
+
+| Property | Default | Purpose |
+|---|---|---|
+| `hivemem.consumption.dedup.enabled` | `true` | Enable content dedup of re-scanned documents |
+| `hivemem.consumption.dedup.recall-threshold` | `0.92` | Cosine floor for HNSW candidate recall |
+| `hivemem.consumption.dedup.text-threshold` | `0.85` | Jaccard floor confirming a duplicate |
+| `hivemem.consumption.dedup.candidate-k` | `10` | Max HNSW candidates checked |
+
 ### Per-document confidence aggregate
 
 The `facts` table has a `REAL confidence` column (range `[0, 1]`). The `get_cell` tool exposes a `confidence` optional field (requested via `include=['confidence']`) that is computed as `AVG(confidence) FROM active_facts WHERE source_id = cell.id`. The same aggregate is available in `list_documents` rows. Both return `null` when a cell has no active facts.

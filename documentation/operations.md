@@ -102,6 +102,10 @@ The sweep is idempotent — it detects and skips already-clean objects, so it is
 docker logs hivemem --tail 50  # Container logs
 ```
 
+### Re-scanning the same document
+
+A physical re-scan produces different bytes (so SHA-256 dedup does not catch it), but after OCR the content dedup discards the new copy and keeps the original (a `duplicate_of` tunnel records the link; the discarded cell is soft-deleted, its unique S3 object removed). If legitimately distinct documents are being merged, raise `hivemem.consumption.dedup.text-threshold` (and/or `recall-threshold`); to turn the feature off set `hivemem.consumption.dedup.enabled=false`.
+
 ## Queen + Bees on Vistierie (LXC 102)
 
 ### Prerequisites
