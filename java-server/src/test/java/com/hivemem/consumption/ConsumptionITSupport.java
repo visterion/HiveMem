@@ -79,7 +79,8 @@ abstract class ConsumptionITSupport {
         DataSource ds = new DriverManagerDataSource(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword());
         dsl = DSL.using(ds, SQLDialect.POSTGRES);
 
-        // Clean state
+        // Clean state (tunnels first — they FK-reference cells)
+        dsl.execute("DELETE FROM tunnels");
         dsl.execute("DELETE FROM cell_attachments");
         dsl.execute("DELETE FROM cells");
         dsl.execute("DELETE FROM attachments");

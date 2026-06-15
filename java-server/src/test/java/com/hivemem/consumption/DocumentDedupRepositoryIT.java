@@ -80,4 +80,29 @@ class DocumentDedupRepositoryIT extends ConsumptionITSupport {
         assertEquals(att, keys.get().attachmentId());
         assertFalse(repo.findTarget(dup).isPresent(), "soft-deleted cell is not a valid target");
     }
+
+    @Test
+    void linkAndSoftDeleteWritesTunnelAndSoftDeletesAtomically() {
+        DocumentDedupRepository repo = new DocumentDedupRepository(dsl);
+        OffsetDateTime t0 = OffsetDateTime.parse("2026-06-04T10:00:00Z");
+        UUID original = seedCell("Rechnung 4711", "[1,0,0]", "consumption:a", "committed", t0);
+        UUID dup = seedCell("Rechnung 4711", "[1,0,0]", "consumption:b", "committed", t0.plusMinutes(5));
+
+        repo.linkAndSoftDelete(dup, original, "auto-dedup note", "system-dedup");
+
+        assertFalse(repo.findTarget(dup).isPresent(), "duplicate must be soft-deleted");
+        int tunnels = dsl.fetchOne(
+                "SELECT count(*) AS n FROM tunnels "
+                + "WHERE from_cell = ? AND to_cell = ? AND relation = 'duplicate_of'",
+                dup, original).get("n", Long.class).intValue();
+        assertEquals(1, tunnels, "exactly one duplicate_of tunnel must be written");
+    }
+
+    @Test
+    void findTargetIgnoresNonCommitted() {
+        DocumentDedupRepository repo = new DocumentDedupRepository(dsl);
+        OffsetDateTime t0 = OffsetDateTime.parse("2026-06-05T10:00:00Z");
+        UUID pending = seedCell("Rechnung 4711", "[1,0,0]", "consumption:p", "pending", t0);
+        assertFalse(repo.findTarget(pending).isPresent(), "pending cell is not a valid dedup target");
+    }
 }

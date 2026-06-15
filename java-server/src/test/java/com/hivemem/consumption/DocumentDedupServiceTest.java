@@ -14,7 +14,6 @@ import static org.mockito.Mockito.when;
 
 import com.hivemem.attachment.AttachmentRepository;
 import com.hivemem.attachment.SeaweedFsClient;
-import com.hivemem.write.WriteToolRepository;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -27,7 +26,6 @@ class DocumentDedupServiceTest {
     private DocumentDedupRepository repo;
     private AttachmentRepository attachments;
     private SeaweedFsClient seaweed;
-    private WriteToolRepository writeRepo;
     private DedupProperties props;
     private DocumentDedupService service;
 
@@ -40,9 +38,8 @@ class DocumentDedupServiceTest {
         repo = mock(DocumentDedupRepository.class);
         attachments = mock(AttachmentRepository.class);
         seaweed = mock(SeaweedFsClient.class);
-        writeRepo = mock(WriteToolRepository.class);
         props = new DedupProperties();
-        service = new DocumentDedupService(repo, attachments, seaweed, writeRepo, props);
+        service = new DocumentDedupService(repo, attachments, seaweed, props);
         when(repo.findTarget(target)).thenReturn(Optional.of(
                 new DocumentDedupRepository.TargetCell(target, "Rechnung 4711 Betrag 199",
                         OffsetDateTime.parse("2026-06-01T10:00:00Z"))));
@@ -59,12 +56,10 @@ class DocumentDedupServiceTest {
         Optional<UUID> result = service.findAndDiscardDuplicate(target);
 
         assertEquals(Optional.of(original), result);
-        verify(repo).softDeleteCell(target);
+        verify(repo).linkAndSoftDelete(eq(target), eq(original), any(), any());
         verify(seaweed).delete("orig.pdf");
         verify(seaweed).delete("thumb.jpg");
         verify(attachments).softDelete(attId);
-        verify(writeRepo).addTunnel(eq(target), eq(original), eq("duplicate_of"),
-                any(), eq("committed"), any());
     }
 
     @Test
@@ -78,7 +73,7 @@ class DocumentDedupServiceTest {
         Optional<UUID> result = service.findAndDiscardDuplicate(target);
 
         assertEquals(Optional.of(original), result);
-        verify(repo).softDeleteCell(target);
+        verify(repo).linkAndSoftDelete(eq(target), eq(original), any(), any());
         verify(seaweed, never()).delete(any());
         verify(attachments, never()).softDelete(any());
     }
@@ -104,7 +99,7 @@ class DocumentDedupServiceTest {
                 new DocumentDedupRepository.Candidate(original, "Mietvertrag Wohnung Kaution", 0.99)));
 
         assertTrue(service.findAndDiscardDuplicate(target).isEmpty());
-        verify(repo, never()).softDeleteCell(any());
+        verify(repo, never()).linkAndSoftDelete(any(), any(), any(), any());
     }
 
     @Test
@@ -119,6 +114,6 @@ class DocumentDedupServiceTest {
         when(repo.findSimilarOlderCandidates(eq(target), anyDouble(), anyInt()))
                 .thenThrow(new RuntimeException("boom"));
         assertFalse(service.findAndDiscardDuplicate(target).isPresent());
-        verify(repo, never()).softDeleteCell(any());
+        verify(repo, never()).linkAndSoftDelete(any(), any(), any(), any());
     }
 }

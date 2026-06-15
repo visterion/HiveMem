@@ -7,6 +7,7 @@ import java.util.Optional;
 import java.util.UUID;
 import org.jooq.DSLContext;
 import org.jooq.Record;
+import org.jooq.impl.DSL;
 import org.springframework.stereotype.Repository;
 
 @Repository
@@ -26,7 +27,7 @@ public class DocumentDedupRepository {
     public Optional<TargetCell> findTarget(UUID cellId) {
         Record r = dsl.fetchOne(
                 "SELECT id, content, created_at FROM cells "
-                + "WHERE id = ? AND valid_until IS NULL", cellId);
+                + "WHERE id = ? AND valid_until IS NULL AND status = 'committed'", cellId);
         return r == null ? Optional.empty()
                 : Optional.of(new TargetCell(
                         r.get("id", UUID.class),
@@ -67,6 +68,26 @@ public class DocumentDedupRepository {
     public int softDeleteCell(UUID cellId) {
         return dsl.execute(
                 "UPDATE cells SET valid_until = now() WHERE id = ? AND valid_until IS NULL", cellId);
+    }
+
+    /**
+     * Atomically write the {@code duplicate_of} audit tunnel AND soft-delete the duplicate cell in a
+     * single transaction. This keeps the core dedup invariant: we never soft-delete a cell without
+     * recording why it disappeared, and never leave a {@code duplicate_of} tunnel hanging off a cell
+     * that is still live. Attachment/S3 cleanup is deliberately NOT part of this transaction (it is
+     * external, ref-count-guarded, and an orphaned binary is harmless next to losing the audit link).
+     */
+    public void linkAndSoftDelete(UUID duplicateCellId, UUID originalCellId, String note, String createdBy) {
+        dsl.transaction(cfg -> {
+            DSLContext tx = DSL.using(cfg);
+            tx.execute(
+                    "INSERT INTO tunnels (from_cell, to_cell, relation, note, status, created_by) "
+                    + "VALUES (?, ?, 'duplicate_of', ?, 'committed', ?)",
+                    duplicateCellId, originalCellId, note, createdBy);
+            tx.execute(
+                    "UPDATE cells SET valid_until = now() WHERE id = ? AND valid_until IS NULL",
+                    duplicateCellId);
+        });
     }
 
     /** Number of OTHER current cells linked to the attachment (excludes {@code excludingCellId}). */

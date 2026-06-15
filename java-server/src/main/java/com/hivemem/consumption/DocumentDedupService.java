@@ -2,7 +2,6 @@ package com.hivemem.consumption;
 
 import com.hivemem.attachment.AttachmentRepository;
 import com.hivemem.attachment.SeaweedFsClient;
-import com.hivemem.write.WriteToolRepository;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -26,16 +25,13 @@ public class DocumentDedupService {
     private final DocumentDedupRepository repo;
     private final AttachmentRepository attachments;
     private final SeaweedFsClient seaweed;
-    private final WriteToolRepository writeRepo;
     private final DedupProperties props;
 
     public DocumentDedupService(DocumentDedupRepository repo, AttachmentRepository attachments,
-                                SeaweedFsClient seaweed, WriteToolRepository writeRepo,
-                                DedupProperties props) {
+                                SeaweedFsClient seaweed, DedupProperties props) {
         this.repo = repo;
         this.attachments = attachments;
         this.seaweed = seaweed;
-        this.writeRepo = writeRepo;
         this.props = props;
     }
 
@@ -68,13 +64,14 @@ public class DocumentDedupService {
         Optional<DocumentDedupRepository.AttachmentKeys> keys =
                 repo.findAttachmentKeysForCell(duplicateCellId);
 
-        // Write the duplicate_of audit link FIRST: if the tunnel insert fails, the outer
-        // best-effort catch aborts before anything is deleted, so we never soft-delete a cell
-        // without recording why it disappeared.
-        writeRepo.addTunnel(duplicateCellId, originalCellId, "duplicate_of",
-                "auto-dedup: re-scanned content of " + originalCellId, "committed", DEDUP_ACTOR);
-        repo.softDeleteCell(duplicateCellId);
+        // Core invariant, ATOMIC: write the duplicate_of audit link AND soft-delete the cell in one
+        // transaction, so we never soft-delete a cell without recording why, nor leave a tunnel
+        // dangling from a still-live cell. If this throws, the outer best-effort catch keeps the doc.
+        repo.linkAndSoftDelete(duplicateCellId, originalCellId,
+                "auto-dedup: re-scanned content of " + originalCellId, DEDUP_ACTOR);
 
+        // Best-effort cleanup of the now-orphaned binary, intentionally OUTSIDE the core transaction
+        // (S3 is external; an orphaned binary is harmless next to losing the audit/soft-delete).
         keys.ifPresent(k -> {
             int others = repo.countOtherLiveCellsForAttachment(k.attachmentId(), duplicateCellId);
             if (others == 0) {
