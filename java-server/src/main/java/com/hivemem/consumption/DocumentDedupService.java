@@ -68,9 +68,12 @@ public class DocumentDedupService {
         Optional<DocumentDedupRepository.AttachmentKeys> keys =
                 repo.findAttachmentKeysForCell(duplicateCellId);
 
-        repo.softDeleteCell(duplicateCellId);
+        // Write the duplicate_of audit link FIRST: if the tunnel insert fails, the outer
+        // best-effort catch aborts before anything is deleted, so we never soft-delete a cell
+        // without recording why it disappeared.
         writeRepo.addTunnel(duplicateCellId, originalCellId, "duplicate_of",
                 "auto-dedup: re-scanned content of " + originalCellId, "committed", DEDUP_ACTOR);
+        repo.softDeleteCell(duplicateCellId);
 
         keys.ifPresent(k -> {
             int others = repo.countOtherLiveCellsForAttachment(k.attachmentId(), duplicateCellId);

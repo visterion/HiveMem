@@ -84,6 +84,21 @@ class DocumentDedupServiceTest {
     }
 
     @Test
+    void s3FailureStillSoftDeletesAttachment() {
+        when(repo.findSimilarOlderCandidates(eq(target), anyDouble(), anyInt())).thenReturn(List.of(
+                new DocumentDedupRepository.Candidate(original, "Rechnung 4711 Betrag 199", 0.99)));
+        when(repo.findAttachmentKeysForCell(target)).thenReturn(Optional.of(
+                new DocumentDedupRepository.AttachmentKeys(attId, "orig.pdf", null)));
+        when(repo.countOtherLiveCellsForAttachment(attId, target)).thenReturn(0);
+        org.mockito.Mockito.doThrow(new RuntimeException("s3 down")).when(seaweed).delete("orig.pdf");
+
+        Optional<UUID> result = service.findAndDiscardDuplicate(target);
+
+        assertEquals(Optional.of(original), result);
+        verify(attachments).softDelete(attId);
+    }
+
+    @Test
     void noDiscardWhenTextGateFails() {
         when(repo.findSimilarOlderCandidates(eq(target), anyDouble(), anyInt())).thenReturn(List.of(
                 new DocumentDedupRepository.Candidate(original, "Mietvertrag Wohnung Kaution", 0.99)));
