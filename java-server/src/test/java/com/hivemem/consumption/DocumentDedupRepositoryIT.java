@@ -1,0 +1,83 @@
+package com.hivemem.consumption;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.time.OffsetDateTime;
+import java.util.List;
+import java.util.UUID;
+import org.junit.jupiter.api.Test;
+
+class DocumentDedupRepositoryIT extends ConsumptionITSupport {
+
+    private UUID seedCell(String content, String embedding, String source,
+                          String status, OffsetDateTime createdAt) {
+        UUID id = UUID.randomUUID();
+        dsl.execute(
+                "INSERT INTO cells (id, content, embedding, source, status, created_at, valid_from) "
+                + "VALUES (?, ?, ?::vector, ?, ?, ?::timestamptz, now())",
+                id, content, embedding, source, status, createdAt);
+        return id;
+    }
+
+    private void linkAttachment(UUID cellId, UUID attachmentId) {
+        dsl.execute(
+                "INSERT INTO cell_attachments (cell_id, attachment_id, extraction_source) "
+                + "VALUES (?, ?, true)", cellId, attachmentId);
+    }
+
+    @Test
+    void findsOlderSimilarScanCandidate() {
+        DocumentDedupRepository repo = new DocumentDedupRepository(dsl);
+        OffsetDateTime t0 = OffsetDateTime.parse("2026-06-01T10:00:00Z");
+        UUID original = seedCell("Rechnung 4711", "[1,0,0]", "consumption:a",
+                "committed", t0);
+        UUID dup = seedCell("Rechnung 4711", "[1,0,0]", "consumption:b",
+                "committed", t0.plusMinutes(5));
+
+        List<DocumentDedupRepository.Candidate> cands =
+                repo.findSimilarOlderCandidates(dup, 0.92, 10);
+
+        assertEquals(1, cands.size());
+        assertEquals(original, cands.get(0).id());
+        assertTrue(cands.get(0).cosine() >= 0.99);
+    }
+
+    @Test
+    void ignoresNonScanAndNewerAndDissimilar() {
+        DocumentDedupRepository repo = new DocumentDedupRepository(dsl);
+        OffsetDateTime t0 = OffsetDateTime.parse("2026-06-02T10:00:00Z");
+        UUID dup = seedCell("Rechnung 4711", "[1,0,0]", "consumption:b", "committed", t0);
+        seedCell("Rechnung 4711", "[1,0,0]", "manual:x", "committed", t0.minusMinutes(5)); // not a scan
+        seedCell("Rechnung 4711", "[1,0,0]", "consumption:c", "committed", t0.plusMinutes(5)); // newer
+        seedCell("Mietvertrag", "[0,1,0]", "consumption:d", "committed", t0.minusMinutes(5)); // dissimilar vec
+
+        List<DocumentDedupRepository.Candidate> cands =
+                repo.findSimilarOlderCandidates(dup, 0.92, 10);
+
+        assertTrue(cands.isEmpty(), "expected no candidates, got " + cands);
+    }
+
+    @Test
+    void softDeleteAndReferenceCount() {
+        DocumentDedupRepository repo = new DocumentDedupRepository(dsl);
+        OffsetDateTime t0 = OffsetDateTime.parse("2026-06-03T10:00:00Z");
+        UUID att = UUID.randomUUID();
+        dsl.execute("INSERT INTO attachments (id, file_hash, mime_type, original_filename, "
+                + "size_bytes, s3_key_original, uploaded_by) VALUES (?, ?, 'application/pdf', 'x.pdf', 1, ?, 'system')",
+                att, "hash-" + att, "key-" + att);
+        UUID dup = seedCell("Rechnung 4711", "[1,0,0]", "consumption:b", "committed", t0);
+        linkAttachment(dup, att);
+
+        assertEquals(1, repo.countOtherLiveCellsForAttachment(att, UUID.randomUUID()));
+        assertTrue(repo.softDeleteCell(dup) >= 1);
+        // After soft-delete the dup is no longer "live".
+        assertEquals(0, repo.countOtherLiveCellsForAttachment(att, dup));
+
+        var keys = repo.findAttachmentKeysForCell(dup);
+        assertTrue(keys.isPresent());
+        assertEquals(att, keys.get().attachmentId());
+        assertFalse(repo.findTarget(dup).isPresent(), "soft-deleted cell is not a valid target");
+    }
+}
