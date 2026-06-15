@@ -40,7 +40,7 @@ public class DocumentDedupRepository {
      */
     public List<Candidate> findSimilarOlderCandidates(UUID cellId, double recallThreshold, int k) {
         String sql = """
-                WITH target AS (SELECT embedding, created_at FROM cells WHERE id = ?)
+                WITH target AS (SELECT embedding, created_at FROM cells WHERE id = ? AND valid_until IS NULL)
                 SELECT c.id, c.content, 1 - (c.embedding <=> t.embedding) AS cosine
                 FROM cells c, target t
                 WHERE c.valid_until IS NULL
@@ -76,9 +76,11 @@ public class DocumentDedupRepository {
                 + "JOIN cells c ON c.id = ca.cell_id "
                 + "WHERE ca.attachment_id = ? AND c.valid_until IS NULL AND ca.cell_id <> ?",
                 attachmentId, excludingCellId);
-        return r == null ? 0 : r.get("n", Integer.class);
+        return r == null ? 0 : r.get("n", Long.class).intValue();
     }
 
+    /** Extraction-source attachment keys for a cell, regardless of the cell's live/deleted state.
+     *  Intended to be called right after a soft-delete, to drive S3 cleanup of the discarded copy. */
     public Optional<AttachmentKeys> findAttachmentKeysForCell(UUID cellId) {
         Record r = dsl.fetchOne(
                 "SELECT a.id, a.s3_key_original, a.s3_key_thumbnail FROM attachments a "
