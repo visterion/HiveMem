@@ -224,7 +224,8 @@ public class WriteToolService {
 
         if (NeedsSummaryDecider.needsSummary(newContent, newSummary)) {
             Object newIdObj = result.get("new_id");
-            if (newIdObj instanceof UUID newId) {
+            if (newIdObj != null) {
+                UUID newId = UUID.fromString(newIdObj.toString());
                 writeToolRepository.tagNeedsSummary(newId);
                 eventPublisher.publishEvent(new CellNeedsSummaryEvent(newId));
             }
