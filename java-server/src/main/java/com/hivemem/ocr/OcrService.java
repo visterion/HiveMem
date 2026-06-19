@@ -7,6 +7,7 @@ import com.hivemem.attachment.VisionClient;
 import com.hivemem.auth.AuthPrincipal;
 import com.hivemem.auth.AuthRole;
 import com.hivemem.consumption.DocumentDedupService;
+import com.hivemem.summarize.NeedsSummaryDecider;
 import com.hivemem.write.WriteToolService;
 import org.jooq.DSLContext;
 import org.slf4j.Logger;
@@ -153,15 +154,18 @@ public class OcrService {
             // Push the OCR'd text into the cell. reviseCell will recompute the embedding
             // (encodeForCell), and since the new content is long with no summary, the
             // SummarizerService picks it up automatically via needs_summary.
-            var reviseResult = writeService.reviseCell(SYSTEM_PRINCIPAL, cellId, out.toString().trim(), null);
+            String content = out.toString().trim();
+            var reviseResult = writeService.reviseCell(SYSTEM_PRINCIPAL, cellId, content, null);
             // Remove tag from the original cell AND from the new revision (which inherits tags).
             repo.removeOcrPendingTag(cellId);
             Object newIdObj = reviseResult.get("new_id");
             if (newIdObj != null) {
                 UUID newId = UUID.fromString(newIdObj.toString());
                 repo.removeOcrPendingTag(newId);
-                // Content-based dedup of re-scanned documents: acts on the OCR'd revision.
-                if (dedup != null) {
+                // Content-based dedup. Long docs have no embedding yet here (it is produced later by
+                // the summarizer, which runs its own dedup pass); only short docs (≤ threshold) are
+                // embedded directly at revise time, so only those can be deduped now.
+                if (dedup != null && !NeedsSummaryDecider.needsSummary(content, null)) {
                     dedup.findAndDiscardDuplicate(newId);
                 }
             }
