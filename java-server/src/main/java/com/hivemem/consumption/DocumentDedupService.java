@@ -41,7 +41,11 @@ public class DocumentDedupService {
         try {
             Optional<DocumentDedupRepository.TargetCell> targetOpt = repo.findTarget(cellId);
             if (targetOpt.isEmpty()) return Optional.empty();
-            String targetText = targetOpt.get().content();
+            DocumentDedupRepository.TargetCell target = targetOpt.get();
+            // Only scanned/consumed documents are ever discarded — never manual or agent cells.
+            String source = target.source();
+            if (source == null || !source.startsWith("consumption:")) return Optional.empty();
+            String targetText = target.content();
             if (targetText == null || targetText.isBlank()) return Optional.empty();
 
             List<DocumentDedupRepository.Candidate> candidates =
