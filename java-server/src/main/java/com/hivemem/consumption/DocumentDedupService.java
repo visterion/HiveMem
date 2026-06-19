@@ -63,6 +63,23 @@ public class DocumentDedupService {
         }
     }
 
+    public record BackfillReport(int checked, int discarded) {}
+
+    /**
+     * One-off retro pass: walk live consumption cells oldest→newest and discard any that are
+     * re-scans of a strictly-older cell. Oldest of each duplicate group is kept. Calling
+     * findAndDiscardDuplicate on an already-discarded cell is a safe no-op. Best-effort overall.
+     */
+    public BackfillReport dedupBackfill() {
+        List<UUID> ids = repo.findLiveConsumptionCellIdsOldestFirst();
+        int discarded = 0;
+        for (UUID id : ids) {
+            if (findAndDiscardDuplicate(id).isPresent()) discarded++;
+        }
+        log.info("Dedup backfill: checked {} consumption cells, discarded {}", ids.size(), discarded);
+        return new BackfillReport(ids.size(), discarded);
+    }
+
     private void discard(UUID duplicateCellId, UUID originalCellId) {
         // Snapshot attachment keys before soft-delete changes the live-reference count.
         Optional<DocumentDedupRepository.AttachmentKeys> keys =

@@ -43,7 +43,8 @@ class AdminControllerTest {
         org.springframework.beans.factory.ObjectProvider<com.hivemem.summarize.SummarizerService> summarizer =
                 mock(org.springframework.beans.factory.ObjectProvider.class);
         controller = new AdminController(instanceConfig, tokenService,
-                mock(com.hivemem.attachment.AttachmentChunkRepairService.class), summarizer);
+                mock(com.hivemem.attachment.AttachmentChunkRepairService.class), summarizer,
+                mock(com.hivemem.consumption.DocumentDedupService.class));
     }
 
     // ── identity ───────────────────────────────────────────────────────────

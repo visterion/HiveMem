@@ -66,6 +66,18 @@ public class DocumentDedupRepository {
         return out;
     }
 
+    /** All live committed consumption-sourced cell ids, oldest first (id tie-break). */
+    public List<UUID> findLiveConsumptionCellIdsOldestFirst() {
+        List<UUID> ids = new ArrayList<>();
+        for (Record r : dsl.fetch(
+                "SELECT id FROM cells "
+                + "WHERE source LIKE 'consumption:%' AND valid_until IS NULL AND status = 'committed' "
+                + "ORDER BY created_at ASC, id ASC")) {
+            ids.add(r.get("id", UUID.class));
+        }
+        return ids;
+    }
+
     public int softDeleteCell(UUID cellId) {
         return dsl.execute(
                 "UPDATE cells SET valid_until = now() WHERE id = ? AND valid_until IS NULL", cellId);
