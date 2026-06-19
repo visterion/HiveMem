@@ -31,6 +31,7 @@ class AdminControllerTest {
 
     private InstanceConfig instanceConfig;
     private TokenService tokenService;
+    private com.hivemem.consumption.DocumentDedupService dedup;
     private AdminController controller;
     private static final UUID INSTANCE_ID = UUID.fromString("11111111-2222-3333-4444-555555555555");
 
@@ -38,13 +39,13 @@ class AdminControllerTest {
     void setUp() {
         instanceConfig = mock(InstanceConfig.class);
         tokenService = mock(TokenService.class);
+        dedup = mock(com.hivemem.consumption.DocumentDedupService.class);
         when(instanceConfig.instanceId()).thenReturn(INSTANCE_ID);
         @SuppressWarnings("unchecked")
         org.springframework.beans.factory.ObjectProvider<com.hivemem.summarize.SummarizerService> summarizer =
                 mock(org.springframework.beans.factory.ObjectProvider.class);
         controller = new AdminController(instanceConfig, tokenService,
-                mock(com.hivemem.attachment.AttachmentChunkRepairService.class), summarizer,
-                mock(com.hivemem.consumption.DocumentDedupService.class));
+                mock(com.hivemem.attachment.AttachmentChunkRepairService.class), summarizer, dedup);
     }
 
     // ── identity ───────────────────────────────────────────────────────────
@@ -166,6 +167,29 @@ class AdminControllerTest {
         var resp = controller.revokeToken("svc1", writerRequest());
         assertEquals(HttpStatus.FORBIDDEN, resp.getStatusCode());
         verifyNoInteractions(tokenService);
+    }
+
+    // ── dedupBackfill ──────────────────────────────────────────────────────
+
+    @Test
+    void dedupBackfill_happyPathForAdmin() {
+        when(dedup.dedupBackfill())
+                .thenReturn(new com.hivemem.consumption.DocumentDedupService.BackfillReport(10, 3));
+
+        var resp = controller.dedupBackfill(adminRequest());
+
+        assertEquals(HttpStatus.OK, resp.getStatusCode());
+        Map<?,?> body = (Map<?,?>) resp.getBody();
+        assertEquals(10, body.get("checked"));
+        assertEquals(3, body.get("discarded"));
+        verify(dedup).dedupBackfill();
+    }
+
+    @Test
+    void dedupBackfill_forbiddenForNonAdmin() {
+        var resp = controller.dedupBackfill(writerRequest());
+        assertEquals(HttpStatus.FORBIDDEN, resp.getStatusCode());
+        verifyNoInteractions(dedup);
     }
 
     // ── helpers ────────────────────────────────────────────────────────────

@@ -71,6 +71,10 @@ public class DocumentDedupService {
      * findAndDiscardDuplicate on an already-discarded cell is a safe no-op. Best-effort overall.
      */
     public BackfillReport dedupBackfill() {
+        if (!props.isEnabled()) {
+            log.info("Dedup backfill skipped: dedup is disabled");
+            return new BackfillReport(0, 0);
+        }
         List<UUID> ids = repo.findLiveConsumptionCellIdsOldestFirst();
         int discarded = 0;
         for (UUID id : ids) {
