@@ -114,7 +114,8 @@ public class OcrService {
                     && visionBudget != null;
             int visionPagesUsed = 0;
 
-            List<String> pageTexts = new ArrayList<>(pages.size());
+            List<String> keptTexts = new ArrayList<>();
+            int blankCount = 0;
             for (int i = 0; i < pages.size(); i++) {
                 String text;
                 try {
@@ -135,10 +136,16 @@ public class OcrService {
                     }
                 }
 
-                if (text.isEmpty()) {
-                    text = "[page=" + (i + 1) + ": OCR failed]";
+                // Combo blank check: drop a page ONLY when it is BOTH near-white AND produced no text,
+                // so an OCR failure on a page that actually has ink is never silently dropped.
+                boolean blank = props.isDropBlankPages()
+                        && text.isBlank()
+                        && BlankPageDetector.isNearWhite(pages.get(i), props.getBlankWhiteFraction());
+                if (blank) { blankCount++; continue; }
+                if (text.isBlank()) {
+                    text = "[page: OCR produced no text]"; // non-white page kept with a marker (not dropped)
                 }
-                pageTexts.add(text);
+                keptTexts.add(text);
             }
 
             if (visionPagesUsed > 0) {
@@ -146,9 +153,16 @@ public class OcrService {
                         visionPagesUsed, pages.size(), cellId);
             }
 
+            if (keptTexts.isEmpty()) {
+                log.info("OCR: cell {} is entirely blank ({} pages) — soft-deleting", cellId, blankCount);
+                repo.removeOcrPendingTag(cellId);
+                repo.softDeleteBlankCell(cellId);
+                return;
+            }
+
             StringBuilder out = new StringBuilder();
-            for (int i = 0; i < pageTexts.size(); i++) {
-                out.append("[page=").append(i + 1).append("]\n").append(pageTexts.get(i)).append("\n\n");
+            for (int i = 0; i < keptTexts.size(); i++) {
+                out.append("[page=").append(i + 1).append("]\n").append(keptTexts.get(i)).append("\n\n");
             }
 
             // Push the OCR'd text into the cell. reviseCell will recompute the embedding
