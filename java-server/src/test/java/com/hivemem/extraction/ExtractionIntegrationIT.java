@@ -118,7 +118,7 @@ class ExtractionIntegrationIT {
         ExtractionProfileRegistry registry = new ExtractionProfileRegistry();
 
         SummarizerService service = new SummarizerService(
-                props, extractionProps, repo, dsl, RestClient.builder(), writeService, registry);
+                props, extractionProps, repo, dsl, RestClient.builder(), writeService, registry, null);
 
         var summarizeOne = SummarizerService.class.getDeclaredMethod("summarizeOne", UUID.class);
         summarizeOne.setAccessible(true);

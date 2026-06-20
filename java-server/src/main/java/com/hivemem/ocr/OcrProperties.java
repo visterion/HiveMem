@@ -21,6 +21,8 @@ public class OcrProperties {
     private boolean visionFallbackEnabled = false;
     private int visionFallbackMinCharsPerPage = 30;
     private int visionFallbackMaxPagesPerDoc = 20;
+    private boolean dropBlankPages = true;
+    private double blankWhiteFraction = 0.995;
 
     public boolean isEnabled() { return enabled; }
     public void setEnabled(boolean v) { this.enabled = v; }
@@ -46,4 +48,8 @@ public class OcrProperties {
     public void setVisionFallbackMinCharsPerPage(int v) { this.visionFallbackMinCharsPerPage = v; }
     public int getVisionFallbackMaxPagesPerDoc() { return visionFallbackMaxPagesPerDoc; }
     public void setVisionFallbackMaxPagesPerDoc(int v) { this.visionFallbackMaxPagesPerDoc = v; }
+    public boolean isDropBlankPages() { return dropBlankPages; }
+    public void setDropBlankPages(boolean v) { this.dropBlankPages = v; }
+    public double getBlankWhiteFraction() { return blankWhiteFraction; }
+    public void setBlankWhiteFraction(double v) { this.blankWhiteFraction = v; }
 }

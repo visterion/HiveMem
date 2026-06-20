@@ -25,15 +25,17 @@ public class SummarizeBackfillStartupRunner implements ApplicationRunner {
     @Override
     public void run(ApplicationArguments args) {
         int updated = dsl.execute(
-                "UPDATE cells SET tags = array_append(tags, 'needs_summary') "
-                + "WHERE summary IS NULL "
+                "UPDATE cells SET tags = array_append(COALESCE(tags, '{}'::text[]), 'needs_summary') "
+                + "WHERE embedding IS NULL "
                 + "AND length(content) > ? "
                 + "AND status = 'committed' "
                 + "AND valid_until IS NULL "
-                + "AND 'needs_summary' != ALL(tags)",
+                // COALESCE so a (legacy/raw-inserted) NULL tags row is treated as empty and still
+                // self-heals, instead of being silently skipped by `!= ALL(NULL)` (which is NULL).
+                + "AND 'needs_summary' != ALL(COALESCE(tags, '{}'::text[]))",
                 props.getSummaryThresholdChars());
         if (updated > 0) {
-            log.info("Tagged {} existing cells with needs_summary for one-shot backfill", updated);
+            log.info("Tagged {} cells (NULL embedding, long content) with needs_summary for backfill", updated);
         }
     }
 }

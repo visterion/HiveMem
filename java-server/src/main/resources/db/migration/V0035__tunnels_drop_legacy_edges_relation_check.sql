@@ -1,0 +1,15 @@
+-- Drop the legacy 'edges_relation_check' CHECK constraint on tunnels.
+--
+-- The tunnels table was originally created as `edges` (V0002) with constraint
+-- `edges_relation_check` permitting only related_to/builds_on/contradicts/refines. A later rename
+-- to `tunnels` kept that constraint name. V0034 added a NEW `tunnels_relation_check` that also
+-- permits 'duplicate_of', but did NOT drop the old `edges_relation_check` — so on long-lived
+-- databases a row must satisfy BOTH, and 'duplicate_of' inserts (from the scan dedup) still fail
+-- with "violates check constraint edges_relation_check". The dedup's best-effort catch swallowed
+-- this, making the discard a silent no-op in production (fresh/test DBs lack the legacy constraint,
+-- so this was invisible to tests — schema drift between prod and test).
+--
+-- `tunnels_relation_check` (V0034) already enforces the full valid relation set incl. 'duplicate_of',
+-- so the legacy constraint is fully redundant. Drop it. Idempotent: IF EXISTS is a no-op where the
+-- legacy name was never present.
+ALTER TABLE tunnels DROP CONSTRAINT IF EXISTS edges_relation_check;

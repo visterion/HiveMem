@@ -22,6 +22,10 @@ public class ConsumptionProperties {
     private int reassemblyRenderDpi = 150;            // downscale pages for the vision payload
     private String reassemblyPurpose = "separator";   // Vistierie routing purpose
     private int reassemblyMaxTokens = 4096;
+    private boolean blankFilterEnabled = true;
+    private double blankWhiteFraction = 0.995;
+    private boolean orientationCorrectionEnabled = true;
+    private int osdTimeoutSeconds = 15;
 
     public boolean isEnabled() { return enabled; }
     public void setEnabled(boolean v) { this.enabled = v; }
@@ -53,4 +57,12 @@ public class ConsumptionProperties {
     public void setReassemblyPurpose(String v) { this.reassemblyPurpose = v; }
     public int getReassemblyMaxTokens() { return reassemblyMaxTokens; }
     public void setReassemblyMaxTokens(int v) { this.reassemblyMaxTokens = v; }
+    public boolean isBlankFilterEnabled() { return blankFilterEnabled; }
+    public void setBlankFilterEnabled(boolean v) { this.blankFilterEnabled = v; }
+    public double getBlankWhiteFraction() { return blankWhiteFraction; }
+    public void setBlankWhiteFraction(double v) { this.blankWhiteFraction = v; }
+    public boolean isOrientationCorrectionEnabled() { return orientationCorrectionEnabled; }
+    public void setOrientationCorrectionEnabled(boolean v) { this.orientationCorrectionEnabled = v; }
+    public int getOsdTimeoutSeconds() { return osdTimeoutSeconds; }
+    public void setOsdTimeoutSeconds(int v) { this.osdTimeoutSeconds = v; }
 }
