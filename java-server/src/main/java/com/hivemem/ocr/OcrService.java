@@ -7,6 +7,7 @@ import com.hivemem.attachment.VisionClient;
 import com.hivemem.auth.AuthPrincipal;
 import com.hivemem.auth.AuthRole;
 import com.hivemem.consumption.DocumentDedupService;
+import com.hivemem.summarize.NeedsSummaryDecider;
 import com.hivemem.write.WriteToolService;
 import org.jooq.DSLContext;
 import org.slf4j.Logger;
@@ -113,7 +114,8 @@ public class OcrService {
                     && visionBudget != null;
             int visionPagesUsed = 0;
 
-            List<String> pageTexts = new ArrayList<>(pages.size());
+            List<String> keptTexts = new ArrayList<>();
+            int blankCount = 0;
             for (int i = 0; i < pages.size(); i++) {
                 String text;
                 try {
@@ -134,10 +136,16 @@ public class OcrService {
                     }
                 }
 
-                if (text.isEmpty()) {
-                    text = "[page=" + (i + 1) + ": OCR failed]";
+                // Combo blank check: drop a page ONLY when it is BOTH near-white AND produced no text,
+                // so an OCR failure on a page that actually has ink is never silently dropped.
+                boolean blank = props.isDropBlankPages()
+                        && text.isBlank()
+                        && BlankPageDetector.isNearWhite(pages.get(i), props.getBlankWhiteFraction());
+                if (blank) { blankCount++; continue; }
+                if (text.isBlank()) {
+                    text = "[page: OCR produced no text]"; // non-white page kept with a marker (not dropped)
                 }
-                pageTexts.add(text);
+                keptTexts.add(text);
             }
 
             if (visionPagesUsed > 0) {
@@ -145,23 +153,33 @@ public class OcrService {
                         visionPagesUsed, pages.size(), cellId);
             }
 
+            if (keptTexts.isEmpty()) {
+                log.info("OCR: cell {} is entirely blank ({} pages) — soft-deleting", cellId, blankCount);
+                repo.removeOcrPendingTag(cellId);
+                repo.softDeleteBlankCell(cellId);
+                return;
+            }
+
             StringBuilder out = new StringBuilder();
-            for (int i = 0; i < pageTexts.size(); i++) {
-                out.append("[page=").append(i + 1).append("]\n").append(pageTexts.get(i)).append("\n\n");
+            for (int i = 0; i < keptTexts.size(); i++) {
+                out.append("[page=").append(i + 1).append("]\n").append(keptTexts.get(i)).append("\n\n");
             }
 
             // Push the OCR'd text into the cell. reviseCell will recompute the embedding
             // (encodeForCell), and since the new content is long with no summary, the
             // SummarizerService picks it up automatically via needs_summary.
-            var reviseResult = writeService.reviseCell(SYSTEM_PRINCIPAL, cellId, out.toString().trim(), null);
+            String content = out.toString().trim();
+            var reviseResult = writeService.reviseCell(SYSTEM_PRINCIPAL, cellId, content, null);
             // Remove tag from the original cell AND from the new revision (which inherits tags).
             repo.removeOcrPendingTag(cellId);
             Object newIdObj = reviseResult.get("new_id");
             if (newIdObj != null) {
                 UUID newId = UUID.fromString(newIdObj.toString());
                 repo.removeOcrPendingTag(newId);
-                // Content-based dedup of re-scanned documents: acts on the OCR'd revision.
-                if (dedup != null) {
+                // Content-based dedup. Long docs have no embedding yet here (it is produced later by
+                // the summarizer, which runs its own dedup pass); only short docs (≤ threshold) are
+                // embedded directly at revise time, so only those can be deduped now.
+                if (dedup != null && !NeedsSummaryDecider.needsSummary(content, null)) {
                     dedup.findAndDiscardDuplicate(newId);
                 }
             }

@@ -42,7 +42,18 @@ class DocumentDedupServiceTest {
         service = new DocumentDedupService(repo, attachments, seaweed, props);
         when(repo.findTarget(target)).thenReturn(Optional.of(
                 new DocumentDedupRepository.TargetCell(target, "Rechnung 4711 Betrag 199",
-                        OffsetDateTime.parse("2026-06-01T10:00:00Z"))));
+                        "consumption:a", OffsetDateTime.parse("2026-06-01T10:00:00Z"))));
+    }
+
+    @Test
+    void doesNotDiscardNonConsumptionTarget() {
+        when(repo.findTarget(target)).thenReturn(Optional.of(
+                new DocumentDedupRepository.TargetCell(target, "Rechnung 4711 Betrag 199",
+                        "manual:user", OffsetDateTime.parse("2026-06-01T10:00:00Z"))));
+
+        assertTrue(service.findAndDiscardDuplicate(target).isEmpty());
+        verify(repo, never()).findSimilarOlderCandidates(any(), anyDouble(), anyInt());
+        verify(repo, never()).linkAndSoftDelete(any(), any(), any(), any());
     }
 
     @Test

@@ -22,7 +22,12 @@ search. OCR fixes that structurally.
    `tesseract -l deu+eng --psm 1` per page, and aggregates the text with `[page=N]`
    markers. `--psm 1` enables OSD (orientation & script detection), so rotated or
    upside-down scans are auto-oriented before recognition (`osd` traineddata ships
-   in the image).
+   in the image). A page is **dropped** only when it is BOTH near-white
+   (`BlankPageDetector.isNearWhite`, `blank-white-fraction` default 0.995) AND its
+   OCR text is blank — a combo signal so a real (inked) page whose OCR merely failed
+   is never silently dropped. Surviving pages are renumbered `[page=1..]`. If every
+   page is dropped the cell is effectively blank and is soft-deleted
+   (`valid_until = now()`) instead of being revised.
 5. `WriteToolService.reviseCell` writes the OCR text into the cell — and carries the
    `cell_attachments` link to the new revision, so the OCR'd current cell stays linked
    to its source PDF. The summarizer then takes over (it sees long content + no
@@ -57,6 +62,8 @@ experience.
 | `hivemem.ocr.vision-fallback-enabled` | `false` | Use Claude Haiku 4.5 to re-OCR pages where Tesseract output is sparse |
 | `hivemem.ocr.vision-fallback-min-chars-per-page` | `30` | Threshold below which a page is sent to Vision |
 | `hivemem.ocr.vision-fallback-max-pages-per-doc` | `20` | Hard cap on Vision-OCR'd pages per document |
+| `hivemem.ocr.drop-blank-pages` | `true` | Drop a page when it is BOTH near-white AND produced no text (combo signal) |
+| `hivemem.ocr.blank-white-fraction` | `0.995` | Page is "near-white" when this fraction of sampled pixels is white |
 
 The actual scheduler interval is set via `HIVEMEM_OCR_BACKFILL_INTERVAL_MS`
 (milliseconds). Default is `3600000` (1 hour).
