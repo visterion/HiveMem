@@ -29,7 +29,10 @@ public class PageOsd {
     public int detectRotation(byte[] pngBytes, int timeoutSeconds) {
         try {
             ProcessBuilder pb = new ProcessBuilder(tesseractPath, "-", "-", "--psm", "0");
-            pb.redirectErrorStream(false);
+            // Merge stderr into stdout and drain the combined stream before waitFor: tesseract OSD can
+            // emit per-page diagnostics on stderr; an unread stderr pipe could fill and deadlock against
+            // our (large PNG) stdin write. parseRotate keys off the `Rotate:` line, so merged noise is harmless.
+            pb.redirectErrorStream(true);
             Process p = pb.start();
             try (var stdin = p.getOutputStream()) { stdin.write(pngBytes); }
             byte[] stdout = p.getInputStream().readAllBytes();

@@ -103,4 +103,33 @@ class ReassemblyBlankOrientationTest {
                 any(), any(), any(), any(), anyString(), any());
         verify(mover).moveToProcessed(any());
     }
+
+    @Test
+    void osdRotationFlowsThroughToIngestedPdf() throws Exception {
+        ConsumptionProperties props = new ConsumptionProperties();
+        PdfPageRasterizer rasterizer = mock(PdfPageRasterizer.class);
+        PageGrouper grouper = mock(PageGrouper.class);
+        PageReassembler reassembler = mock(PageReassembler.class);
+        AttachmentService attachments = mock(AttachmentService.class);
+        ConsumptionFileMover mover = mock(ConsumptionFileMover.class);
+        PageOsd osd = mock(PageOsd.class);
+        // The (single, non-blank) page is detected upside-down → must be rotated 180° in the stored PDF.
+        when(osd.detectRotation(any(), anyInt())).thenReturn(180);
+
+        when(rasterizer.rasterize(any(), anyInt(), anyInt())).thenReturn(List.of(png(true)));
+        when(reassembler.toDocuments(any(), eq(1)))
+                .thenReturn(List.of(new PageReassembler.ResultDoc(List.of(1), "committed")));
+
+        ReassemblyOrchestrator orch = new ReassemblyOrchestrator(
+                props, rasterizer, grouper, reassembler, new BatchSplitter(), attachments, mover, osd);
+        orch.reassemble(Path.of("Scan_rot.pdf"), nPagePdf(1), 1);
+
+        ArgumentCaptor<InputStream> pdf = ArgumentCaptor.forClass(InputStream.class);
+        verify(attachments, times(1)).ingest(pdf.capture(), anyString(), eq("application/pdf"),
+                any(), any(), any(), any(), eq("consumption"), anyString(), eq("consumption:"));
+        try (PDDocument ingested = Loader.loadPDF(pdf.getValue().readAllBytes())) {
+            Assertions.assertEquals(180, ingested.getPage(0).getRotation(),
+                    "OSD-detected rotation must be applied to the stored PDF page");
+        }
+    }
 }
