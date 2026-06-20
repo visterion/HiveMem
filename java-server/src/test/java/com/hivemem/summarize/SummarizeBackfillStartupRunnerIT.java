@@ -1,24 +1,19 @@
 package com.hivemem.summarize;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.util.UUID;
 import org.jooq.DSLContext;
 import org.jooq.SQLDialect;
 import org.jooq.impl.DSL;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.DefaultApplicationArguments;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-
-import javax.sql.DataSource;
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.ResultSet;
-import java.sql.Statement;
-import java.util.UUID;
-
-import static org.junit.jupiter.api.Assertions.*;
 
 @Testcontainers
 class SummarizeBackfillStartupRunnerIT {
@@ -37,58 +32,78 @@ class SummarizeBackfillStartupRunnerIT {
         org.flywaydb.core.Flyway.configure()
                 .dataSource(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword())
                 .locations("classpath:db/migration").load().migrate();
-        DataSource ds = new DriverManagerDataSource(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword());
-        dsl = DSL.using(ds, SQLDialect.POSTGRES);
+        dsl = DSL.using(new DriverManagerDataSource(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword()),
+                SQLDialect.POSTGRES);
         dsl.execute("DELETE FROM cells");
     }
 
-    @Test
-    void tagsLongCells_skipsShortAndAlreadyTagged_andSummarized() throws Exception {
-        // Seed: 4 cells
-        // 1. long, no summary, not tagged → SHOULD be tagged
-        // 2. short, no summary → should NOT be tagged
-        // 3. long, with summary → should NOT be tagged
-        // 4. long, no summary, already tagged → should remain tagged (no duplicate)
-        UUID id1 = UUID.randomUUID(), id2 = UUID.randomUUID(), id3 = UUID.randomUUID(), id4 = UUID.randomUUID();
-        try (Connection c = DriverManager.getConnection(
-                DB.getJdbcUrl(), DB.getUsername(), DB.getPassword());
-             Statement st = c.createStatement()) {
-            String longText = "a".repeat(800);
-            st.execute("INSERT INTO cells (id, content, realm, signal, status, tags, created_at, valid_from) VALUES "
-                    + "('" + id1 + "', '" + longText + "', 'r', 'facts', 'committed', ARRAY[]::text[], now(), now()),"
-                    + "('" + id2 + "', 'short', 'r', 'facts', 'committed', ARRAY[]::text[], now(), now()),"
-                    + "('" + id3 + "', '" + longText + "', 'r', 'facts', 'committed', ARRAY[]::text[], now(), now()),"
-                    + "('" + id4 + "', '" + longText + "', 'r', 'facts', 'committed', ARRAY['needs_summary']::text[], now(), now())");
-            st.execute("UPDATE cells SET summary = 'has summary' WHERE id = '" + id3 + "'");
-        }
-
-        SummarizerProperties props = new SummarizerProperties();
-        props.setEnabled(true);
-        props.setSummaryThresholdChars(500);
-        SummarizeBackfillStartupRunner runner = new SummarizeBackfillStartupRunner(dsl, props);
-        runner.run(new DefaultApplicationArguments());
-
-        try (Connection c = DriverManager.getConnection(
-                DB.getJdbcUrl(), DB.getUsername(), DB.getPassword());
-             Statement st = c.createStatement()) {
-            assertTrue(hasTag(st, id1), "long cell #1 should be tagged");
-            assertFalse(hasTag(st, id2), "short cell #2 should NOT be tagged");
-            assertFalse(hasTag(st, id3), "summarized cell #3 should NOT be tagged");
-            assertTrue(hasTag(st, id4), "already-tagged cell #4 should still be tagged");
-            // Verify cell #4 has only one occurrence (no duplicate)
-            try (ResultSet rs = st.executeQuery(
-                    "SELECT array_length(tags, 1) FROM cells WHERE id = '" + id4 + "'")) {
-                rs.next();
-                assertEquals(1, rs.getInt(1), "cell #4 should still have exactly 1 tag");
-            }
-        }
+    private UUID seed(String content, String embedding, String summary) {
+        UUID id = UUID.randomUUID();
+        // Production always inserts cells with a non-null tags array (empty by default);
+        // seed the same way so the runner's `'needs_summary' != ALL(tags)` matches real rows.
+        dsl.execute("INSERT INTO cells (id, content, embedding, summary, status, tags, valid_from) "
+                + "VALUES (?, ?, ?::vector, ?, 'committed', '{}'::text[], now())",
+                id, content, embedding, summary);
+        return id;
     }
 
-    private static boolean hasTag(Statement st, UUID id) throws Exception {
-        try (ResultSet rs = st.executeQuery(
-                "SELECT 'needs_summary' = ANY(tags) FROM cells WHERE id = '" + id + "'")) {
-            rs.next();
-            return rs.getBoolean(1);
-        }
+    /** Seed with an explicit status and optional soft-delete (valid_until set). */
+    private UUID seedRaw(String content, String status, boolean softDeleted) {
+        UUID id = UUID.randomUUID();
+        dsl.execute("INSERT INTO cells (id, content, embedding, status, tags, valid_from, valid_until) "
+                + "VALUES (?, ?, NULL, ?, '{}'::text[], now(), " + (softDeleted ? "now()" : "NULL") + ")",
+                id, content, status);
+        return id;
+    }
+
+    private boolean hasNeedsSummary(UUID id) {
+        return dsl.fetchOne("SELECT 'needs_summary' = ANY(tags) AS f FROM cells WHERE id = ?", id)
+                .get("f", Boolean.class);
+    }
+
+    private int needsSummaryCount(UUID id) {
+        return dsl.fetchOne(
+                "SELECT cardinality(array_positions(tags, 'needs_summary')) AS n FROM cells WHERE id = ?", id)
+                .get("n", Integer.class);
+    }
+
+    @Test
+    void tagsNullEmbeddingLongCellsAndLeavesOthers() {
+        SummarizerProperties props = new SummarizerProperties(); // threshold defaults to 500
+        UUID longNull = seed("x".repeat(600), null, null);          // SHOULD be tagged
+        UUID longNullWithSummary = seed("y".repeat(600), null, "s"); // SHOULD be tagged (embedding still null)
+        UUID shortNull = seed("z".repeat(100), null, null);         // SHOULD NOT (too short)
+        UUID longEmbedded = seed("w".repeat(600), "[1,0,0]", "s");  // SHOULD NOT (already embedded)
+
+        new SummarizeBackfillStartupRunner(dsl, props).run(null);
+
+        assertTrue(hasNeedsSummary(longNull), "long NULL-embedding cell must be tagged");
+        assertTrue(hasNeedsSummary(longNullWithSummary), "long NULL-embedding cell must be tagged even with a summary");
+        assertFalse(hasNeedsSummary(shortNull), "short cell must not be tagged");
+        assertFalse(hasNeedsSummary(longEmbedded), "already-embedded cell must not be tagged");
+    }
+
+    @Test
+    void skipsPendingAndSoftDeletedCells() {
+        SummarizerProperties props = new SummarizerProperties();
+        UUID pending = seedRaw("p".repeat(600), "pending", false);        // not committed
+        UUID softDeleted = seedRaw("d".repeat(600), "committed", true);   // valid_until set
+
+        new SummarizeBackfillStartupRunner(dsl, props).run(null);
+
+        assertFalse(hasNeedsSummary(pending), "pending cell must not be tagged");
+        assertFalse(hasNeedsSummary(softDeleted), "soft-deleted cell must not be tagged");
+    }
+
+    @Test
+    void doesNotDuplicateTagOnSecondRun() {
+        SummarizerProperties props = new SummarizerProperties();
+        UUID cell = seed("a".repeat(600), null, null);
+        var runner = new SummarizeBackfillStartupRunner(dsl, props);
+
+        runner.run(null); // tags once
+        runner.run(null); // second pass must be idempotent (guarded by `!= ALL(tags)`)
+
+        assertEquals(1, needsSummaryCount(cell), "needs_summary must appear exactly once after two runs");
     }
 }

@@ -158,8 +158,10 @@ class OcrServiceVisionFallbackTest {
     }
 
     @Test
-    void runsDedupOnNewRevision() throws Exception {
-        when(tesseract.ocr(any(), anyString(), anyInt())).thenReturn("plenty of recognized text here");
+    void runsDedupOnlyForShortDocs() throws Exception {
+        // Two pages, each short → total OCR'd text (incl. "[page=N]\n" prefixes) stays well under
+        // the 500-char summary threshold, so the doc is embedded at revise time and dedup runs now.
+        when(tesseract.ocr(any(), anyString(), anyInt())).thenReturn("short recognized text");
         UUID newId = UUID.randomUUID();
         when(writeService.reviseCell(any(), any(), anyString(), any()))
                 .thenReturn(Map.of("new_id", newId.toString()));
@@ -167,5 +169,19 @@ class OcrServiceVisionFallbackTest {
         build().processOne(UUID.randomUUID(), "key");
 
         verify(dedup).findAndDiscardDuplicate(eq(newId));
+    }
+
+    @Test
+    void skipsDedupForLongDocs() throws Exception {
+        // Long per-page text → total OCR'd text exceeds the 500-char summary threshold, so the doc
+        // needs a summary and is NOT embedded yet; dedup must be deferred to the summarizer.
+        when(tesseract.ocr(any(), anyString(), anyInt())).thenReturn("y".repeat(400)); // 2 pages → >800 chars
+        UUID newId = UUID.randomUUID();
+        when(writeService.reviseCell(any(), any(), anyString(), any()))
+                .thenReturn(Map.of("new_id", newId.toString()));
+
+        build().processOne(UUID.randomUUID(), "key");
+
+        verify(dedup, never()).findAndDiscardDuplicate(any());
     }
 }
