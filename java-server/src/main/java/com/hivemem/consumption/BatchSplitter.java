@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.util.*;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
 
 public class BatchSplitter {
 
@@ -40,6 +41,14 @@ public class BatchSplitter {
     /** Build one PDF per group from arbitrary, ordered 1-based page numbers. Out-of-range/null indices
      *  are skipped; empty groups are skipped. Page order follows each group's list order. */
     public List<byte[]> assemble(byte[] pdfBytes, List<List<Integer>> groups) throws IOException {
+        return assemble(pdfBytes, groups, Map.of());
+    }
+
+    /** As {@link #assemble(byte[], List)} but additionally sets each imported page's rotation to make
+     *  it upright. {@code rotations} maps a 1-based source page number to clockwise degrees (0/90/180/270)
+     *  to ADD to that page's existing rotation. Pages absent from the map keep their rotation. */
+    public List<byte[]> assemble(byte[] pdfBytes, List<List<Integer>> groups,
+                                 Map<Integer, Integer> rotations) throws IOException {
         try (PDDocument src = Loader.loadPDF(pdfBytes)) {
             int total = src.getNumberOfPages();
             List<byte[]> out = new ArrayList<>();
@@ -48,7 +57,13 @@ public class BatchSplitter {
                 for (Integer p : group) if (p != null && p >= 1 && p <= total) valid.add(p);
                 if (valid.isEmpty()) continue;
                 try (PDDocument part = new PDDocument()) {
-                    for (int p : valid) part.importPage(src.getPage(p - 1));
+                    for (int p : valid) {
+                        PDPage imported = part.importPage(src.getPage(p - 1));
+                        Integer rot = rotations.get(p);
+                        if (rot != null && rot != 0) {
+                            imported.setRotation((imported.getRotation() + rot) % 360);
+                        }
+                    }
                     ByteArrayOutputStream baos = new ByteArrayOutputStream();
                     part.save(baos);
                     out.add(baos.toByteArray());
