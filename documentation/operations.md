@@ -104,7 +104,21 @@ docker logs hivemem --tail 50  # Container logs
 
 ### Re-scanning the same document
 
-A physical re-scan produces different bytes (so SHA-256 dedup does not catch it), but after OCR the content dedup discards the new copy and keeps the original (a `duplicate_of` tunnel records the link; the discarded cell is soft-deleted, its unique S3 object removed). If legitimately distinct documents are being merged, raise `hivemem.consumption.dedup.text-threshold` (and/or `recall-threshold`); to turn the feature off set `hivemem.consumption.dedup.enabled=false`.
+A physical re-scan produces different bytes (so SHA-256 dedup does not catch it), but the content dedup discards the new copy and keeps the original (a `duplicate_of` tunnel records the link; the discarded cell is soft-deleted, its unique S3 object removed). Dedup runs once the cell's embedding exists: for short documents (≤500 chars) that is at OCR time, but long OCR'd documents are embedded only after the summarizer produces a summary, so for those dedup runs in the scheduled summarizer (every 5 min) — a re-scan of a long document is therefore deduped on the next summarizer cycle, not instantly. Only `consumption:`-sourced cells are ever discarded. If legitimately distinct documents are being merged, raise `hivemem.consumption.dedup.text-threshold` (and/or `recall-threshold`); to turn the feature off set `hivemem.consumption.dedup.enabled=false`.
+
+### Self-healing embedding backfill
+
+On startup, any live committed cell with a NULL embedding and content longer than 500 characters is tagged `needs_summary`; the scheduled summarizer (every 5 min) then generates its summary and re-embeds it. This is automatic and idempotent — no operator action is needed. It restores semantic search for scans that previously missed their embedding (long OCR'd documents are embedded only after summarization).
+
+### Retro-dedup of existing scans
+
+`POST /admin/dedup-backfill` walks existing live `consumption:`-sourced cells oldest→newest and discards re-scans (same soft-delete + `duplicate_of` tunnel + S3 cleanup as live dedup). Run it **only after embeddings have been backfilled** — give the startup `needs_summary` tagging plus at least one 5-min summarizer cycle to embed the long scans first, otherwise they have no embedding to match on. This is a production write — get explicit authorization before running it.
+
+```bash
+curl -s -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
+  https://<host>/admin/dedup-backfill
+# → {"checked":N,"discarded":x}
+```
 
 ## Queen + Bees on Vistierie (LXC 102)
 

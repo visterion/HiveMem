@@ -2,6 +2,7 @@ package com.hivemem.summarize;
 
 import com.hivemem.auth.AuthPrincipal;
 import com.hivemem.auth.AuthRole;
+import com.hivemem.consumption.DocumentDedupService;
 import com.hivemem.extraction.ExtractionProfile;
 import com.hivemem.extraction.ExtractionProfileRegistry;
 import com.hivemem.extraction.ExtractionProperties;
@@ -11,6 +12,7 @@ import com.hivemem.write.WriteToolService;
 import org.jooq.DSLContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -52,21 +54,41 @@ public class SummarizerService {
     private final AnthropicSummarizer anthropic;
     private final WriteToolService writeService;
     private final ExtractionProfileRegistry profileRegistry;
+    private final DocumentDedupService dedup; // may be null (tests)
 
+    @Autowired
     public SummarizerService(SummarizerProperties props,
                              ExtractionProperties extractionProps,
                              SummarizerRepository repo,
                              DSLContext dsl,
                              RestClient.Builder builder,
                              WriteToolService writeService,
-                             ExtractionProfileRegistry profileRegistry) {
+                             ExtractionProfileRegistry profileRegistry,
+                             DocumentDedupService dedup) {
+        this(props, extractionProps, repo,
+                new SummarizeBudgetTracker(dsl, props.getDailyBudgetUsd()),
+                new AnthropicSummarizer(builder, props),
+                writeService, profileRegistry, dedup);
+    }
+
+    /** Test seam: inject pre-built {@link SummarizeBudgetTracker}/{@link AnthropicSummarizer}
+     *  instead of constructing them from a DSLContext/RestClient (mirrors OcrService's pattern). */
+    SummarizerService(SummarizerProperties props,
+                      ExtractionProperties extractionProps,
+                      SummarizerRepository repo,
+                      SummarizeBudgetTracker budget,
+                      AnthropicSummarizer anthropic,
+                      WriteToolService writeService,
+                      ExtractionProfileRegistry profileRegistry,
+                      DocumentDedupService dedup) {
         this.props = props;
         this.extractionProps = extractionProps;
         this.repo = repo;
-        this.budget = new SummarizeBudgetTracker(dsl, props.getDailyBudgetUsd());
-        this.anthropic = new AnthropicSummarizer(builder, props);
+        this.budget = budget;
+        this.anthropic = anthropic;
         this.writeService = writeService;
         this.profileRegistry = profileRegistry;
+        this.dedup = dedup;
     }
 
     @Async
@@ -155,6 +177,13 @@ public class SummarizerService {
 
             repo.removeNeedsSummaryTag(cellId);
             if (newId != null) repo.removeNeedsSummaryTag(newId);
+
+            // The cell now has its embedding (encodeForCell used the fresh summary). This is the
+            // first point a long scanned doc can be deduped; the service no-ops for non-consumption
+            // cells, so manual/agent summaries are unaffected.
+            if (dedup != null && newId != null) {
+                dedup.findAndDiscardDuplicate(newId);
+            }
         } catch (HttpClientErrorException.TooManyRequests e) {
             log.warn("Anthropic 429 for cell {}, marking throttled", cellId);
             repo.tagThrottled(cellId);
