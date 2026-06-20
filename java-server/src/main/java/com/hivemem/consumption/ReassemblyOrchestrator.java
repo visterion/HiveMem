@@ -113,6 +113,9 @@ public class ReassemblyOrchestrator {
             if (!blank.isEmpty()) {
                 log.info("Blank-page filter: dropped {} blank page(s) from {}", blank.size(), originalName);
             }
+            if (keptDocs.isEmpty()) {
+                log.info("All {} page(s) of {} were blank — no documents ingested", pages.size(), originalName);
+            }
             List<byte[]> parts = splitter.assemble(pdfBytes, keptGroups, rotations);
             // keptDocs and parts are index-aligned: assemble() skips empty groups, and we already
             // dropped entirely-blank documents above.

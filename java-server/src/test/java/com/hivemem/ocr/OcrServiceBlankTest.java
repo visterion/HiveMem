@@ -79,7 +79,11 @@ class OcrServiceBlankTest {
 
         build(repo, seaweed, writeService, tess, raster).processOne(cellId, "key.pdf");
 
-        verify(repo).softDeleteBlankCell(cellId);
+        // Safety-critical ordering: the ocr_pending tag is cleared before the cell is retired,
+        // so a soft-deleted blank cell is never left looking like it still needs OCR.
+        org.mockito.InOrder ord = org.mockito.Mockito.inOrder(repo);
+        ord.verify(repo).removeOcrPendingTag(cellId);
+        ord.verify(repo).softDeleteBlankCell(cellId);
         verify(writeService, never()).reviseCell(any(), eq(cellId), anyString(), any());
     }
 }
