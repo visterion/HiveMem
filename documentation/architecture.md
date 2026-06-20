@@ -219,9 +219,18 @@ Configuration (`hivemem.geocoding.*`):
 
 The `saved_searches` table persists named filter presets for the Scans explorer UI. Each row belongs to an `owner` (token name) and stores the filter state as a `JSONB` blob. Soft-deletion is handled via `valid_until`; active rows have `valid_until IS NULL`. An index on `(owner) WHERE valid_until IS NULL` keeps lookups fast per user.
 
+### Embedding dependency for OCR'd documents
+
+OCR'd scan documents are typically long, and `EmbeddingClient.encodeForCell` returns `null` for content over 500 characters that has no summary yet. So a long scanned cell gets **no embedding at ingest/OCR time**: `WriteToolService.reviseCell` tags it `needs_summary`, and the scheduled summarizer backfill (every 5 min) generates the summary and only then re-embeds the cell. Short documents (≤500 chars) are embedded immediately at OCR time.
+
 ### Content dedup (re-scans)
 
-After OCR writes a scanned cell's text and recomputes its embedding, `DocumentDedupService` runs a two-stage check against current committed scan cells (`source LIKE 'consumption:%'`): pgvector cosine recall (`recall-threshold`) then a normalized character-4-gram Jaccard gate (`text-threshold`). A confirmed re-scan (matching a strictly older cell) is soft-deleted, its attachment binary is removed if no other live cell references it, and a `duplicate_of` tunnel links it to the original. The check is best-effort: any error keeps the document. Note: byte-identical re-uploads are already deduped earlier by SHA-256 in `AttachmentService.ingest`; this step covers same-content/different-bytes re-scans.
+Content-based dedup runs **after** the cell's embedding exists, so it can rely on pgvector recall:
+
+- **Long documents:** dedup runs in `SummarizerService.summarizeOne`, once the summary has been generated and the cell re-embedded.
+- **Short documents (≤500 chars):** the embedding is available immediately, so dedup runs at OCR time in `OcrService`.
+
+`DocumentDedupService.findAndDiscardDuplicate` runs a two-stage check against current committed scan cells, and only ever discards cells whose `source` starts with `consumption:`: pgvector cosine recall (`recall-threshold`) then a normalized character-4-gram Jaccard gate (`text-threshold`). A confirmed re-scan (matching a strictly older cell) is soft-deleted, its attachment binary is removed if no other live cell references it, and a `duplicate_of` tunnel links it to the original. The check is best-effort: any error keeps the document. Note: byte-identical re-uploads are already deduped earlier by SHA-256 in `AttachmentService.ingest`; this step covers same-content/different-bytes re-scans.
 
 Configuration (`hivemem.consumption.dedup.*`):
 
@@ -370,5 +379,10 @@ existing documents without re-deploying or re-ingesting files.
 |---|---|---|---|
 | `POST /admin/backfill-titles` | `limit` (default 200) | `titled` | Give already-summarized documents that have no topic/title a short LLM-generated title. |
 | `POST /admin/backfill-tax-date` | `limit` (default 200) | `processed` | Set `valid_from` from an existing stored `document_date` fact and apply the appropriate tax tag (`steuerrelevant` / `tax-relevant`) via a cheap summary-only classifier. Cells without a stored `document_date` fact are **not** re-extracted from full text (too expensive); only the tax tag is backfilled for those. Idempotent: processed cells receive the marker tag `tax_scanned` and are skipped on subsequent runs. |
+| `POST /admin/dedup-backfill` | — | `checked`, `discarded` | Retro-dedup existing scans: walks live `consumption:`-sourced cells oldest→newest and discards re-scans found via `DocumentDedupService`. **Run only after embeddings have been backfilled** — give the startup `needs_summary` tagging plus one cycle of the 5-min summarizer first, otherwise long scans have no embedding to match on. |
 
-Both endpoints return HTTP 503 `{"error":"summarizer disabled"}` when the summarizer bean is not available (i.e. `HIVEMEM_VISTIERIE_URL` is unset).
+The summarizer-dependent endpoints (`backfill-titles`, `backfill-tax-date`) return HTTP 503 `{"error":"summarizer disabled"}` when the summarizer bean is not available (i.e. `HIVEMEM_VISTIERIE_URL` is unset).
+
+### Self-healing embedding backfill
+
+On startup, `SummarizeBackfillStartupRunner` tags any live committed cell with `embedding IS NULL AND length(content) > 500` as `needs_summary`. The scheduled summarizer (every 5 min) then summarizes and re-embeds those cells. This restores semantic search for scans that previously missed their embedding (e.g. ingested before the embedding-dependency fix).

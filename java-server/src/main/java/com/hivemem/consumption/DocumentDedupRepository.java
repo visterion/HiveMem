@@ -19,19 +19,20 @@ public class DocumentDedupRepository {
         this.dsl = dsl;
     }
 
-    public record TargetCell(UUID id, String content, OffsetDateTime createdAt) {}
+    public record TargetCell(UUID id, String content, String source, OffsetDateTime createdAt) {}
     public record Candidate(UUID id, String content, double cosine) {}
     public record AttachmentKeys(UUID attachmentId, String s3KeyOriginal, String s3KeyThumbnail) {}
 
     /** The current (live) cell to evaluate, or empty if it is not current/committed. */
     public Optional<TargetCell> findTarget(UUID cellId) {
         Record r = dsl.fetchOne(
-                "SELECT id, content, created_at FROM cells "
+                "SELECT id, content, source, created_at FROM cells "
                 + "WHERE id = ? AND valid_until IS NULL AND status = 'committed'", cellId);
         return r == null ? Optional.empty()
                 : Optional.of(new TargetCell(
                         r.get("id", UUID.class),
                         r.get("content", String.class),
+                        r.get("source", String.class),
                         r.get("created_at", OffsetDateTime.class)));
     }
 
@@ -63,6 +64,18 @@ public class DocumentDedupRepository {
                     r.get("cosine", Double.class)));
         }
         return out;
+    }
+
+    /** All live committed consumption-sourced cell ids, oldest first (id tie-break). */
+    public List<UUID> findLiveConsumptionCellIdsOldestFirst() {
+        List<UUID> ids = new ArrayList<>();
+        for (Record r : dsl.fetch(
+                "SELECT id FROM cells "
+                + "WHERE source LIKE 'consumption:%' AND valid_until IS NULL AND status = 'committed' "
+                + "ORDER BY created_at ASC, id ASC")) {
+            ids.add(r.get("id", UUID.class));
+        }
+        return ids;
     }
 
     public int softDeleteCell(UUID cellId) {

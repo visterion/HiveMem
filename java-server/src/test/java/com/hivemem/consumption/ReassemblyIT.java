@@ -5,6 +5,9 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import static org.mockito.ArgumentMatchers.anyInt;
+
+import com.hivemem.ocr.PageOsd;
 import com.hivemem.ocr.PdfPageRasterizer;
 import java.io.ByteArrayOutputStream;
 import java.nio.file.Files;
@@ -40,6 +43,7 @@ class ReassemblyIT extends ConsumptionITSupport {
         ConsumptionProperties cp = new ConsumptionProperties();
         cp.setRealm("documents");
         cp.setReassemblyEnabled(true);
+        cp.setBlankFilterEnabled(false); // blank A4 test pages would otherwise be dropped
 
         VisionMultiClient vm = mock(VisionMultiClient.class);
         when(vm.group(any(), any(), any())).thenReturn(
@@ -47,9 +51,12 @@ class ReassemblyIT extends ConsumptionITSupport {
                 + "{\"page\":3,\"docId\":\"A\",\"isNew\":false,\"confidence\":0.9},"
                 + "{\"page\":2,\"docId\":\"B\",\"isNew\":true,\"confidence\":0.9}]");
 
+        PageOsd osd = mock(PageOsd.class);
+        when(osd.detectRotation(any(), anyInt())).thenReturn(0);
+
         ReassemblyOrchestrator orch = new ReassemblyOrchestrator(
                 cp, new PdfPageRasterizer(), new PageGrouper(vm, cp), new PageReassembler(cp),
-                new BatchSplitter(), attachments, new ConsumptionFileMover(root));
+                new BatchSplitter(), attachments, new ConsumptionFileMover(root), osd);
 
         orch.reassemble(staged, pdf, 3);
 
@@ -83,7 +90,7 @@ class ReassemblyIT extends ConsumptionITSupport {
 
         ReassemblyOrchestrator orch = new ReassemblyOrchestrator(
                 cp, new PdfPageRasterizer(), new PageGrouper(vm, cp), new PageReassembler(cp),
-                new BatchSplitter(), attachments, new ConsumptionFileMover(root));
+                new BatchSplitter(), attachments, new ConsumptionFileMover(root), mock(PageOsd.class));
 
         orch.reassemble(staged, pdf, 3);
 
