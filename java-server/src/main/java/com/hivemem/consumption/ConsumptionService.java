@@ -3,6 +3,7 @@ package com.hivemem.consumption;
 import com.hivemem.attachment.AttachmentService;
 import com.hivemem.attachment.SeaweedFsClient;
 import com.hivemem.ocr.OcrProperties;
+import com.hivemem.ocr.PageOsd;
 import com.hivemem.ocr.PdfPageRasterizer;
 import com.hivemem.ocr.TesseractRunner;
 import java.io.ByteArrayInputStream;
@@ -65,7 +66,8 @@ public class ConsumptionService implements SeparationApplier {
         VisionMultiClient visionMultiClient = visionMultiProvider.getIfAvailable();
         this.reassembly = (visionMultiClient != null)
                 ? new ReassemblyOrchestrator(props, rasterizer, new PageGrouper(visionMultiClient, props),
-                        new PageReassembler(props), splitter, attachments, mover)
+                        new PageReassembler(props), splitter, attachments, mover,
+                        new PageOsd(ocrProps.getTesseractPath()))
                 : null;
     }
 

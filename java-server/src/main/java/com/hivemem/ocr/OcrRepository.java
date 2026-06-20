@@ -55,5 +55,11 @@ public class OcrRepository {
                 + "WHERE id = ?", cellId);
     }
 
+    /** Soft-delete a cell that OCR'd to entirely blank content (retire it; it has no replacement). */
+    public int softDeleteBlankCell(UUID cellId) {
+        return dsl.execute(
+                "UPDATE cells SET valid_until = now() WHERE id = ? AND valid_until IS NULL", cellId);
+    }
+
     public record AttachmentInfo(UUID attachmentId, String s3Key) {}
 }

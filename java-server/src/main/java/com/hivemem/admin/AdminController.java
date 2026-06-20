@@ -4,6 +4,7 @@ import com.hivemem.auth.AuthFilter;
 import com.hivemem.auth.AuthPrincipal;
 import com.hivemem.auth.AuthRole;
 import com.hivemem.auth.TokenService;
+import com.hivemem.consumption.DocumentDedupService;
 import com.hivemem.summarize.SummarizerService;
 import com.hivemem.sync.InstanceConfig;
 import jakarta.servlet.http.HttpServletRequest;
@@ -22,14 +23,17 @@ public class AdminController {
     private final TokenService tokenService;
     private final com.hivemem.attachment.AttachmentChunkRepairService chunkRepair;
     private final ObjectProvider<SummarizerService> summarizer;
+    private final DocumentDedupService dedup;
 
     public AdminController(InstanceConfig instanceConfig, TokenService tokenService,
                            com.hivemem.attachment.AttachmentChunkRepairService chunkRepair,
-                           ObjectProvider<SummarizerService> summarizer) {
+                           ObjectProvider<SummarizerService> summarizer,
+                           DocumentDedupService dedup) {
         this.instanceConfig = instanceConfig;
         this.tokenService = tokenService;
         this.chunkRepair = chunkRepair;
         this.summarizer = summarizer;
+        this.dedup = dedup;
     }
 
     @GetMapping("/identity")
@@ -110,6 +114,14 @@ public class AdminController {
         }
         int processed = svc.backfillTaxAndDate(limit);
         return ResponseEntity.ok(Map.of("processed", processed));
+    }
+
+    /** One-off: deduplicate already-ingested scans (run after embeddings have been backfilled). */
+    @PostMapping("/dedup-backfill")
+    public ResponseEntity<?> dedupBackfill(HttpServletRequest request) {
+        if (!isAdmin(request)) return forbidden();
+        DocumentDedupService.BackfillReport report = dedup.dedupBackfill();
+        return ResponseEntity.ok(Map.of("checked", report.checked(), "discarded", report.discarded()));
     }
 
     private static boolean isAdmin(HttpServletRequest request) {

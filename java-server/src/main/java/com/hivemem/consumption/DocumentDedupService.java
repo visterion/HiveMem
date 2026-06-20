@@ -41,7 +41,11 @@ public class DocumentDedupService {
         try {
             Optional<DocumentDedupRepository.TargetCell> targetOpt = repo.findTarget(cellId);
             if (targetOpt.isEmpty()) return Optional.empty();
-            String targetText = targetOpt.get().content();
+            DocumentDedupRepository.TargetCell target = targetOpt.get();
+            // Only scanned/consumed documents are ever discarded — never manual or agent cells.
+            String source = target.source();
+            if (source == null || !source.startsWith("consumption:")) return Optional.empty();
+            String targetText = target.content();
             if (targetText == null || targetText.isBlank()) return Optional.empty();
 
             List<DocumentDedupRepository.Candidate> candidates =
@@ -57,6 +61,27 @@ public class DocumentDedupService {
             log.warn("Dedup check failed for cell {} (keeping it): {}", cellId, e.toString());
             return Optional.empty();
         }
+    }
+
+    public record BackfillReport(int checked, int discarded) {}
+
+    /**
+     * One-off retro pass: walk live consumption cells oldest→newest and discard any that are
+     * re-scans of a strictly-older cell. Oldest of each duplicate group is kept. Calling
+     * findAndDiscardDuplicate on an already-discarded cell is a safe no-op. Best-effort overall.
+     */
+    public BackfillReport dedupBackfill() {
+        if (!props.isEnabled()) {
+            log.info("Dedup backfill skipped: dedup is disabled");
+            return new BackfillReport(0, 0);
+        }
+        List<UUID> ids = repo.findLiveConsumptionCellIdsOldestFirst();
+        int discarded = 0;
+        for (UUID id : ids) {
+            if (findAndDiscardDuplicate(id).isPresent()) discarded++;
+        }
+        log.info("Dedup backfill: checked {} consumption cells, discarded {}", ids.size(), discarded);
+        return new BackfillReport(ids.size(), discarded);
     }
 
     private void discard(UUID duplicateCellId, UUID originalCellId) {

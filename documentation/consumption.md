@@ -224,6 +224,10 @@ the initial dispatch and the sweep — the sweep degrades rather than retries.
 | `reassembly-render-dpi` | `HIVEMEM_CONSUMPTION_REASSEMBLY_DPI` | `150` | DPI used to rasterize pages into the vision payload (downscaled vs. OCR DPI to keep requests small). |
 | `reassembly-purpose` | `HIVEMEM_CONSUMPTION_REASSEMBLY_PURPOSE` | `separator` | Vistierie routing purpose for the `/llm/vision-multi` call. Needs a routing rule pointing at a vision-capable model (Haiku works; Sonnet for harder visual grouping). |
 | `reassembly-max-tokens` | `HIVEMEM_CONSUMPTION_REASSEMBLY_MAX_TOKENS` | `4096` | Max output tokens for the grouping response. |
+| `blank-filter-enabled` | `HIVEMEM_CONSUMPTION_BLANK_FILTER_ENABLED` | `true` | Drop near-white pages from reassembled documents (image signal). A document whose pages are all blank is dropped entirely, so it never becomes a cell. |
+| `blank-white-fraction` | `HIVEMEM_CONSUMPTION_BLANK_WHITE_FRACTION` | `0.995` | Fraction of near-white pixels above which a page is treated as blank. Higher = more conservative (fewer pages dropped). |
+| `orientation-correction-enabled` | `HIVEMEM_CONSUMPTION_ORIENTATION_CORRECTION_ENABLED` | `true` | Run Tesseract OSD on each kept page and apply the detected rotation when assembling, so stored PDFs are upright. |
+| `osd-timeout-seconds` | `HIVEMEM_CONSUMPTION_OSD_TIMEOUT_SECONDS` | `15` | Per-page timeout for the OSD orientation probe. On failure the page is left unrotated. |
 
 ### New `hivemem.queen.*` keys added by this feature
 
