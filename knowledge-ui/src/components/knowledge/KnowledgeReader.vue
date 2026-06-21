@@ -23,6 +23,19 @@ watch(() => cell.value?.id, () => { tab.value = 'summary'; editing.value = false
 function startEdit() { saveError.value = false; editing.value = true }
 function onCreated() { creating.value = false } // addCell already loads + selects the new cell
 
+const newTag = ref('')
+async function addTag() {
+  const tag = newTag.value.trim()
+  if (!tag || !cell.value) return
+  newTag.value = ''
+  if ((cell.value.tags ?? []).includes(tag)) return
+  await cellStore.addTags(cell.value.id, [tag])
+}
+async function removeTag(tag: string) {
+  if (!cell.value) return
+  await cellStore.removeTags(cell.value.id, [tag])
+}
+
 async function onSave(content: string) {
   if (!cell.value) return
   saving.value = true
@@ -69,6 +82,20 @@ function openDoc() { if (cellStore.currentId) reader.openReader(cellStore.curren
         <button v-if="!editing" class="chip doc" data-test="reader-new" @click="creating = true">＋ {{ t('editor.newCell') }}</button>
       </div>
       <h1 class="h-display title">{{ cellLabel(cell) }}</h1>
+
+      <div v-if="!editing" class="tags-row" data-test="cell-tags">
+        <span v-for="tg in cell.tags" :key="tg" class="tagchip" data-test="cell-tag-chip">
+          {{ tg }}
+          <button class="tagx" data-test="cell-tag-remove" :title="t('editor.removeTag')" @click="removeTag(tg)">✕</button>
+        </span>
+        <input
+          v-model="newTag"
+          class="tag-input"
+          data-test="cell-tag-input"
+          :placeholder="t('editor.addTag')"
+          @keydown.enter.prevent="addTag"
+        />
+      </div>
 
       <div v-if="editing" class="edit-wrap" data-test="reader-editing">
         <p v-if="saveError" class="save-error" data-test="reader-save-error">{{ t('editor.saveError') }}</p>
@@ -128,4 +155,12 @@ function openDoc() { if (cellStore.currentId) reader.openReader(cellStore.curren
 .new-btn { margin-top:18px; padding:8px 16px; min-height:40px; border-radius:9px; border:1px solid var(--line-honey);
   background:var(--honey-dim); color:var(--honey); font-size:13px; font-weight:500; cursor:pointer; }
 .new-btn:hover { background:var(--bg-3); }
+.tags-row { display:flex; flex-wrap:wrap; gap:7px; align-items:center; margin:-8px 0 18px; }
+.tagchip { display:inline-flex; align-items:center; gap:5px; font-size:11px; padding:3px 6px 3px 9px; border-radius:12px;
+  background:var(--bg-4); color:var(--text-1); border:1px solid var(--line); }
+.tagx { background:none; border:none; color:var(--text-2); cursor:pointer; font-size:11px; line-height:1; padding:2px; border-radius:6px; }
+.tagx:hover { color:#ef9a9a; background:var(--bg-3); }
+.tag-input { background:transparent; border:1px dashed var(--line); border-radius:12px; color:var(--text-1);
+  padding:3px 9px; font-size:11px; min-width:110px; }
+.tag-input:focus { outline:none; border-color:var(--accent, #8ab4f8); border-style:solid; }
 </style>

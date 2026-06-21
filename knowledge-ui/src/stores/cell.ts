@@ -70,6 +70,26 @@ export const useCellStore = defineStore('cell', {
         current.cell.attachments = full.attachments ?? []
       }
     },
+    // Inline tag editing via add_tags/remove_tags. The cached cell's tags are updated
+    // optimistically (union / minus) so the reader reflects the change without a re-fetch.
+    async addTags(id: string, tags: string[]): Promise<void> {
+      if (!tags.length) return
+      await useApi().call('add_tags', { cell_id: id, tags })
+      const entry = this.cache.get(id)
+      if (entry) {
+        const merged = new Set([...(entry.cell.tags ?? []), ...tags])
+        entry.cell.tags = [...merged]
+      }
+    },
+    async removeTags(id: string, tags: string[]): Promise<void> {
+      if (!tags.length) return
+      await useApi().call('remove_tags', { cell_id: id, tags })
+      const entry = this.cache.get(id)
+      if (entry) {
+        const drop = new Set(tags)
+        entry.cell.tags = (entry.cell.tags ?? []).filter(t => !drop.has(t))
+      }
+    },
     // Create a new cell via add_cell, then load + select it so the reader shows it.
     // add_cell returns { inserted, id, ... }; the full row comes from get_cell.
     async addCell(opts: {

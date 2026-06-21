@@ -21,6 +21,7 @@ const realms = ref<string[]>([])
 const realm = ref('')
 const signal = ref('')
 const topic = ref('')
+const importance = ref(3)
 const saving = ref(false)
 const error = ref(false)
 
@@ -39,6 +40,7 @@ async function onCreate(content: string) {
       realm: realm.value || 'personal',
       signal: signal.value || undefined,
       topic: topic.value || undefined,
+      importance: importance.value,
     })
     emit('created', res.id)
   } catch {
@@ -78,6 +80,12 @@ async function onCreate(content: string) {
           <span class="nc-label">{{ t('editor.topic') }}</span>
           <input v-model="topic" class="nc-input" data-test="new-cell-topic" :placeholder="t('editor.topicPlaceholder')" />
         </label>
+        <label class="nc-field nc-imp">
+          <span class="nc-label">{{ t('editor.importance') }}</span>
+          <select v-model.number="importance" class="nc-input" data-test="new-cell-importance">
+            <option v-for="n in [1, 2, 3, 4, 5]" :key="n" :value="n">{{ '★'.repeat(n) }} {{ n }}</option>
+          </select>
+        </label>
       </div>
 
       <CellEditor :content="''" :saving="saving" @save="onCreate" @cancel="emit('close')" />
@@ -98,6 +106,7 @@ async function onCreate(content: string) {
 .nc-error { color: #ef9a9a; font-size: 13px; margin: 0; }
 .nc-fields { display: flex; gap: 12px; flex-wrap: wrap; }
 .nc-field { display: flex; flex-direction: column; gap: 4px; flex: 1 1 180px; }
+.nc-imp { flex: 0 0 130px; }
 .nc-label { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-2); }
 .nc-input { background: var(--bg-0); border: 1px solid var(--line); border-radius: 8px; color: var(--text-1);
   padding: 8px 10px; font-size: 13px; min-height: 38px; }
