@@ -119,6 +119,7 @@ export default {
     tunnelSearch: 'Zelle zum Verknüpfen suchen…',
     note: 'Notiz',
     addTunnel: 'Verknüpfen',
+    exportMd: '.md exportieren',
   },
   queen: {
     activity: 'Queen-Aktivität',

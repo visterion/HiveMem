@@ -8,6 +8,7 @@ import HmIcon from '../shell/HmIcon.vue'
 import CellEditor from './CellEditor.vue'
 import NewCellDialog from './NewCellDialog.vue'
 import TunnelEditor from './TunnelEditor.vue'
+import { cellToMarkdown, cellMarkdownFilename } from '../../composables/cellMarkdown'
 
 const cellStore = useCellStore()
 const reader = useReaderStore()
@@ -35,6 +36,19 @@ async function addTag() {
 async function removeTag(tag: string) {
   if (!cell.value) return
   await cellStore.removeTags(cell.value.id, [tag])
+}
+
+function exportMarkdown() {
+  if (!cell.value) return
+  const blob = new Blob([cellToMarkdown(cell.value)], { type: 'text/markdown;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = cellMarkdownFilename(cell.value)
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
 }
 
 async function onSave(content: string) {
@@ -81,6 +95,7 @@ function openDoc() { if (cellStore.currentId) reader.openReader(cellStore.curren
         <button v-if="hasDoc" class="chip honey doc" @click="openDoc">{{ t('reader.openReader') }}</button>
         <button v-if="!editing" class="chip doc" data-test="reader-edit" @click="startEdit">📝 {{ t('editor.edit') }}</button>
         <button v-if="!editing" class="chip doc" data-test="reader-new" @click="creating = true">＋ {{ t('editor.newCell') }}</button>
+        <button v-if="!editing" class="chip doc" data-test="reader-export" @click="exportMarkdown">📤 {{ t('editor.exportMd') }}</button>
       </div>
       <h1 class="h-display title">{{ cellLabel(cell) }}</h1>
 

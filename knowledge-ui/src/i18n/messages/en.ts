@@ -119,6 +119,7 @@ export default {
     tunnelSearch: 'Search a cell to link…',
     note: 'Note',
     addTunnel: 'Link',
+    exportMd: 'Export .md',
   },
   queen: {
     activity: 'Queen activity',
