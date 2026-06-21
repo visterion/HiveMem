@@ -48,7 +48,9 @@ test.describe('obsidian import (SP4)', () => {
     await page.locator('[data-test="obsidian-run"]').click()
 
     const done = page.locator('[data-test="obsidian-done"]')
-    await expect(done).toBeVisible({ timeout: 15000 })
+    // 104 mock calls (52 add_cell + 52 add_tunnel) at 50–200ms each easily exceeds 15s on a
+    // slow CI runner; wait well within the 60s test budget so this isn't a timing race.
+    await expect(done).toBeVisible({ timeout: 50000 })
     // 52 cells + 1 stub (Orphan); 51 sequential links + 1 orphan link = 52 tunnels
     await expect(done).toContainText('52 cells')
     await expect(done).toContainText('1 link stubs')
