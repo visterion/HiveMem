@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { useApi } from '../api/useApi'
 import type { Cell, Fact, Tunnel, SearchResult } from '../api/types'
+import type { ParsedNote } from '../composables/obsidianImport'
 
 type CellEntry = { cell: Cell; facts: Fact[]; tunnels: Tunnel[] }
 
@@ -69,6 +70,48 @@ export const useCellStore = defineStore('cell', {
       if (full && current) {
         current.cell.attachments = full.attachments ?? []
       }
+    },
+    // Bulk-import parsed Obsidian notes: one add_cell per note (default realm when the
+    // note has none), stub cells for [[wiki-links]] whose target isn't in the vault, then
+    // an add_tunnel per link. Title→id mapping resolves links to the cells just created.
+    async importObsidian(
+      notes: ParsedNote[],
+      opts: { defaultRealm: string; onProgress?: (done: number, total: number) => void }
+    ): Promise<{ cellsCreated: number; tunnelsCreated: number; stubsCreated: number }> {
+      const api = useApi()
+      const titleToId = new Map<string, string>()
+      const total = notes.length
+      let done = 0
+      for (const note of notes) {
+        const res = await api.call<{ id: string }>('add_cell', {
+          content: note.content,
+          realm: note.realm || opts.defaultRealm,
+          ...(note.signal ? { signal: note.signal } : {}),
+          topic: note.title,
+          ...(note.tags.length ? { tags: note.tags } : {}),
+          ...(note.validFrom ? { valid_from: note.validFrom } : {})
+        })
+        titleToId.set(note.title, res.id)
+        opts.onProgress?.(++done, total)
+      }
+      let stubsCreated = 0
+      let tunnelsCreated = 0
+      for (const note of notes) {
+        const fromId = titleToId.get(note.title)
+        if (!fromId) continue
+        for (const link of note.links) {
+          let targetId = titleToId.get(link)
+          if (!targetId) {
+            const stub = await api.call<{ id: string }>('add_cell', { content: link, topic: link, realm: opts.defaultRealm })
+            targetId = stub.id
+            titleToId.set(link, targetId)
+            stubsCreated++
+          }
+          await api.call('add_tunnel', { from_cell: fromId, to_cell: targetId, relation: 'related_to' })
+          tunnelsCreated++
+        }
+      }
+      return { cellsCreated: notes.length, tunnelsCreated, stubsCreated }
     },
     // Create a tunnel from the current cell to another via add_tunnel, appending the
     // result to the source cell's cached tunnels so the reader shows it immediately.
