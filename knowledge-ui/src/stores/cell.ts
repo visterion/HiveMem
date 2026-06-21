@@ -70,6 +70,28 @@ export const useCellStore = defineStore('cell', {
         current.cell.attachments = full.attachments ?? []
       }
     },
+    // Append-only edit: revise_cell closes the current version and inserts a new one,
+    // returning { old_id, new_id }. We re-fetch the new revision (falling back to an
+    // optimistic clone of the previous entry) and make it the current cell, keeping the
+    // previous revision in cache so history is never destroyed client-side.
+    async revise(oldId: string, opts: { content: string; summary?: string }): Promise<{ old_id: string; new_id: string }> {
+      const api = useApi()
+      const res = await api.call<{ old_id: string; new_id: string }>('revise_cell', {
+        old_id: oldId,
+        new_content: opts.content,
+        ...(opts.summary !== undefined ? { new_summary: opts.summary } : {})
+      })
+      const prev = this.cache.get(oldId)
+      let newCell = await api.call<Cell>('get_cell', { cell_id: res.new_id }).catch(() => null)
+      if (!newCell && prev) {
+        newCell = { ...prev.cell, id: res.new_id, content: opts.content, summary: opts.summary ?? prev.cell.summary }
+      }
+      if (newCell) {
+        this.store(res.new_id, { cell: newCell, facts: prev?.facts ?? [], tunnels: prev?.tunnels ?? [] })
+        this.currentId = res.new_id
+      }
+      return res
+    },
     store(id: string, entry: CellEntry) {
       this.cache.set(id, entry)
       if (this.cache.size > 50) {

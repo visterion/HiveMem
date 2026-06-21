@@ -96,6 +96,15 @@ export default {
       loadError: 'Could not load the document.',
     }
   },
+  editor: {
+    edit: 'Edit',
+    save: 'Save',
+    saving: 'Saving…',
+    cancel: 'Cancel',
+    showDiff: 'Show diff',
+    hideDiff: 'Hide diff',
+    saveError: 'Could not save the cell.',
+  },
   queen: {
     activity: 'Queen activity',
     pending: 'Pending proposals',

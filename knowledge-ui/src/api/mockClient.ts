@@ -65,6 +65,7 @@ export class MockApiClient implements ApiClient {
       save_search: (a: any) => this.saveSearch(a),
       list_saved_searches: () => this.listSavedSearches(),
       delete_saved_search: (a: any) => this.deleteSavedSearch(a),
+      revise_cell: (a: any) => this.reviseCell(a),
       add_tags: (a: any) => this.addTags(a),
       remove_tags: (a: any) => this.removeTags(a),
       bulk_tag: (a: any) => this.bulkTag(a),
@@ -336,6 +337,32 @@ export class MockApiClient implements ApiClient {
     const c = mockPalace.cells.find(x => x.id === args.cell_id)
     if (!c) throw new Error(`Cell not found: ${args.cell_id}`)
     return c
+  }
+
+  // Append-only revision: close the old version (valid_until) and insert a new cell
+  // with a fresh id and parent link. Mirrors the real revise_cell contract, which
+  // returns only { old_id, new_id } (the caller re-fetches the new revision).
+  private reviseCounter = 1
+  private reviseCell(args: { old_id: string; new_content: string; new_summary?: string }): { old_id: string; new_id: string } {
+    const old = mockPalace.cells.find(c => c.id === args.old_id)
+    if (!old) throw new Error(`Cell not found: ${args.old_id}`)
+    // Guard against id collisions — mockPalace is module-level shared state, so a fresh
+    // client instance (counter reset) could otherwise reuse an id minted in a prior test.
+    let n = this.reviseCounter++
+    while (mockPalace.cells.some(c => c.id === `${args.old_id}-r${n}`)) n = this.reviseCounter++
+    const newId = `${args.old_id}-r${n}`
+    const now = new Date().toISOString()
+    const clone: Cell = {
+      ...old,
+      id: newId,
+      content: args.new_content,
+      summary: args.new_summary ?? old.summary,
+      valid_from: now,
+      valid_until: null,
+    }
+    old.valid_until = now
+    mockPalace.cells.push(clone)
+    return { old_id: args.old_id, new_id: newId }
   }
 
   private quickFacts(args: { subject: string }): Fact[] {

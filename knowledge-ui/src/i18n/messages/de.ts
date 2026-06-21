@@ -96,6 +96,15 @@ export default {
       loadError: 'Dokument konnte nicht geladen werden.',
     }
   },
+  editor: {
+    edit: 'Bearbeiten',
+    save: 'Speichern',
+    saving: 'Speichert…',
+    cancel: 'Abbrechen',
+    showDiff: 'Änderungen zeigen',
+    hideDiff: 'Änderungen verbergen',
+    saveError: 'Zelle konnte nicht gespeichert werden.',
+  },
   queen: {
     activity: 'Queen-Aktivität',
     pending: 'Offene Vorschläge',

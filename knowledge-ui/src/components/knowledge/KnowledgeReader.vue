@@ -5,6 +5,7 @@ import { useCellStore } from '../../stores/cell'
 import { useReaderStore } from '../../stores/reader'
 import { cellLabel } from '../../api/cellLabel'
 import HmIcon from '../shell/HmIcon.vue'
+import CellEditor from './CellEditor.vue'
 
 const cellStore = useCellStore()
 const reader = useReaderStore()
@@ -12,7 +13,27 @@ const { t } = useI18n()
 
 const cell = computed(() => cellStore.current?.cell ?? null)
 const tab = ref<'summary' | 'keypoints' | 'insight' | 'text'>('summary')
-watch(() => cell.value?.id, () => { tab.value = 'summary' })
+const editing = ref(false)
+const saving = ref(false)
+const saveError = ref(false)
+watch(() => cell.value?.id, () => { tab.value = 'summary'; editing.value = false; saveError.value = false })
+
+function startEdit() { saveError.value = false; editing.value = true }
+
+async function onSave(content: string) {
+  if (!cell.value) return
+  saving.value = true
+  saveError.value = false
+  try {
+    await cellStore.revise(cell.value.id, { content })
+    editing.value = false
+    tab.value = 'text'
+  } catch {
+    saveError.value = true
+  } finally {
+    saving.value = false
+  }
+}
 
 const tabs = computed(() => [
   ['summary', t('reader.summary')],
@@ -40,8 +61,16 @@ function openDoc() { if (cellStore.currentId) reader.openReader(cellStore.curren
         <span v-if="cell.signal" class="chip">{{ cell.signal }}</span>
         <span class="chip honey">★ {{ cell.importance }}</span>
         <button v-if="hasDoc" class="chip honey doc" @click="openDoc">{{ t('reader.openReader') }}</button>
+        <button v-if="!editing" class="chip doc" data-test="reader-edit" @click="startEdit">📝 {{ t('editor.edit') }}</button>
       </div>
       <h1 class="h-display title">{{ cellLabel(cell) }}</h1>
+
+      <div v-if="editing" class="edit-wrap" data-test="reader-editing">
+        <p v-if="saveError" class="save-error" data-test="reader-save-error">{{ t('editor.saveError') }}</p>
+        <CellEditor :content="cell.content" :saving="saving" @save="onSave" @cancel="editing = false" />
+      </div>
+
+      <template v-else>
       <div class="tabs">
         <button v-for="[k, lbl] in tabs" :key="k" :class="['tab', { on: tab === k }]" @click="tab = (k as any)">{{ lbl }}</button>
       </div>
@@ -55,6 +84,7 @@ function openDoc() { if (cellStore.currentId) reader.openReader(cellStore.curren
         <div v-else-if="tab === 'insight'" class="insight">{{ cell.insight || '—' }}</div>
         <div v-else class="ocr">{{ cell.content }}</div>
       </div>
+      </template>
     </div>
   </div>
 </template>
@@ -84,4 +114,6 @@ function openDoc() { if (cellStore.currentId) reader.openReader(cellStore.curren
   font-size:14.5px; line-height:1.6; color:var(--text-0); }
 .ocr { font-family:var(--font-mono); font-size:12px; line-height:1.7; color:var(--text-1); background:var(--bg-0);
   border:1px solid var(--line); border-radius:10px; padding:14px; white-space:pre-wrap; }
+.edit-wrap { padding-top:8px; }
+.save-error { color:#ef9a9a; font-size:13px; margin:0 0 8px; }
 </style>
