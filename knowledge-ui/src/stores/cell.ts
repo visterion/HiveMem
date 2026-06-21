@@ -70,6 +70,24 @@ export const useCellStore = defineStore('cell', {
         current.cell.attachments = full.attachments ?? []
       }
     },
+    // Create a new cell via add_cell, then load + select it so the reader shows it.
+    // add_cell returns { inserted, id, ... }; the full row comes from get_cell.
+    async addCell(opts: {
+      content: string; realm?: string; signal?: string | null; topic?: string | null
+      summary?: string; importance?: number
+    }): Promise<{ id: string }> {
+      const api = useApi()
+      const args: Record<string, unknown> = { content: opts.content }
+      if (opts.realm) args.realm = opts.realm
+      if (opts.signal) args.signal = opts.signal
+      if (opts.topic) args.topic = opts.topic
+      if (opts.summary !== undefined) args.summary = opts.summary
+      if (opts.importance !== undefined) args.importance = opts.importance
+      const res = await api.call<{ id: string }>('add_cell', args)
+      this.cache.delete(res.id)
+      await this.load(res.id)
+      return res
+    },
     // Append-only edit: revise_cell closes the current version and inserts a new one,
     // returning { old_id, new_id }. We re-fetch the new revision (falling back to an
     // optimistic clone of the previous entry) and make it the current cell, keeping the

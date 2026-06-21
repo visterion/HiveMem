@@ -65,6 +65,7 @@ export class MockApiClient implements ApiClient {
       save_search: (a: any) => this.saveSearch(a),
       list_saved_searches: () => this.listSavedSearches(),
       delete_saved_search: (a: any) => this.deleteSavedSearch(a),
+      add_cell: (a: any) => this.addCell(a),
       revise_cell: (a: any) => this.reviseCell(a),
       add_tags: (a: any) => this.addTags(a),
       remove_tags: (a: any) => this.removeTags(a),
@@ -337,6 +338,45 @@ export class MockApiClient implements ApiClient {
     const c = mockPalace.cells.find(x => x.id === args.cell_id)
     if (!c) throw new Error(`Cell not found: ${args.cell_id}`)
     return c
+  }
+
+  // Insert a brand-new cell. Mirrors the real add_cell contract, which returns
+  // { inserted, id, realm, signal, topic, status } (the caller re-fetches via get_cell).
+  private addCounter = 1
+  private addCell(args: {
+    content: string; realm?: string; signal?: string; topic?: string
+    summary?: string; key_points?: string[]; insight?: string; tags?: string[]
+    importance?: number; valid_from?: string; status?: string
+  }): { inserted: boolean; id: string; realm: string; signal: string | null; topic: string | null; status: string } {
+    let n = this.addCounter++
+    while (mockPalace.cells.some(c => c.id === `new-${n}`)) n = this.addCounter++
+    const id = `new-${n}`
+    const now = new Date().toISOString()
+    const realm = args.realm ?? 'personal'
+    const signal = (args.signal ?? null) as Cell['signal']
+    const topic = args.topic ?? null
+    const status = (args.status ?? 'committed') as Cell['status']
+    const cell: Cell = {
+      id,
+      realm,
+      signal,
+      topic,
+      title: topic ?? (args.content.slice(0, 40)),
+      content: args.content,
+      summary: args.summary ?? null,
+      key_points: args.key_points ?? [],
+      insight: args.insight ?? null,
+      tags: args.tags ?? [],
+      importance: (args.importance ?? 3) as Cell['importance'],
+      status,
+      created_by: 'mock-user',
+      created_at: now,
+      valid_from: args.valid_from ?? now,
+      valid_until: null,
+      attachments: [],
+    }
+    mockPalace.cells.push(cell)
+    return { inserted: true, id, realm, signal, topic, status }
   }
 
   // Append-only revision: close the old version (valid_until) and insert a new cell

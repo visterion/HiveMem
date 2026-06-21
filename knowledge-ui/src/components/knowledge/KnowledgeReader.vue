@@ -6,6 +6,7 @@ import { useReaderStore } from '../../stores/reader'
 import { cellLabel } from '../../api/cellLabel'
 import HmIcon from '../shell/HmIcon.vue'
 import CellEditor from './CellEditor.vue'
+import NewCellDialog from './NewCellDialog.vue'
 
 const cellStore = useCellStore()
 const reader = useReaderStore()
@@ -14,11 +15,13 @@ const { t } = useI18n()
 const cell = computed(() => cellStore.current?.cell ?? null)
 const tab = ref<'summary' | 'keypoints' | 'insight' | 'text'>('summary')
 const editing = ref(false)
+const creating = ref(false)
 const saving = ref(false)
 const saveError = ref(false)
 watch(() => cell.value?.id, () => { tab.value = 'summary'; editing.value = false; saveError.value = false })
 
 function startEdit() { saveError.value = false; editing.value = true }
+function onCreated() { creating.value = false } // addCell already loads + selects the new cell
 
 async function onSave(content: string) {
   if (!cell.value) return
@@ -52,6 +55,7 @@ function openDoc() { if (cellStore.currentId) reader.openReader(cellStore.curren
       <div class="hexbig"><HmIcon name="reader" :size="40" /></div>
       <div class="h-display" style="font-size:21px;color:var(--text-1)">{{ t('knowledge.selectCell') }}</div>
       <div style="margin-top:8px;font-size:14px;color:var(--text-2)">{{ t('knowledge.selectCellSub') }}</div>
+      <button class="new-btn" data-test="reader-new" @click="creating = true">＋ {{ t('editor.newCell') }}</button>
     </div>
   </div>
   <div v-else class="reader fade-in" :key="cell.id">
@@ -62,6 +66,7 @@ function openDoc() { if (cellStore.currentId) reader.openReader(cellStore.curren
         <span class="chip honey">★ {{ cell.importance }}</span>
         <button v-if="hasDoc" class="chip honey doc" @click="openDoc">{{ t('reader.openReader') }}</button>
         <button v-if="!editing" class="chip doc" data-test="reader-edit" @click="startEdit">📝 {{ t('editor.edit') }}</button>
+        <button v-if="!editing" class="chip doc" data-test="reader-new" @click="creating = true">＋ {{ t('editor.newCell') }}</button>
       </div>
       <h1 class="h-display title">{{ cellLabel(cell) }}</h1>
 
@@ -87,6 +92,10 @@ function openDoc() { if (cellStore.currentId) reader.openReader(cellStore.curren
       </template>
     </div>
   </div>
+
+  <!-- Hoisted to a stable top-level node so it survives the empty→reader transition
+       when a freshly created cell loads (otherwise its `created` emit is lost). -->
+  <NewCellDialog v-if="creating" @created="onCreated" @close="creating = false" />
 </template>
 
 <style scoped>
@@ -116,4 +125,7 @@ function openDoc() { if (cellStore.currentId) reader.openReader(cellStore.curren
   border:1px solid var(--line); border-radius:10px; padding:14px; white-space:pre-wrap; }
 .edit-wrap { padding-top:8px; }
 .save-error { color:#ef9a9a; font-size:13px; margin:0 0 8px; }
+.new-btn { margin-top:18px; padding:8px 16px; min-height:40px; border-radius:9px; border:1px solid var(--line-honey);
+  background:var(--honey-dim); color:var(--honey); font-size:13px; font-weight:500; cursor:pointer; }
+.new-btn:hover { background:var(--bg-3); }
 </style>
