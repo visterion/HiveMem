@@ -116,6 +116,9 @@ export default {
     topicPlaceholder: 'Short topic (optional)',
     create: 'Create',
     createError: 'Could not create the cell.',
+    tunnelSearch: 'Search a cell to link…',
+    note: 'Note',
+    addTunnel: 'Link',
   },
   queen: {
     activity: 'Queen activity',

@@ -66,6 +66,7 @@ export class MockApiClient implements ApiClient {
       list_saved_searches: () => this.listSavedSearches(),
       delete_saved_search: (a: any) => this.deleteSavedSearch(a),
       add_cell: (a: any) => this.addCell(a),
+      add_tunnel: (a: any) => this.addTunnel(a),
       revise_cell: (a: any) => this.reviseCell(a),
       add_tags: (a: any) => this.addTags(a),
       remove_tags: (a: any) => this.removeTags(a),
@@ -377,6 +378,30 @@ export class MockApiClient implements ApiClient {
     }
     mockPalace.cells.push(cell)
     return { inserted: true, id, realm, signal, topic, status }
+  }
+
+  // Create a cell→cell tunnel. Mirrors add_tunnel, returning
+  // { id, from_cell, to_cell, relation, note, status }.
+  private tunnelCounter = 1
+  private addTunnel(args: { from_cell: string; to_cell: string; relation: string; note?: string; status?: string }):
+    { id: string; from_cell: string; to_cell: string; relation: string; note: string | null; status: string } {
+    let n = this.tunnelCounter++
+    while (mockPalace.tunnels.some(t => t.id === `tun-new-${n}`)) n = this.tunnelCounter++
+    const id = `tun-new-${n}`
+    const note = args.note ?? null
+    const status = (args.status ?? 'committed') as Tunnel['status']
+    const tunnel: Tunnel = {
+      id,
+      from_cell: args.from_cell,
+      to_cell: args.to_cell,
+      relation: args.relation as Tunnel['relation'],
+      note,
+      status,
+      created_at: new Date().toISOString(),
+      valid_until: null,
+    }
+    mockPalace.tunnels.push(tunnel)
+    return { id, from_cell: args.from_cell, to_cell: args.to_cell, relation: args.relation, note, status }
   }
 
   // Append-only revision: close the old version (valid_until) and insert a new cell

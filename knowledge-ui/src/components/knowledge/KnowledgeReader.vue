@@ -7,6 +7,7 @@ import { cellLabel } from '../../api/cellLabel'
 import HmIcon from '../shell/HmIcon.vue'
 import CellEditor from './CellEditor.vue'
 import NewCellDialog from './NewCellDialog.vue'
+import TunnelEditor from './TunnelEditor.vue'
 
 const cellStore = useCellStore()
 const reader = useReaderStore()
@@ -116,6 +117,7 @@ function openDoc() { if (cellStore.currentId) reader.openReader(cellStore.curren
         <div v-else-if="tab === 'insight'" class="insight">{{ cell.insight || '—' }}</div>
         <div v-else class="ocr">{{ cell.content }}</div>
       </div>
+      <TunnelEditor :key="cell.id" />
       </template>
     </div>
   </div>

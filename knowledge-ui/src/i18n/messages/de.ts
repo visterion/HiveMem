@@ -116,6 +116,9 @@ export default {
     topicPlaceholder: 'Kurzes Thema (optional)',
     create: 'Anlegen',
     createError: 'Zelle konnte nicht angelegt werden.',
+    tunnelSearch: 'Zelle zum Verknüpfen suchen…',
+    note: 'Notiz',
+    addTunnel: 'Verknüpfen',
   },
   queen: {
     activity: 'Queen-Aktivität',

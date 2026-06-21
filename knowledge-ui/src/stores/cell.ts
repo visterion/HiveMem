@@ -70,6 +70,29 @@ export const useCellStore = defineStore('cell', {
         current.cell.attachments = full.attachments ?? []
       }
     },
+    // Create a tunnel from the current cell to another via add_tunnel, appending the
+    // result to the source cell's cached tunnels so the reader shows it immediately.
+    async addTunnel(fromId: string, toId: string, relation: string, note?: string):
+      Promise<{ id: string; from_cell: string; to_cell: string; relation: string; note: string | null; status: string }> {
+      const res = await useApi().call<{ id: string; from_cell: string; to_cell: string; relation: string; note: string | null; status: string }>(
+        'add_tunnel',
+        { from_cell: fromId, to_cell: toId, relation, ...(note ? { note } : {}) }
+      )
+      const entry = this.cache.get(fromId)
+      if (entry) {
+        entry.tunnels = [...entry.tunnels, {
+          id: res.id,
+          from_cell: res.from_cell,
+          to_cell: res.to_cell,
+          relation: res.relation as Tunnel['relation'],
+          note: res.note ?? null,
+          status: (res.status ?? 'committed') as Tunnel['status'],
+          created_at: new Date().toISOString(),
+          valid_until: null,
+        }]
+      }
+      return res
+    },
     // Inline tag editing via add_tags/remove_tags. The cached cell's tags are updated
     // optimistically (union / minus) so the reader reflects the change without a re-fetch.
     async addTags(id: string, tags: string[]): Promise<void> {
