@@ -73,7 +73,7 @@ Extended Mind, Forgetting Curve, Zettelkasten, PARA).
 [![GitHub release](https://img.shields.io/github/v/tag/visterion/HiveMem?label=release)](https://github.com/visterion/HiveMem/releases)
 [![GHCR](https://img.shields.io/badge/ghcr.io-visterion%2Fhivemem-blue)](https://github.com/visterion/HiveMem/pkgs/container/hivemem)
 [![Java](https://img.shields.io/badge/java-25-blue)](https://openjdk.org)
-[![Spring Boot](https://img.shields.io/badge/spring%20boot-4.0.6-6DB33F)](https://spring.io/projects/spring-boot)
+[![Spring Boot](https://img.shields.io/badge/spring%20boot-4.1.0-6DB33F)](https://spring.io/projects/spring-boot)
 [![PostgreSQL](https://img.shields.io/badge/postgresql-17-336791)](https://postgresql.org)
 [![Tests](https://img.shields.io/badge/tests-JUnit%20%2B%20Testcontainers-brightgreen)](https://github.com/visterion/HiveMem/actions/workflows/ci.yml)
 [![MCP Tools](https://img.shields.io/badge/MCP%20tools-46-orange)](documentation/tools.md)
@@ -91,7 +91,9 @@ Extended Mind, Forgetting Curve, Zettelkasten, PARA).
 - **[Long cells stay searchable](documentation/summarizer.md)** — auto-summarizer turns multi-page documents into curated summaries that are embedded for semantic search; cost-capped, opt-in.
 - **[Scanned PDFs become searchable](documentation/ocr.md)** — Tesseract OCR extracts text from scan-only PDFs; combined with the auto-summarizer, even paper-mailed documents are findable by semantic search.
 - **[Consumption folder — auto document separation](documentation/consumption.md)** — Drop a stack of mixed scans into a network folder (SMB); HiveMem OCRs each page and uses a Vistierie LLM agent to split multi-page batches into individual documents **by content** — no separator or barcode sheets. The USP over Paperless-ngx; live in production.
-- **[Document-Type Extraction](documentation/extraction.md)** — invoices, contracts, and other typed documents are auto-classified during summarization; typed facts (vendor, amount, parties, dates) land in the knowledge graph.
+- **[Document-Type Extraction](documentation/extraction.md)** — invoices, contracts, and other typed documents are auto-classified during summarization; typed facts (vendor, amount, parties, dates) land in the knowledge graph. The summarizer also detects content language and **tax relevance** (auto-applying a `steuerrelevant`/`tax-relevant` tag) and parses each document's own date into the cell's `valid_from`, so timeline and sort-by-date views reflect the document date, not the ingest time.
+- **[Photos & EXIF gallery](documentation/architecture.md#image-exif--geolocation)** — image uploads get pixel size, capture date, camera, and GPS extracted at ingest; GPS coordinates are reverse-geocoded to a place name. A justified-grid **Photos** route groups shots by date with an EXIF lightbox and "show in graph".
+- **Re-scan deduplication** — the same paper scanned twice (different bytes, same content) is caught after embedding via a two-stage pgvector-recall + character-4-gram Jaccard gate; the re-scan is soft-deleted, its orphaned binary removed, and a `duplicate_of` tunnel links it to the original. Byte-identical re-uploads are already deduped earlier by SHA-256.
 - **[Kroki + Vision](documentation/kroki-vision.md)** — Diagram thumbnails (Mermaid/PlantUML/Graphviz/D2) and image description via Claude Haiku — async, opt-in, budget-capped.
 - **[Append-Only Versioning + Time Machine](documentation/structure.md)** — No data is ever deleted. Query your knowledge at any point in time.
 - **[Agent Fleet + Approval Workflow](documentation/auth.md)** — Agents write pending suggestions; only admins approve. Every write is human-gated.
@@ -113,7 +115,9 @@ for details on every 🟡 / 🔴 row.
 | [Progressive Summarization](documentation/tools.md#progressive-summarization) | ✅ Stable | content / summary / key points / insight, all four populated automatically |
 | [Auto-Summarizer for long cells](documentation/summarizer.md) | ✅ Stable | summary is embedded for semantic search, cost-capped per realm |
 | [OCR for scanned PDFs](documentation/ocr.md) | ✅ Stable | Tesseract, async backfill, Vision fallback |
-| [Document-Type Extraction](documentation/extraction.md) | ✅ Stable | invoices/contracts/etc → typed facts in the knowledge graph |
+| [Document-Type Extraction](documentation/extraction.md) | ✅ Stable | invoices/contracts/etc → typed facts in the knowledge graph; language + tax-relevance detection, document-date → `valid_from` |
+| [Photos & EXIF gallery](documentation/architecture.md#image-exif--geolocation) | ✅ Stable | EXIF pixel size/capture date/camera/GPS at ingest, reverse-geocoded place name, justified-grid Photos route + lightbox |
+| Re-scan content dedup | ✅ Stable | post-embedding pgvector recall + Jaccard gate; soft-deletes `consumption:` re-scans, `duplicate_of` tunnel to the original; `POST /admin/dedup-backfill` retro-dedupes existing scans |
 | [Kroki + Vision](documentation/kroki-vision.md) | ✅ Stable | diagram thumbnails + Claude Haiku image description, opt-in, budget-capped |
 | [Append-Only Versioning + Time Machine](documentation/structure.md) | ✅ Stable | `time_machine` queries by event time and ingestion time |
 | [Agent Approval Workflow](documentation/auth.md) | ✅ Stable | every agent write lands as `pending` until an admin approves |
