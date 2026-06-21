@@ -27,6 +27,9 @@ test.describe('obsidian import (SP4)', () => {
   test.use({ viewport: { width: 1280, height: 800 } })
 
   test('imports a 50+ note vault with tags and wiki-link tunnels', async ({ page }) => {
+    // 52 notes × (add_cell + add_tunnel) through the mock's 50–200ms latency is heavy;
+    // give it headroom so CPU contention under parallel runs doesn't flake it.
+    test.setTimeout(60_000)
     await gotoMock(page, '/')
     await page.locator('[data-test="reader-import"]').first().click()
     await expect(page.locator('[data-test="obsidian-dialog"]')).toBeVisible()

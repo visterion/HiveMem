@@ -99,6 +99,7 @@ Extended Mind, Forgetting Curve, Zettelkasten, PARA).
 - **[Agent Fleet + Approval Workflow](documentation/auth.md)** — Agents write pending suggestions; only admins approve. Every write is human-gated.
 - **[Auto-Inject Hook for Claude Code](documentation/hook/)** — Relevant memories injected into every session automatically, before you even ask.
 - **[Full instance portability](documentation/backup.md)** — Export the entire HiveMem instance (Postgres + attachments + identity) into one tar.gz, restore it on another host with one command. Mission promise made provable.
+- **In-browser cell editor + Obsidian import** — edit any cell inline (CodeMirror, append-only `revise_cell` with a pre-save diff), create cells, manage tags/tunnels, export a cell as `.md`, and **bulk-import an Obsidian vault** from a `.zip`: each note becomes a cell, `[[wiki-links]]` become tunnels (missing targets stubbed), `#tags` become tags, and frontmatter `created` becomes `valid_from`. Fully client-side — no backend changes.
 - **Bilingual UI** (German/English, German-first) with a backend-configured default language.
 
 → **[Get started](documentation/getting-started.md)**
