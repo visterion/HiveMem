@@ -1,6 +1,7 @@
 package com.hivemem.attachment;
 
 import com.hivemem.embedding.EmbeddingClient;
+import com.hivemem.embedding.EmbeddingUnavailableException;
 import com.hivemem.write.WriteToolRepository;
 import org.jooq.DSLContext;
 import org.junit.jupiter.api.BeforeEach;
@@ -11,6 +12,7 @@ import org.springframework.context.ApplicationEventPublisher;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Optional;
@@ -21,7 +23,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -111,6 +115,44 @@ class AttachmentServiceUnitTest {
         when(seaweedFs.download("thumb.jpg")).thenReturn(stream);
 
         assertThat(service.downloadThumbnail(id)).isSameAs(stream);
+    }
+
+    @Test
+    void ingestCommitsWithoutEmbeddingWhenServiceUnavailable() throws Exception {
+        props.setEnabled(true);
+
+        when(parsers.parse(eq("text/plain"), any()))
+                .thenReturn(ParseResult.empty());
+        when(embeddingClient.encodeForCell(anyString(), any()))
+                .thenThrow(new EmbeddingUnavailableException("service down", null));
+
+        UUID attId = UUID.randomUUID();
+        UUID cellId = UUID.randomUUID();
+        when(repo.findByHash(anyString())).thenReturn(Optional.empty());
+        Map<String, Object> attRow = new LinkedHashMap<>();
+        attRow.put("id", attId.toString());
+        attRow.put("file_hash", "h");
+        attRow.put("s3_key_original", "orig/f.txt");
+        attRow.put("s3_key_thumbnail", null);
+        when(repo.insert(anyString(), anyString(), anyString(), org.mockito.ArgumentMatchers.anyLong(),
+                anyString(), org.mockito.ArgumentMatchers.nullable(String.class), anyString(),
+                org.mockito.ArgumentMatchers.nullable(Integer.class))).thenReturn(attRow);
+        Map<String, Object> cellRow = new LinkedHashMap<>();
+        cellRow.put("id", cellId.toString());
+        when(writeRepo.addCell(anyString(), isNull(), anyString(), any(), any(), anyString(),
+                any(), any(), any(), any(), any(), any(), anyString(), anyString(), any()))
+                .thenReturn(cellRow);
+
+        InputStream in = new ByteArrayInputStream("hello".getBytes());
+        service.ingest(in, "f.txt", "text/plain", "work", "facts", "notes", null, "user");
+
+        // addCell must have been called with a null embedding
+        ArgumentCaptor<List> embeddingCaptor = ArgumentCaptor.forClass(List.class);
+        verify(writeRepo).addCell(anyString(), isNull(), anyString(), any(), any(), anyString(),
+                any(), any(), any(), any(), any(), any(), anyString(), anyString(), any());
+
+        // tagEmbeddingPending must have been called with the cell's UUID
+        verify(writeRepo).tagEmbeddingPending(cellId);
     }
 
     @Test

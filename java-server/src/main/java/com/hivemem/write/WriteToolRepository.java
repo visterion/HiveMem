@@ -137,6 +137,13 @@ public class WriteToolRepository {
                 + "WHERE id = ?", id);
     }
 
+    public void tagEmbeddingPending(UUID id) {
+        dslContext.execute(
+                "UPDATE cells SET tags = "
+                + "  CASE WHEN 'embedding_pending' = ANY(tags) THEN tags ELSE array_append(tags, 'embedding_pending') END "
+                + "WHERE id = ?", id);
+    }
+
     public int upsertIdentity(String key, String content, int tokenCount) {
         return dslContext.execute("""
                 INSERT INTO identity (key, content, token_count, updated_at)
