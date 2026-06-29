@@ -23,6 +23,16 @@ public class ConsumptionFileMover {
     public Path moveToFailed(Path src) throws IOException { return move(src, FAILED); }
     public Path moveToProcessing(Path src) throws IOException { return move(src, PROCESSING); }
 
+    public Path moveToRoot(Path src) throws IOException {
+        Files.createDirectories(root);
+        Path dest = root.resolve(src.getFileName());
+        while (Files.exists(dest)) {
+            dest = root.resolve(suffixed(src.getFileName().toString(), counter.incrementAndGet()));
+        }
+        Files.move(src, dest, StandardCopyOption.ATOMIC_MOVE);
+        return dest;
+    }
+
     private Path move(Path src, String subdir) throws IOException {
         Path targetDir = root.resolve(subdir);
         Files.createDirectories(targetDir);

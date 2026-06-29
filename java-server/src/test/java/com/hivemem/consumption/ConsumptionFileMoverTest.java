@@ -27,6 +27,18 @@ class ConsumptionFileMoverTest {
     }
 
     @Test
+    void movesFromProcessingSubdirBackToRoot(@TempDir Path root) throws Exception {
+        ConsumptionFileMover mover = new ConsumptionFileMover(root);
+        Path processingDir = root.resolve("processing");
+        Files.createDirectories(processingDir);
+        Path src = Files.writeString(processingDir.resolve("stale.pdf"), "stale");
+        Path dest = mover.moveToRoot(src);
+        assertFalse(Files.exists(src), "file should no longer be in processing/");
+        assertEquals(root, dest.getParent(), "file should land directly in root");
+        assertTrue(Files.exists(dest), "file should exist in root");
+    }
+
+    @Test
     void suffixesOnCollision(@TempDir Path root) throws Exception {
         ConsumptionFileMover mover = new ConsumptionFileMover(root);
         Path a = Files.writeString(root.resolve("scan.pdf"), "a");
