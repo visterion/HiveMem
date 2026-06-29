@@ -60,7 +60,6 @@ public class ReassemblyOrchestrator {
             catch (Exception e) { log.error("Could not move {} to failed/: {}", originalName, e.toString()); }
             return;
         }
-        boolean anyIngested = false;
         try {
             List<byte[]> pages = rasterizer.rasterize(pdfBytes, props.getReassemblyRenderDpi(), props.getMaxPages());
 
@@ -120,30 +119,29 @@ public class ReassemblyOrchestrator {
             // keptDocs and parts are index-aligned: assemble() skips empty groups, and we already
             // dropped entirely-blank documents above.
 
+            boolean ingestFailed = false;
             for (int k = 0; k < parts.size(); k++) {
                 String partName = stripPdf(originalName) + "-" + (k + 1) + ".pdf";
                 try (var in = new ByteArrayInputStream(parts.get(k))) {
                     attachments.ingest(in, partName, "application/pdf", props.getRealm(),
                             null, null, null, "consumption", keptDocs.get(k).status(), "consumption:");
+                } catch (Exception ingestErr) {
+                    ingestFailed = true;
+                    log.warn("Reassembly sub-document {} of {} failed to ingest: {}", k + 1, originalName, ingestErr.toString());
+                    break;
                 }
-                anyIngested = true;
+            }
+            if (ingestFailed) {
+                try { mover.moveToFailed(staged); }
+                catch (Exception me) { log.error("Could not move {} to failed/: {}", originalName, me.toString()); }
+                return;
             }
             mover.moveToProcessed(staged);
             log.info("Reassembled {} into {} documents", originalName, parts.size());
         } catch (Exception e) {
-            if (anyIngested) {
-                // We already committed at least one sub-document. Re-ingesting the whole batch as one
-                // pending document would duplicate content. Leave the partial result and just retire the
-                // staged file — never both partially-commit AND degrade.
-                log.error("Reassembly partially ingested then failed for {} — leaving partial result, "
-                        + "NOT degrading to avoid duplicates: {}", originalName, e.toString());
-                try { mover.moveToProcessed(staged); }
-                catch (Exception me) { log.warn("Could not move {} to processed/: {}", originalName, me.toString()); }
-            } else {
-                log.warn("Reassembly failed for {}: {} - degrading to one pending document",
-                        originalName, e.toString());
-                degradeToPending(staged, pdfBytes, originalName);
-            }
+            log.warn("Reassembly failed for {}: {} - degrading to one pending document",
+                    originalName, e.toString());
+            degradeToPending(staged, pdfBytes, originalName);
         }
     }
 
