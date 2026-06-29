@@ -96,6 +96,54 @@ curl -s -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
 
 The sweep is idempotent — it detects and skips already-clean objects, so it is safe to re-run.
 
+## Consumption (Bulk Import)
+
+Drop scan files (PDF, images) into the consumption watch directory. The pipeline picks them up automatically.
+
+### Page limit
+
+PDFs larger than `hivemem.consumption.max-pages` (default 200) are moved straight to `failed/` at intake. Split oversized PDFs before dropping them in.
+
+### Automatic recovery
+
+The `ConsumptionRecoverySweep` runs at startup and every 5 minutes (configurable). It handles two failure modes without operator action:
+
+- **Crash-stranded files** — files whose ledger row is still `processing` past `hivemem.consumption.recovery-stale-threshold` (default 30 min) are re-staged automatically. This covers files that were mid-ingest when the container was restarted.
+- **Failed files** — files in `failed/` are moved back to the watch root and retried as long as their attempt count is below `hivemem.consumption.failed-retry-limit` (default 3). Files that exhaust the retry limit remain in `failed/` for manual inspection.
+
+### Embedding backfill
+
+If the embedding service is unavailable when a cell is committed, the cell is tagged `embedding_pending` and committed without a vector. `EmbeddingBackfillService` finds all such cells every `hivemem.embedding.backfill-interval-ms` (default 5 min) and backfills their embeddings once the service recovers. Semantic search is restored within one backfill cycle — no operator action needed.
+
+### Verifying completeness
+
+After a bulk import, check the ledger and the `failed/` directory:
+
+```sql
+-- All files should be 'done'; any 'failed' or 'processing' rows need attention
+SELECT state, count(*) FROM consumption_file GROUP BY state;
+```
+
+```bash
+# Inspect any terminally failed files
+ls /path/to/consumption/failed/
+```
+
+For embedding coverage, count cells with the `embedding_pending` tag — it should drop to zero within one backfill cycle after the embedding service is healthy.
+
+### Configuration
+
+| Property | Default | Description |
+|---|---|---|
+| `hivemem.consumption.recovery-interval` | `5m` | How often the recovery sweep runs |
+| `hivemem.consumption.recovery-stale-threshold` | `30m` | How long a `processing` ledger row must be stale before it is re-staged |
+| `hivemem.consumption.failed-retry-limit` | `3` | Max retry attempts for files in `failed/` before they are left there permanently |
+| `hivemem.embedding.timeout` | `30s` | HTTP timeout per embedding request |
+| `hivemem.embedding.max-retries` | `3` | Retry attempts before the embedding request is abandoned |
+| `hivemem.embedding.retry-backoff-ms` | `500` | Base backoff (ms, exponential) between embedding retries |
+| `hivemem.embedding.backfill-interval-ms` | `300000` | How often the embedding backfill sweep runs (ms) |
+| `hivemem.embedding.backfill-batch-size` | `50` | Max cells processed per backfill sweep |
+
 ## Debugging
 
 ```bash
