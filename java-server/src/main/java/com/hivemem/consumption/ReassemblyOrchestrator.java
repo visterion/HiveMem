@@ -49,6 +49,14 @@ public class ReassemblyOrchestrator {
 
     /** Reassemble one staged batch. Never throws: on any failure it degrades to one pending document. */
     public void reassemble(Path staged, byte[] pdfBytes, int pageCount) {
+        reassemble(staged, pdfBytes, pageCount, null, null);
+    }
+
+    /** Reassemble one staged batch. Never throws: on any failure it degrades to one pending document.
+     *  @param hash     sha256 of pdfBytes (nullable — ledger is skipped when null)
+     *  @param fileRepo ledger repository (nullable)
+     */
+    public void reassemble(Path staged, byte[] pdfBytes, int pageCount, String hash, ConsumptionFileRepository fileRepo) {
         String originalName = staged.getFileName().toString();
         // maxPages guard (mirrors separateStaged): the rasterizer caps at maxPages, which would silently
         // drop trailing pages. Reject explicitly so operators re-scan smaller or raise the cap.
@@ -58,6 +66,8 @@ public class ReassemblyOrchestrator {
                     originalName, pageCount, props.getMaxPages());
             try { mover.moveToFailed(staged); }
             catch (Exception e) { log.error("Could not move {} to failed/: {}", originalName, e.toString()); }
+            if (fileRepo != null) fileRepo.markFailed(hash,
+                    "page count " + pageCount + " exceeds max-pages " + props.getMaxPages());
             return;
         }
         try {
@@ -132,20 +142,28 @@ public class ReassemblyOrchestrator {
                 }
             }
             if (ingestFailed) {
+                if (fileRepo != null) fileRepo.markFailed(hash, "reassembly sub-doc ingest failed");
                 try { mover.moveToFailed(staged); }
                 catch (Exception me) { log.error("Could not move {} to failed/: {}", originalName, me.toString()); }
                 return;
             }
             mover.moveToProcessed(staged);
+            if (fileRepo != null) fileRepo.markDone(hash);
             log.info("Reassembled {} into {} documents", originalName, parts.size());
         } catch (Exception e) {
             log.warn("Reassembly failed for {}: {} - degrading to one pending document",
                     originalName, e.toString());
-            degradeToPending(staged, pdfBytes, originalName);
+            degradeToPending(staged, pdfBytes, originalName, hash, fileRepo);
         }
     }
 
+
     private void degradeToPending(Path staged, byte[] pdfBytes, String originalName) {
+        degradeToPending(staged, pdfBytes, originalName, null, null);
+    }
+
+    private void degradeToPending(Path staged, byte[] pdfBytes, String originalName,
+                                  String hash, ConsumptionFileRepository fileRepo) {
         try (var in = new ByteArrayInputStream(pdfBytes)) {
             attachments.ingest(in, originalName, "application/pdf", props.getRealm(),
                     null, null, null, "consumption", "pending", "consumption:");
@@ -154,6 +172,8 @@ public class ReassemblyOrchestrator {
         }
         try { mover.moveToProcessed(staged); }
         catch (Exception e) { log.warn("Could not move {} to processed/: {}", originalName, e.toString()); }
+        // Batch was salvaged as one pending doc — terminal, not stranded
+        if (fileRepo != null) fileRepo.markDone(hash);
     }
 
     private static String stripPdf(String name) {

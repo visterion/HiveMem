@@ -85,6 +85,7 @@ abstract class ConsumptionITSupport {
         dsl.execute("DELETE FROM cells");
         dsl.execute("DELETE FROM attachments");
         dsl.execute("DELETE FROM consumption_jobs");
+        dsl.execute("DELETE FROM consumption_file");
         dsl.execute("DELETE FROM ops_log");
         dsl.execute("INSERT INTO instance_identity (id, instance_id) VALUES (1, gen_random_uuid()) ON CONFLICT DO NOTHING");
 
@@ -138,8 +139,13 @@ abstract class ConsumptionITSupport {
     }
 
     /** Build a ConsumptionService wired to the shared collaborators, with no VistierieSeparationClient
-     *  (so the single-doc path is taken and apply() works without queen). */
+     *  (so the single-doc path is taken and apply() works without queen). No ledger repo. */
     protected ConsumptionService buildService(ConsumptionProperties cp) {
+        return buildService(cp, null);
+    }
+
+    /** Build a ConsumptionService wired to the shared collaborators with an optional ledger repo. */
+    protected ConsumptionService buildService(ConsumptionProperties cp, ConsumptionFileRepository fileRepo) {
         OcrProperties ocrProps = new OcrProperties();
         ObjectProvider<VistierieSeparationClient> nullProvider = new ObjectProvider<>() {
             @Override public VistierieSeparationClient getObject(Object... args) { return null; }
@@ -155,6 +161,13 @@ abstract class ConsumptionITSupport {
             @Override public VisionMultiClient getIfUnique() { return null; }
             @Override public Stream<VisionMultiClient> stream() { return Stream.empty(); }
         };
-        return new ConsumptionService(cp, attachments, ocrProps, seaweed, jobRepo, nullProvider, nullVisionProvider);
+        ObjectProvider<ConsumptionFileRepository> fileRepoProvider = new ObjectProvider<>() {
+            @Override public ConsumptionFileRepository getObject(Object... args) { return fileRepo; }
+            @Override public ConsumptionFileRepository getObject() { return fileRepo; }
+            @Override public ConsumptionFileRepository getIfAvailable() { return fileRepo; }
+            @Override public ConsumptionFileRepository getIfUnique() { return fileRepo; }
+            @Override public Stream<ConsumptionFileRepository> stream() { return fileRepo != null ? Stream.of(fileRepo) : Stream.empty(); }
+        };
+        return new ConsumptionService(cp, attachments, ocrProps, seaweed, jobRepo, nullProvider, nullVisionProvider, fileRepoProvider);
     }
 }
