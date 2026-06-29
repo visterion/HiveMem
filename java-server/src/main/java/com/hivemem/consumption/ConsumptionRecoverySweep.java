@@ -49,6 +49,7 @@ public class ConsumptionRecoverySweep implements ApplicationRunner {
         if (!Files.isRegularFile(file)) return; // ledger row but no physical file — skip safely
         try {
             mover.moveToRoot(file);
+            repo.touch(r.sha256()); // bump updated_at so a slow-but-alive job isn't re-staged every sweep
             log.info("Recovery re-staged {} ({}, attempts={})", r.filename(), why, r.attempts());
         } catch (Exception e) {
             log.warn("Recovery could not re-stage {}: {}", r.filename(), e.toString());

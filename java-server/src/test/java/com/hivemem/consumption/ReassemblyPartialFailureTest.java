@@ -3,6 +3,7 @@ package com.hivemem.consumption;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -81,6 +82,39 @@ class ReassemblyPartialFailureTest {
 
         verify(mover).moveToFailed(stagedPath);
         verify(mover, never()).moveToProcessed(any());
+    }
+
+    /** FIX 4: when reassembly throws (forcing degrade path) AND the degrade ingest also throws,
+     *  the file must be routed to failed/ and moveToProcessed must NEVER be called. */
+    @Test
+    void degradeIngestFailureRoutesToFailed() throws Exception {
+        ConsumptionProperties props = new ConsumptionProperties();
+        PdfPageRasterizer rasterizer = mock(PdfPageRasterizer.class);
+        PageGrouper grouper = mock(PageGrouper.class);
+        PageReassembler reassembler = mock(PageReassembler.class);
+        AttachmentService attachments = mock(AttachmentService.class);
+        ConsumptionFileMover mover = mock(ConsumptionFileMover.class);
+        ConsumptionFileRepository fileRepo = mock(ConsumptionFileRepository.class);
+        PageOsd osd = mock(PageOsd.class);
+
+        // Make rasterizer throw to force the degrade path
+        when(rasterizer.rasterize(any(), anyInt(), anyInt()))
+                .thenThrow(new RuntimeException("rasterizer crashed"));
+
+        // Make the degrade attachments.ingest also throw
+        doThrow(new RuntimeException("S3 down"))
+                .when(attachments).ingest(any(InputStream.class), anyString(), anyString(),
+                        any(), any(), any(), any(), anyString(), anyString(), anyString());
+
+        Path stagedPath = Path.of("Scan_degrade_fail.pdf");
+        ReassemblyOrchestrator orch = new ReassemblyOrchestrator(
+                props, rasterizer, grouper, reassembler, new BatchSplitter(), attachments, mover, osd);
+        orch.reassemble(stagedPath, nPagePdf(2), 2, "deadbeef", fileRepo);
+
+        verify(mover).moveToFailed(stagedPath);
+        verify(mover, never()).moveToProcessed(any());
+        verify(fileRepo).markFailed(eq("deadbeef"), anyString());
+        verify(fileRepo, never()).markDone(any());
     }
 
     /** When both sub-docs ingest successfully, the batch must go to processed/ (regression guard). */

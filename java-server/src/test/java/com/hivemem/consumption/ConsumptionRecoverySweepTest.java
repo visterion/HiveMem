@@ -79,6 +79,16 @@ class ConsumptionRecoverySweepTest {
                 "dead.pdf should NOT be in root");
     }
 
+    /** FIX 2: after re-staging a stale-processing row, touch() must be called so the sweep
+     *  won't re-select the row again on the next run (duplicate-ingest prevention). */
+    @Test
+    void touchIsCalledAfterSuccessfulReStage() throws Exception {
+        sweep.recover();
+
+        verify(repo).touch("sha-stale");
+        verify(repo).touch("sha-retry");
+    }
+
     @Test
     void missingPhysicalFileIsSkippedGracefully() throws Exception {
         // Remove stale.pdf from disk before sweep — ledger row exists but file does not

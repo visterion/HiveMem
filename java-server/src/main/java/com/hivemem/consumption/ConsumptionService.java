@@ -188,10 +188,14 @@ public class ConsumptionService implements SeparationApplier {
                 // reconcile sweep's degrade path.
                 if (runId != null) jobs.attachRunId(correlationId, runId);
             } catch (Exception dispatchErr) {
-                // BUG 2: leave the job 'awaiting' and the file in processing/ with S3 populated.
+                // Leave the job 'awaiting' and the file in processing/ with S3 populated.
                 // SeparationReconcileSweep will degrade it later. Nothing is lost.
                 log.warn("Dispatch failed for separation job {} ({}): {} - leaving awaiting for reconcile",
                         correlationId, filename, dispatchErr.toString());
+                // Mark ledger done: the batch is now owned by consumption_jobs+reconcile sweep,
+                // not by the ledger. Leaving it 'processing' would cause the recovery sweep to
+                // re-stage and leak a new S3 object + job on every sweep cycle.
+                if (fileRepo != null) fileRepo.markDone(hash);
                 return;
             }
             // Dispatched batch is tracked by consumption_jobs; mark ledger done to keep it out of recovery sweep.

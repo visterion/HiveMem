@@ -164,16 +164,24 @@ public class ReassemblyOrchestrator {
 
     private void degradeToPending(Path staged, byte[] pdfBytes, String originalName,
                                   String hash, ConsumptionFileRepository fileRepo) {
+        boolean ingested = false;
         try (var in = new ByteArrayInputStream(pdfBytes)) {
             attachments.ingest(in, originalName, "application/pdf", props.getRealm(),
                     null, null, null, "consumption", "pending", "consumption:");
+            ingested = true;
         } catch (Exception e) {
             log.error("Degrade ingest failed for {}: {}", originalName, e.toString());
         }
-        try { mover.moveToProcessed(staged); }
-        catch (Exception e) { log.warn("Could not move {} to processed/: {}", originalName, e.toString()); }
-        // Batch was salvaged as one pending doc — terminal, not stranded
-        if (fileRepo != null) fileRepo.markDone(hash);
+        if (ingested) {
+            try { mover.moveToProcessed(staged); }
+            catch (Exception e) { log.warn("Could not move {} to processed/: {}", originalName, e.toString()); }
+            // Batch was salvaged as one pending doc — terminal, not stranded
+            if (fileRepo != null) fileRepo.markDone(hash);
+        } else {
+            try { mover.moveToFailed(staged); }
+            catch (Exception e) { log.error("Could not move {} to failed/: {}", originalName, e.toString()); }
+            if (fileRepo != null) fileRepo.markFailed(hash, "degrade-to-pending ingest failed");
+        }
     }
 
     private static String stripPdf(String name) {

@@ -14,6 +14,27 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 
 class HttpEmbeddingClientTest {
 
+    /** FIX 5: toJsonString must escape control chars U+0000-U+001F so the request body is valid JSON.
+     *  toJsonString is package-private so it can be called directly from this test. */
+    @Test
+    void toJsonStringEscapesControlChars() {
+        // String with NUL (\u0000), BEL (\u0007), and a normal newline
+        String input = "a" + '\u0000' + "b" + '\u0007' + "c\nd";
+        String result = HttpEmbeddingClient.toJsonString(input);
+        // Must be a valid quoted JSON string
+        assertThat(result).startsWith("\"").endsWith("\"");
+        // Control chars must be escaped, not present raw
+        assertThat(result).contains("\\u0000");
+        assertThat(result).contains("\\u0007");
+        assertThat(result).contains("\\n");
+        // Must not contain any raw control character (0x00-0x1F)
+        for (char c : result.toCharArray()) {
+            assertThat((int) c)
+                    .as("raw control char 0x%02x found in JSON string", (int) c)
+                    .isGreaterThanOrEqualTo(0x20);
+        }
+    }
+
     @Test
     void mapsDocumentEmbeddingResponse() {
         RestClient.Builder builder = RestClient.builder();

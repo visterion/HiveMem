@@ -63,6 +63,11 @@ public class ConsumptionFileRepository {
         return out;
     }
 
+    /** Bump updated_at on a processing row so the recovery sweep won't re-select it for another stale window. */
+    public void touch(String sha256) {
+        dsl.execute("UPDATE consumption_file SET updated_at = now() WHERE sha256 = ?", sha256);
+    }
+
     /** Returns rows in 'failed' state that have not yet exhausted their retry budget. */
     public List<Row> findRetriableFailed(int maxAttempts, int limit) {
         var rows = dsl.fetch("""
