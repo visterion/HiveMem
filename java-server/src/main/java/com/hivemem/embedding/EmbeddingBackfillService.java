@@ -3,13 +3,19 @@ package com.hivemem.embedding;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.UUID;
 
+// Gated on the consumption flag (already true in prod) because embedding_pending cells only arise
+// from the consumption ingest path. This also keeps the @Scheduled bean out of the DB-less
+// HiveMemApplicationTest context (which excludes DataSource/Flyway/jOOQ), mirroring the sibling
+// sweeps (SummarizerService/OcrService/ConsumptionRecoverySweep) that are all @ConditionalOnProperty.
 @Service
+@ConditionalOnProperty(name = "hivemem.consumption.enabled", havingValue = "true")
 public class EmbeddingBackfillService {
 
     private static final Logger log = LoggerFactory.getLogger(EmbeddingBackfillService.class);
