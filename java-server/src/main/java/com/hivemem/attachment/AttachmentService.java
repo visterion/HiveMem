@@ -136,7 +136,16 @@ public class AttachmentService {
             String cellContent = (parsed.extractedText() != null && !parsed.extractedText().isBlank())
                     ? parsed.extractedText()
                     : (originalFilename != null ? originalFilename : "unknown file");
-            List<Float> embedding = embeddingClient.encodeForCell(cellContent, null);
+            List<Float> embedding;
+            boolean embeddingPending = false;
+            try {
+                embedding = embeddingClient.encodeForCell(cellContent, null);
+            } catch (com.hivemem.embedding.EmbeddingUnavailableException e) {
+                log.warn("Embedding unavailable for {} — committing cell without embedding, will backfill: {}",
+                        originalFilename, e.getMessage());
+                embedding = null;
+                embeddingPending = true;
+            }
 
             Map<String, Object> cellRow = writeRepo.addCell(
                     cellContent, embedding, realm, signal, topic,
@@ -145,6 +154,9 @@ public class AttachmentService {
                     initialStatus, uploadedBy, null);
 
             UUID cellId = UUID.fromString((String) cellRow.get("id"));
+            if (embeddingPending) {
+                writeRepo.tagEmbeddingPending(cellId);
+            }
             UUID attachmentId = UUID.fromString((String) attachmentRow.get("id"));
 
             if (parsed.scanLikely()) {

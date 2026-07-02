@@ -13,6 +13,8 @@ public class HttpEmbeddingClient implements EmbeddingClient {
 
     private final RestClient restClient;
     private volatile int expectedDimension = -1;
+    private final int maxRetries;
+    private final long retryBackoffMs;
 
     @Autowired
     public HttpEmbeddingClient(RestClient.Builder builder, EmbeddingProperties properties) {
@@ -28,6 +30,8 @@ public class HttpEmbeddingClient implements EmbeddingClient {
             builder = builder.requestFactory(requestFactory);
         }
         this.restClient = builder.baseUrl(properties.getBaseUrl().toString()).build();
+        this.maxRetries = Math.max(0, properties.getMaxRetries());
+        this.retryBackoffMs = Math.max(0, properties.getRetryBackoffMs());
     }
 
     @Override
@@ -56,26 +60,66 @@ public class HttpEmbeddingClient implements EmbeddingClient {
 
     private List<Float> encode(String text, String mode) {
         String jsonBody = "{\"text\":" + toJsonString(text) + ",\"mode\":\"" + mode + "\"}";
-        EmbeddingResponse response = restClient.post()
-                .uri("/embeddings")
-                .contentType(MediaType.APPLICATION_JSON)
-                .accept(MediaType.APPLICATION_JSON)
-                .body(jsonBody)
-                .retrieve()
-                .body(EmbeddingResponse.class);
-        if (response == null || response.vector() == null) {
-            throw new IllegalStateException("Missing embedding vector");
+        int attempt = 0;
+        while (true) {
+            try {
+                EmbeddingResponse response = restClient.post()
+                        .uri("/embeddings")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .accept(MediaType.APPLICATION_JSON)
+                        .body(jsonBody)
+                        .retrieve()
+                        .body(EmbeddingResponse.class);
+                if (response == null || response.vector() == null) {
+                    throw new IllegalStateException("Missing embedding vector");
+                }
+                if (expectedDimension > 0 && response.vector().size() != expectedDimension) {
+                    throw new IllegalStateException("Embedding dimension mismatch: expected "
+                            + expectedDimension + " but got " + response.vector().size());
+                }
+                return List.copyOf(response.vector());
+            } catch (org.springframework.web.client.HttpClientErrorException e) {
+                throw e; // 4xx deterministic — no retry
+            } catch (org.springframework.web.client.HttpServerErrorException
+                     | org.springframework.web.client.ResourceAccessException e) {
+                if (attempt++ >= maxRetries) {
+                    throw new EmbeddingUnavailableException(
+                            "Embedding service unavailable after " + attempt + " attempt(s)", e);
+                }
+                sleepBackoff(attempt);
+            }
         }
-        if (expectedDimension > 0 && response.vector().size() != expectedDimension) {
-            throw new IllegalStateException(
-                    "Embedding dimension mismatch: expected " + expectedDimension
-                            + " but got " + response.vector().size());
-        }
-        return List.copyOf(response.vector());
     }
 
-    private static String toJsonString(String s) {
-        return "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t") + "\"";
+    private void sleepBackoff(int attempt) {
+        long delay = retryBackoffMs * (1L << Math.min(attempt - 1, 30)); // cap shift so large retry counts can't wrap
+        try {
+            Thread.sleep(delay);
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            throw new EmbeddingUnavailableException("Interrupted during embedding retry backoff", ie);
+        }
+    }
+
+    static String toJsonString(String s) {
+        StringBuilder sb = new StringBuilder(s.length() + 2);
+        sb.append('"');
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            switch (c) {
+                case '\\' -> sb.append("\\\\");
+                case '"' -> sb.append("\\\"");
+                case '\n' -> sb.append("\\n");
+                case '\r' -> sb.append("\\r");
+                case '\t' -> sb.append("\\t");
+                default -> {
+                    if (c < 0x20) sb.append(String.format("\\u%04x", (int) c));
+                    else sb.append(c);
+                }
+            }
+        }
+        sb.append('"');
+        return sb.toString();
     }
 
     record InfoResponse(String model, int dimension) {

@@ -11,7 +11,9 @@ import java.time.Duration;
 public class EmbeddingProperties {
 
     private URI baseUrl = URI.create("http://localhost:8081");
-    private Duration timeout = Duration.ofSeconds(5);
+    private Duration timeout = Duration.ofSeconds(30);
+    private int maxRetries = 3;
+    private long retryBackoffMs = 500;
 
     public EmbeddingProperties() {
     }
@@ -35,5 +37,21 @@ public class EmbeddingProperties {
 
     public void setTimeout(Duration timeout) {
         this.timeout = timeout;
+    }
+
+    public int getMaxRetries() {
+        return maxRetries;
+    }
+
+    public void setMaxRetries(int v) {
+        this.maxRetries = v;
+    }
+
+    public long getRetryBackoffMs() {
+        return retryBackoffMs;
+    }
+
+    public void setRetryBackoffMs(long v) {
+        this.retryBackoffMs = v;
     }
 }

@@ -63,8 +63,15 @@ class ConsumptionWatcherDedupeIT extends ConsumptionITSupport {
             @Override public VisionMultiClient getIfUnique() { return null; }
             @Override public Stream<VisionMultiClient> stream() { return Stream.empty(); }
         };
+        ObjectProvider<ConsumptionFileRepository> nullFileRepoProvider = new ObjectProvider<>() {
+            @Override public ConsumptionFileRepository getObject(Object... args) { return null; }
+            @Override public ConsumptionFileRepository getObject() { return null; }
+            @Override public ConsumptionFileRepository getIfAvailable() { return null; }
+            @Override public ConsumptionFileRepository getIfUnique() { return null; }
+            @Override public Stream<ConsumptionFileRepository> stream() { return Stream.empty(); }
+        };
         ConsumptionService svc = new ConsumptionService(
-                cp, attachments, new OcrProperties(), seaweed, jobRepo, provider, nullVisionProvider);
+                cp, attachments, new OcrProperties(), seaweed, jobRepo, provider, nullVisionProvider, nullFileRepoProvider);
 
         // Fixed clock far in the future so (now - mtime) >= stableMillis always holds.
         Clock clock = Clock.fixed(Instant.now().plusSeconds(3600), ZoneOffset.UTC);

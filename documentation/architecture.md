@@ -268,7 +268,14 @@ Every HiveMem tool is mapped to a specific role to ensure least privilege. Write
 | `HIVEMEM_DB_USER` | (required) | PostgreSQL username |
 | `HIVEMEM_DB_PASSWORD` | (required) | PostgreSQL password |
 | `HIVEMEM_EMBEDDING_URL` | `http://localhost:8081` | URL of the external embeddings service |
-| `HIVEMEM_EMBEDDING_TIMEOUT` | `PT5S` | HTTP timeout for embedding requests (ISO 8601 duration) |
+| `HIVEMEM_EMBEDDING_TIMEOUT` | `PT30S` | HTTP timeout per embedding request (ISO 8601 duration) |
+| `HIVEMEM_EMBEDDING_MAX_RETRIES` | `3` | Retry attempts before abandoning an embedding request |
+| `HIVEMEM_EMBEDDING_RETRY_BACKOFF_MS` | `500` | Base backoff (ms, exponential) between embedding retries |
+| `HIVEMEM_EMBEDDING_BACKFILL_INTERVAL_MS` | `300000` | Embedding backfill sweep interval (ms) |
+| `HIVEMEM_EMBEDDING_BACKFILL_BATCH_SIZE` | `50` | Max cells per embedding backfill sweep |
+| `HIVEMEM_CONSUMPTION_RECOVERY_INTERVAL` | `5m` | How often the consumption recovery sweep runs |
+| `HIVEMEM_CONSUMPTION_RECOVERY_STALE_THRESHOLD` | `30m` | Age at which a stalled `processing` ledger entry is re-staged |
+| `HIVEMEM_CONSUMPTION_FAILED_RETRY_LIMIT` | `3` | Max retries for files in `failed/` before they are left permanently |
 | `SERVER_PORT` | `8421` | Port for the MCP server |
 
 ### `ranked_search` PostgreSQL function
@@ -386,3 +393,22 @@ The summarizer-dependent endpoints (`backfill-titles`, `backfill-tax-date`) retu
 ### Self-healing embedding backfill
 
 On startup, `SummarizeBackfillStartupRunner` tags any live committed cell with `embedding IS NULL AND length(content) > 500` as `needs_summary`. The scheduled summarizer (every 5 min) then summarizes and re-embeds those cells. This restores semantic search for scans that previously missed their embedding (e.g. ingested before the embedding-dependency fix).
+
+### Consumption pipeline — error handling & recovery
+
+The consumption pipeline is designed to tolerate transient failures without data loss and without operator intervention.
+
+**Embedding client resilience.** `EmbeddingClient` uses a configurable timeout (default 30 s) and retry-with-exponential-backoff (default 3 retries, 500 ms base). If all retries are exhausted the client throws, and the ingest path commits the cell **without an embedding**, tagging it `embedding_pending`. Embeddings are therefore nullable — their absence never blocks ingestion.
+
+**Embedding backfill sweep.** `EmbeddingBackfillService` runs on a fixed schedule (default every 5 min) and finds all committed cells tagged `embedding_pending`. Once the embedding service is healthy again it backfills them in configurable batches (default 50 per cycle) and removes the tag. Semantic search is restored automatically — no operator action needed.
+
+**Exactly-once file staging via the `consumption_file` ledger.** Every file the watcher picks up is recorded in the `consumption_file` table with its SHA-256 content hash. State transitions: `processing` → `done` (committed) or `processing` → `failed` (ingest error). The `attempts` counter increments on each try. Content-based dedup (`DocumentDedupService`) means re-queuing an already-committed file is safe — the second ingest is discarded as a duplicate.
+
+**Reassembly partial-ingest → `failed/`.** When a multi-page PDF is separated into sub-documents by Vistierie and at least one sub-document fails to ingest, the entire batch is moved to `failed/`. Previously, remaining sub-documents would be silently dropped. With the ledger and the retry sweep, the whole batch can be re-attempted safely after the root cause is resolved.
+
+**Recovery sweep.** `ConsumptionRecoverySweep` runs at startup and on a fixed interval (default 5 min) and handles two cases:
+
+- Files crash-stranded in `processing` past the stale threshold (default 30 min) are re-staged — these are files that were mid-ingest when the JVM was killed.
+- Files in `failed/` with an attempt count below the retry limit (default 3) are moved back to the watch root for re-ingest. Files that exhaust the retry limit remain in `failed/` and require manual inspection.
+
+See the [Bulk import runbook](operations.md#consumption-bulk-import) for operator-facing verification steps and config reference.

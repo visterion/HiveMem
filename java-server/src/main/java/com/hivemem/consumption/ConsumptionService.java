@@ -46,12 +46,14 @@ public class ConsumptionService implements SeparationApplier {
     private final SeparationJobRepository jobs;
     private final VistierieSeparationClient separationClient; // may be null (queen disabled)
     private final ReassemblyOrchestrator reassembly;          // may be null (queen disabled)
+    private final ConsumptionFileRepository fileRepo;         // may be null (ledger disabled)
 
     public ConsumptionService(ConsumptionProperties props, AttachmentService attachments,
                               OcrProperties ocrProps, SeaweedFsClient seaweed,
                               SeparationJobRepository jobs,
                               ObjectProvider<VistierieSeparationClient> separationClientProvider,
-                              ObjectProvider<VisionMultiClient> visionMultiProvider) {
+                              ObjectProvider<VisionMultiClient> visionMultiProvider,
+                              ObjectProvider<ConsumptionFileRepository> fileRepoProvider) {
         this.props = props;
         this.attachments = attachments;
         this.mover = new ConsumptionFileMover(Path.of(props.getDir()));
@@ -69,6 +71,7 @@ public class ConsumptionService implements SeparationApplier {
                         new PageReassembler(props), splitter, attachments, mover,
                         new PageOsd(ocrProps.getTesseractPath()))
                 : null;
+        this.fileRepo = fileRepoProvider.getIfAvailable();
     }
 
     /** Process one already-staged file (the watcher moved it into processing/ first, which makes it
@@ -92,23 +95,37 @@ public class ConsumptionService implements SeparationApplier {
             tryMoveFailed(staged);
             return;
         }
+        String hash = sha256(bytes);
+        if (fileRepo != null) fileRepo.startProcessing(hash, filename);
         if (props.isReassemblyEnabled() && reassembly != null
                 && PDF.matcher(filename).matches() && pageCount > 1) {
             // Content-based reassembly takes precedence over contiguous separation when enabled.
             // reassemble() never throws: it owns the staged file's lifecycle and degrades on error.
-            reassembly.reassemble(staged, bytes, pageCount);
+            reassembly.reassemble(staged, bytes, pageCount, hash, fileRepo);
         } else if (splittable) {
             // The separation branch owns the staged file's lifecycle (moves to failed/ on its own
             // errors, leaves it for reconcile on dispatch failure). It must NOT fall through.
-            separateStaged(staged, filename, bytes, pageCount);
+            separateStaged(staged, filename, bytes, pageCount, hash);
         } else {
             try {
                 ingestSingle(staged, filename, bytes);
+                if (fileRepo != null) fileRepo.markDone(hash);
             } catch (Exception e) {
                 log.warn("Consumption ingest failed for {}: {}", filename, e.toString());
+                if (fileRepo != null) fileRepo.markFailed(hash, e.toString());
                 tryMoveFailed(staged);
             }
         }
+    }
+
+    static String sha256(byte[] bytes) {
+        try {
+            var md = java.security.MessageDigest.getInstance("SHA-256");
+            byte[] d = md.digest(bytes);
+            StringBuilder sb = new StringBuilder(d.length * 2);
+            for (byte b : d) sb.append(Character.forDigit((b >> 4) & 0xF, 16)).append(Character.forDigit(b & 0xF, 16));
+            return sb.toString();
+        } catch (java.security.NoSuchAlgorithmException e) { throw new IllegalStateException(e); }
     }
 
     private int pdfPageCount(byte[] pdf) throws IOException {
@@ -134,13 +151,14 @@ public class ConsumptionService implements SeparationApplier {
      * route the staged file to {@code failed/}; a dispatch failure leaves the job {@code awaiting} + the
      * file in {@code processing/} for the reconcile sweep to degrade later. It never throws.
      */
-    private void separateStaged(Path staged, String filename, byte[] bytes, int realPageCount) {
+    private void separateStaged(Path staged, String filename, byte[] bytes, int realPageCount, String hash) {
         // BUG 3 guard: rasterizer caps at maxPages, which would silently lump trailing pages into the
         // last document. Reject explicitly (logged) so operators re-scan in smaller batches or raise the cap.
         if (realPageCount > props.getMaxPages()) {
             log.warn("Batch {} has {} pages > max-pages {}; routing to failed/ (re-scan in smaller batches "
                             + "or raise hivemem.consumption.max-pages)",
                     filename, realPageCount, props.getMaxPages());
+            if (fileRepo != null) fileRepo.markFailed(hash, "page count " + realPageCount + " exceeds max-pages " + props.getMaxPages());
             tryMoveFailed(staged);
             return;
         }
@@ -170,17 +188,24 @@ public class ConsumptionService implements SeparationApplier {
                 // reconcile sweep's degrade path.
                 if (runId != null) jobs.attachRunId(correlationId, runId);
             } catch (Exception dispatchErr) {
-                // BUG 2: leave the job 'awaiting' and the file in processing/ with S3 populated.
+                // Leave the job 'awaiting' and the file in processing/ with S3 populated.
                 // SeparationReconcileSweep will degrade it later. Nothing is lost.
                 log.warn("Dispatch failed for separation job {} ({}): {} - leaving awaiting for reconcile",
                         correlationId, filename, dispatchErr.toString());
+                // Mark ledger done: the batch is now owned by consumption_jobs+reconcile sweep,
+                // not by the ledger. Leaving it 'processing' would cause the recovery sweep to
+                // re-stage and leak a new S3 object + job on every sweep cycle.
+                if (fileRepo != null) fileRepo.markDone(hash);
                 return;
             }
+            // Dispatched batch is tracked by consumption_jobs; mark ledger done to keep it out of recovery sweep.
+            if (fileRepo != null) fileRepo.markDone(hash);
             log.info("Dispatched separation job {} ({} pages) for {}", correlationId, pages.size(), filename);
         } catch (Exception e) {
             // OCR/upload/create failure (before a successful dispatch): the batch cannot proceed.
             log.warn("Separation prep failed for {}: {}", filename, e.toString());
             if (jobCreated) jobs.markFailed(correlationId);
+            if (fileRepo != null) fileRepo.markFailed(hash, e.toString());
             tryMoveFailed(staged);
         }
     }

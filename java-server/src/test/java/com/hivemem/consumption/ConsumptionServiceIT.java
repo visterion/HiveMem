@@ -9,6 +9,7 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.Statement;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -40,5 +41,31 @@ class ConsumptionServiceIT extends ConsumptionITSupport {
             assertTrue(rs.getString("source").startsWith("consumption:"),
                     "source should start with 'consumption:' but was: " + rs.getString("source"));
         }
+    }
+
+    @Test
+    void singleFileRecordsLedgerDone(@TempDir Path root) throws Exception {
+        // Clean the ledger table so this test is isolated
+        dsl.execute("DELETE FROM consumption_file");
+
+        byte[] content = "hello".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        Path file = root.resolve("note.txt");
+        Files.write(file, content);
+
+        ConsumptionProperties cp = new ConsumptionProperties();
+        cp.setEnabled(true);
+        cp.setDir(root.toString());
+        cp.setRealm("documents");
+
+        ConsumptionFileRepository repo = new ConsumptionFileRepository(dsl);
+        ConsumptionService svc = buildService(cp, repo);
+
+        svc.processStaged(file);
+
+        String expectedHash = ConsumptionService.sha256(content);
+        Optional<ConsumptionFileRepository.Row> row = repo.findByHash(expectedHash);
+        assertTrue(row.isPresent(), "consumption_file row should exist for the processed file");
+        assertEquals("done", row.get().state(),
+                "consumption_file state should be 'done' after successful ingest");
     }
 }
