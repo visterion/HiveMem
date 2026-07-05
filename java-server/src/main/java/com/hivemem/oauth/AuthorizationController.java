@@ -2,7 +2,10 @@ package com.hivemem.oauth;
 
 import com.hivemem.auth.AuthFilter;
 import com.hivemem.auth.AuthPrincipal;
+import com.hivemem.auth.LoginController;
+import com.hivemem.auth.TokenService;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpSession;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -42,12 +45,14 @@ public class AuthorizationController {
     private final OAuthProperties props;
     private final OAuthRepository repo;
     private final AuthorizationCodeService codes;
+    private final TokenService tokenService;
 
     public AuthorizationController(OAuthProperties props, OAuthRepository repo,
-                                    AuthorizationCodeService codes) {
+                                    AuthorizationCodeService codes, TokenService tokenService) {
         this.props = props;
         this.repo = repo;
         this.codes = codes;
+        this.tokenService = tokenService;
     }
 
     @GetMapping("/oauth/authorize")
@@ -127,11 +132,21 @@ public class AuthorizationController {
      */
     static final String TEST_USER_TOKEN_ATTR = "oauth.user_token_id";
 
-    private static UUID resolveUserTokenId(HttpServletRequest request) {
+    private UUID resolveUserTokenId(HttpServletRequest request) {
         Object testInjected = request.getAttribute(TEST_USER_TOKEN_ATTR);
         if (testInjected instanceof UUID id) return id;
         Object principal = request.getAttribute(AuthFilter.PRINCIPAL_ATTRIBUTE);
         if (principal instanceof AuthPrincipal p) return p.tokenId();
+        // Browser session fallback: neither AuthFilter nor SessionAuthFilter populates the
+        // principal for /oauth/ paths, so resolve the login session cookie directly here.
+        HttpSession session = request.getSession(false);
+        if (session != null) {
+            Object token = session.getAttribute(LoginController.SESSION_TOKEN_KEY);
+            if (token instanceof String t) {
+                Optional<AuthPrincipal> sp = tokenService.validateToken(t);
+                if (sp.isPresent()) return sp.get().tokenId();
+            }
+        }
         return null;
     }
 

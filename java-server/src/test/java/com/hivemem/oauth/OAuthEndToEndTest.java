@@ -2,6 +2,7 @@ package com.hivemem.oauth;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import com.hivemem.auth.LoginController;
 import com.hivemem.embedding.EmbeddingClient;
 import com.hivemem.embedding.FixedEmbeddingClient;
 import org.jooq.DSLContext;
@@ -19,6 +20,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.TestPropertySource;
+import org.springframework.mock.web.MockHttpSession;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -26,6 +28,9 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -293,6 +298,86 @@ class OAuthEndToEndTest {
                         .param("code_verifier", "wrong-verifier"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("invalid_grant"));
+    }
+
+    private String seedLoginableToken() throws Exception {
+        String raw = "login-raw-" + UUID.randomUUID();
+        String hash = HexFormat.of().formatHex(
+                MessageDigest.getInstance("SHA-256").digest(raw.getBytes(StandardCharsets.UTF_8)));
+        dsl.execute("INSERT INTO api_tokens (token_hash, name, role) VALUES (?, ?, 'admin')",
+                hash, "oauth-e2e-login-" + UUID.randomUUID());
+        return raw;
+    }
+
+    private String registerClient(String name) throws Exception {
+        Map<String, Object> regBody = Map.of(
+                "client_name", name,
+                "redirect_uris", List.of(REDIRECT_URI),
+                "token_endpoint_auth_method", "none"
+        );
+        MvcResult regResult = mvc.perform(post("/oauth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json.writeValueAsString(regBody)))
+                .andExpect(status().isCreated())
+                .andReturn();
+        return json.readTree(regResult.getResponse().getContentAsString())
+                .get("client_id").asText();
+    }
+
+    @Test
+    void authenticatedSessionAuthorizeIssuesCode() throws Exception {
+        String clientId = registerClient("Session Authorize Test");
+        String rawToken = seedLoginableToken();
+        MockHttpSession session = new MockHttpSession();
+        session.setAttribute(LoginController.SESSION_TOKEN_KEY, rawToken);
+
+        MvcResult res = mvc.perform(get("/oauth/authorize")
+                .param("response_type", "code").param("client_id", clientId)
+                .param("redirect_uri", REDIRECT_URI).param("scope", "read write")
+                .param("state", "sess-state")
+                .param("code_challenge", CHALLENGE).param("code_challenge_method", "S256")
+                .session(session))
+                .andExpect(status().is3xxRedirection())
+                .andReturn();
+        URI redirect = URI.create(res.getResponse().getHeader("Location"));
+        assertEquals("claude.ai", redirect.getHost());   // must go to the client, NOT /login
+        assertNotNull(extractParam(redirect.getQuery(), "code"));
+    }
+
+    @Test
+    void loginRedirectsToSafeNextAfterSuccess() throws Exception {
+        String rawToken = seedLoginableToken();
+        String next = "/oauth/authorize?response_type=code&client_id=abc";
+        mvc.perform(post("/login").param("v", rawToken).param("next", next))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(header().string("Location", next));
+    }
+
+    @Test
+    void loginIgnoresUnsafeNext() throws Exception {
+        String rawToken = seedLoginableToken();
+        mvc.perform(post("/login").param("v", rawToken).param("next", "//evil.example.com/x"))
+                .andExpect(header().string("Location", "/"));
+        mvc.perform(post("/login").param("v", rawToken).param("next", "https://evil.example.com"))
+                .andExpect(header().string("Location", "/"));
+        mvc.perform(post("/login").param("v", rawToken).param("next", "/\\evil.com"))
+                .andExpect(header().string("Location", "/"));
+    }
+
+    @Test
+    void loginFallsBackWhenNextIsMalformed() throws Exception {
+        String rawToken = seedLoginableToken();
+        mvc.perform(post("/login").param("v", rawToken).param("next", "/oauth/authorize?x=a b"))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(header().string("Location", "/"));
+    }
+
+    @Test
+    void loginPageEmbedsEscapedNext() throws Exception {
+        mvc.perform(get("/login").param("next", "/oauth/authorize?a=1&b=2"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                        "name=\"next\" value=\"/oauth/authorize?a=1&amp;b=2\"")));
     }
 
     private static String extractParam(String query, String name) {

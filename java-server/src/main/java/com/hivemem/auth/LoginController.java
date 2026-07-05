@@ -10,7 +10,11 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
+import org.springframework.web.util.HtmlUtils;
 
+import java.net.URI;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 
 @Controller
@@ -18,7 +22,7 @@ public class LoginController {
 
     public static final String SESSION_TOKEN_KEY = "hivemem.token";
 
-    private static final String LOGIN_HTML = """
+    private static final String LOGIN_HTML_HEAD = """
             <!DOCTYPE html><html><head><meta charset="UTF-8"><style>
             *{margin:0;padding:0;box-sizing:border-box}
             body{background:#000;height:100vh;display:flex;align-items:center;justify-content:center}
@@ -31,6 +35,9 @@ public class LoginController {
             .err{animation:shake .4s ease}
             </style></head><body>
             <form method="POST" action="/login">
+            """;
+
+    private static final String LOGIN_HTML_TAIL = """
             <input type="password" name="v" id="i" autocomplete="off" autofocus>
             <button type="submit">&#8594;</button>
             </form>
@@ -50,15 +57,20 @@ public class LoginController {
 
     @GetMapping("/login")
     @ResponseBody
-    public ResponseEntity<String> loginPage() {
+    public ResponseEntity<String> loginPage(
+            @RequestParam(value = "next", required = false) String next) {
+        String safe = safeLocalPath(next);
+        String hidden = safe == null ? ""
+                : "<input type=\"hidden\" name=\"next\" value=\"" + HtmlUtils.htmlEscape(safe) + "\">\n";
         return ResponseEntity.ok()
                 .contentType(MediaType.TEXT_HTML)
-                .body(LOGIN_HTML);
+                .body(LOGIN_HTML_HEAD + hidden + LOGIN_HTML_TAIL);
     }
 
     @PostMapping("/login")
     public Object handleLogin(
             @RequestParam("v") String token,
+            @RequestParam(value = "next", required = false) String next,
             HttpServletRequest request,
             HttpServletResponse response) throws Exception {
         String ip = request.getRemoteAddr();
@@ -66,15 +78,38 @@ public class LoginController {
             response.setStatus(429);
             return null;
         }
+        String safe = safeLocalPath(next);
         Optional<AuthPrincipal> principal = tokenService.validateToken(token);
         if (principal.isEmpty()) {
             rateLimiter.recordFailure(ip);
+            if (safe != null) {
+                return "redirect:/login?error&next="
+                        + URLEncoder.encode(safe, StandardCharsets.UTF_8);
+            }
             return "redirect:/login?error";
         }
         rateLimiter.clearFailures(ip);
         HttpSession session = request.getSession(true);
         session.setAttribute(SESSION_TOKEN_KEY, token);
+        if (safe != null) {
+            try {
+                return ResponseEntity.status(302).location(URI.create(safe)).build();
+            } catch (IllegalArgumentException e) {
+                return "redirect:/";
+            }
+        }
         return "redirect:/";
+    }
+
+    /**
+     * Restrict post-login redirect targets to site-relative paths, blocking open redirects
+     * (absolute URLs, protocol-relative {@code //host}, and the {@code /\} backslash trick).
+     */
+    private static String safeLocalPath(String next) {
+        if (next == null || next.isEmpty()) return null;
+        if (!next.startsWith("/")) return null;                 // must be site-relative
+        if (next.startsWith("//") || next.startsWith("/\\")) return null; // protocol-relative / backslash trick
+        return next;
     }
 
     @PostMapping("/logout")
