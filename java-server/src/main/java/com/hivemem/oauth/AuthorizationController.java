@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.util.UriComponentsBuilder;
+import org.springframework.web.util.UriUtils;
 
 import java.net.URI;
 import java.util.Map;
@@ -101,10 +102,8 @@ public class AuthorizationController {
         if (userTokenId == null) {
             String fullUrl = request.getRequestURI()
                     + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
-            URI loginUri = UriComponentsBuilder.fromPath("/login")
-                    .queryParam("next", fullUrl)
-                    .build().toUri();
-            return ResponseEntity.status(302).location(loginUri).build();
+            String encodedNext = UriUtils.encode(fullUrl, java.nio.charset.StandardCharsets.UTF_8);
+            return ResponseEntity.status(302).location(URI.create("/login?next=" + encodedNext)).build();
         }
 
         String resolvedScope = scope == null || scope.isBlank() ? client.get().scope() : scope;

@@ -23,11 +23,14 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.mock.web.MockHttpSession;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.web.util.UriComponents;
+import org.springframework.web.util.UriComponentsBuilder;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.net.URI;
+import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.HexFormat;
@@ -378,6 +381,31 @@ class OAuthEndToEndTest {
                 .andExpect(status().isOk())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString(
                         "name=\"next\" value=\"/oauth/authorize?a=1&amp;b=2\"")));
+    }
+
+    @Test
+    void authorizeLoginRedirectPreservesFullQueryInNext() throws Exception {
+        String clientId = registerClient("Next Preservation Test");
+        // Use queryParam (not param) so MockMvc populates request.getQueryString() the way a
+        // real browser request does — that is the value the controller reflects into `next`.
+        MvcResult res = mvc.perform(get("/oauth/authorize")
+                .queryParam("response_type", "code").queryParam("client_id", clientId)
+                .queryParam("redirect_uri", REDIRECT_URI).queryParam("scope", "read write")
+                .queryParam("state", "st").queryParam("code_challenge", CHALLENGE)
+                .queryParam("code_challenge_method", "S256"))   // unauthenticated -> redirect to /login
+                .andExpect(status().is3xxRedirection())
+                .andReturn();
+        String location = res.getResponse().getHeader("Location");
+        UriComponents uc = UriComponentsBuilder.fromUriString(location).build();
+        String nextRaw = uc.getQueryParams().getFirst("next");
+        org.junit.jupiter.api.Assertions.assertNotNull(nextRaw, "next param must be present");
+        String nextDecoded = URLDecoder.decode(nextRaw, StandardCharsets.UTF_8);
+        org.junit.jupiter.api.Assertions.assertTrue(nextDecoded.startsWith("/oauth/authorize"),
+                "next must point back at the authorize endpoint: " + nextDecoded);
+        org.junit.jupiter.api.Assertions.assertTrue(nextDecoded.contains("client_id=" + clientId),
+                "next must retain client_id after decoding: " + nextDecoded);
+        org.junit.jupiter.api.Assertions.assertTrue(nextDecoded.contains("code_challenge="),
+                "next must retain the PKCE challenge: " + nextDecoded);
     }
 
     private static String extractParam(String query, String name) {
