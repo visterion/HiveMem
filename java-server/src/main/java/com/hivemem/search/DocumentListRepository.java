@@ -30,7 +30,9 @@ public class DocumentListRepository {
     /**
      * Browse active cells with optional filters, a fixed sort, and limit/offset paging.
      *
-     * @param realm   realm to filter on (required; defaults to "documents" in the service layer)
+     * @param realm   realm to filter on; a Java {@code null} matches cells where
+     *                {@code realm IS NULL} (the service layer maps the sentinel "none" to
+     *                this and defaults an omitted realm to "documents")
      * @param signal  optional signal filter
      * @param topic   optional topic filter
      * @param tags    optional tag-overlap filter (any of these tags)
@@ -69,7 +71,7 @@ public class DocumentListRepository {
                 "    WHERE source_id = c.id AND predicate IN ('vendor','party') " +
                 "    ORDER BY predicate LIMIT 1) corr ON true " +
                 "WHERE c.valid_until IS NULL " +
-                "AND c.realm = ? " +
+                "AND c.realm IS NOT DISTINCT FROM ? " +
                 "AND c.status = COALESCE(?, 'committed') " +
                 "AND (?::text[] IS NULL OR c.tags::varchar[] && ?::varchar[]) " +
                 "AND (?::text IS NULL OR c.signal = ?) " +

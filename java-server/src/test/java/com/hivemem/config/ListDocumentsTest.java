@@ -269,4 +269,22 @@ class ListDocumentsTest {
         assertThat(rows).hasSize(1);
         assertThat(rows.get(0).get("correspondent")).isNull();
     }
+
+    @Test
+    void nullRealmFilterReturnsOnlyCellsWithNullRealm() {
+        UUID idNullRealm = UUID.fromString("00000000-0000-0000-0002-000000000040");
+        dslContext.execute("DELETE FROM cells WHERE id = ?", idNullRealm);
+        dslContext.execute(
+                "INSERT INTO cells (id, content, realm, signal, topic, tags, status, valid_from, created_at) " +
+                "VALUES (?, 'orphaned realm doc', NULL, 'facts', 'misc', ?, 'committed', now(), '2026-05-01'::date)",
+                idNullRealm, new String[]{});
+
+        List<Map<String, Object>> rows = documentListRepository.listDocuments(
+                null, null, null, null, "committed", "newest", 50, 0);
+
+        assertThat(rows).hasSize(1);
+        assertThat(rows.get(0).get("id")).isEqualTo(idNullRealm.toString());
+
+        dslContext.execute("DELETE FROM cells WHERE id = ?", idNullRealm);
+    }
 }
