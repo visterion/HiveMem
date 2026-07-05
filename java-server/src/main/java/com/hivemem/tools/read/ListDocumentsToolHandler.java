@@ -39,7 +39,7 @@ public class ListDocumentsToolHandler implements ToolHandler {
     @Override
     public Map<String, Object> inputSchema() {
         return ToolInputSchema.object()
-                .optionalString("realm", "Realm to browse (default: documents)")
+                .optionalString("realm", "Realm to browse (default: documents). Pass \"none\" to list cells with no realm assigned (realm IS NULL).")
                 .optionalString("signal", "Restrict to this signal")
                 .optionalString("topic", "Restrict to this topic")
                 .optionalStringList("tags", "Filter to documents that have ANY of the given tags")
