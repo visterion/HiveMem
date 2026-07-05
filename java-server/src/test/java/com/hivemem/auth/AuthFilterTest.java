@@ -9,6 +9,9 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.mock.web.MockFilterChain;
+import com.hivemem.oauth.OAuthProperties;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -52,10 +55,64 @@ class AuthFilterTest {
     void vistieriePathIsExemptFromAuthFilter() throws Exception {
         // shouldNotFilter must return true for /vistierie/** so the controller's own
         // webhook-token check runs instead of the api_tokens bearer check.
-        AuthFilter filter = new AuthFilter(Optional.empty(), new RateLimiter(), Optional.empty());
+        AuthFilter filter = new AuthFilter(Optional.empty(), new RateLimiter(), Optional.empty(), new OAuthProperties());
         MockHttpServletRequest req = new MockHttpServletRequest();
         req.setRequestURI("/vistierie/tools/find_isolated_cells");
         assertThat(filter.shouldNotFilter(req)).isTrue();
+    }
+
+    private static OAuthProperties oauthProps(boolean enabled, String issuer) {
+        OAuthProperties p = new OAuthProperties();
+        p.setEnabled(enabled);
+        p.setIssuer(issuer);
+        return p;
+    }
+
+    private static int invokeUnauthenticated(AuthFilter filter, String uri, MockHttpServletResponse res) throws Exception {
+        MockHttpServletRequest req = new MockHttpServletRequest("POST", uri);
+        filter.doFilterInternal(req, res, new MockFilterChain());
+        return res.getStatus();
+    }
+
+    @Test
+    void mcp401WithOAuthEnabledCarriesWwwAuthenticateHeader() throws Exception {
+        AuthFilter filter = new AuthFilter(Optional.empty(), new RateLimiter(), Optional.empty(),
+                oauthProps(true, "https://hivemem.example.com"));
+        MockHttpServletResponse res = new MockHttpServletResponse();
+        int status = invokeUnauthenticated(filter, "/mcp", res);
+        assertThat(status).isEqualTo(401);
+        assertThat(res.getHeader("WWW-Authenticate"))
+                .isEqualTo("Bearer resource_metadata=\"https://hivemem.example.com/.well-known/oauth-protected-resource\"");
+    }
+
+    @Test
+    void mcp401WithOAuthDisabledHasNoWwwAuthenticateHeader() throws Exception {
+        AuthFilter filter = new AuthFilter(Optional.empty(), new RateLimiter(), Optional.empty(),
+                oauthProps(false, "https://hivemem.example.com"));
+        MockHttpServletResponse res = new MockHttpServletResponse();
+        int status = invokeUnauthenticated(filter, "/mcp", res);
+        assertThat(status).isEqualTo(401);
+        assertThat(res.getHeader("WWW-Authenticate")).isNull();
+    }
+
+    @Test
+    void mcp401WithBlankIssuerHasNoWwwAuthenticateHeader() throws Exception {
+        AuthFilter filter = new AuthFilter(Optional.empty(), new RateLimiter(), Optional.empty(),
+                oauthProps(true, ""));
+        MockHttpServletResponse res = new MockHttpServletResponse();
+        int status = invokeUnauthenticated(filter, "/mcp", res);
+        assertThat(status).isEqualTo(401);
+        assertThat(res.getHeader("WWW-Authenticate")).isNull();
+    }
+
+    @Test
+    void admin401WithOAuthEnabledHasNoMcpHeader() throws Exception {
+        AuthFilter filter = new AuthFilter(Optional.empty(), new RateLimiter(), Optional.empty(),
+                oauthProps(true, "https://hivemem.example.com"));
+        MockHttpServletResponse res = new MockHttpServletResponse();
+        int status = invokeUnauthenticated(filter, "/admin/whatever", res);
+        assertThat(status).isEqualTo(401);
+        assertThat(res.getHeader("WWW-Authenticate")).isNull();
     }
 
     @Test
@@ -104,6 +161,11 @@ class AuthFilterTest {
         @Bean
         TestMcpController testMcpController() {
             return new TestMcpController();
+        }
+
+        @Bean
+        OAuthProperties oauthProperties() {
+            return new OAuthProperties();
         }
     }
 

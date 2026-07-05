@@ -1,5 +1,6 @@
 package com.hivemem.auth;
 
+import com.hivemem.oauth.OAuthProperties;
 import com.hivemem.oauth.OAuthRepository;
 import com.hivemem.oauth.TokenHasher;
 import jakarta.servlet.FilterChain;
@@ -28,13 +29,16 @@ public class AuthFilter extends OncePerRequestFilter {
     private final Optional<TokenService> tokenService;
     private final RateLimiter rateLimiter;
     private final Optional<OAuthRepository> oauthRepository;
+    private final OAuthProperties oauthProperties;
 
     public AuthFilter(Optional<TokenService> tokenService,
                       RateLimiter rateLimiter,
-                      Optional<OAuthRepository> oauthRepository) {
+                      Optional<OAuthRepository> oauthRepository,
+                      OAuthProperties oauthProperties) {
         this.tokenService = tokenService;
         this.rateLimiter = rateLimiter;
         this.oauthRepository = oauthRepository;
+        this.oauthProperties = oauthProperties;
     }
 
     @Override
@@ -79,21 +83,18 @@ public class AuthFilter extends OncePerRequestFilter {
         if (authorization == null
                 || authorization.length() < BEARER_PREFIX.length()
                 || !authorization.regionMatches(true, 0, BEARER_PREFIX, 0, BEARER_PREFIX.length())) {
-            rateLimiter.recordFailure(clientIp);
-            response.sendError(HttpServletResponse.SC_UNAUTHORIZED);
+            sendUnauthorized(request, response, clientIp);
             return;
         }
 
         String token = authorization.substring(BEARER_PREFIX.length()).trim();
         if (token.isEmpty()) {
-            rateLimiter.recordFailure(clientIp);
-            response.sendError(HttpServletResponse.SC_UNAUTHORIZED);
+            sendUnauthorized(request, response, clientIp);
             return;
         }
 
         if (tokenService.isEmpty()) {
-            rateLimiter.recordFailure(clientIp);
-            response.sendError(HttpServletResponse.SC_UNAUTHORIZED);
+            sendUnauthorized(request, response, clientIp);
             return;
         }
 
@@ -107,14 +108,34 @@ public class AuthFilter extends OncePerRequestFilter {
         }
 
         if (principal.isEmpty()) {
-            rateLimiter.recordFailure(clientIp);
-            response.sendError(HttpServletResponse.SC_UNAUTHORIZED);
+            sendUnauthorized(request, response, clientIp);
             return;
         }
 
         rateLimiter.clearFailures(clientIp);
         request.setAttribute(PRINCIPAL_ATTRIBUTE, principal.get());
         filterChain.doFilter(request, response);
+    }
+
+    /**
+     * Emit a 401. For the {@code /mcp} resource, when OAuth is enabled with a configured
+     * issuer, include the RFC 9728 {@code WWW-Authenticate: Bearer resource_metadata="…"}
+     * header so MCP clients (Claude.ai, ChatGPT) can auto-discover the authorization server
+     * via the protected-resource metadata document. Other guarded paths get a bare 401.
+     */
+    private void sendUnauthorized(HttpServletRequest request, HttpServletResponse response, String clientIp)
+            throws IOException {
+        rateLimiter.recordFailure(clientIp);
+        String requestPath = request.getRequestURI().substring(request.getContextPath().length());
+        if (requestPath.startsWith("/mcp")
+                && oauthProperties.isEnabled()
+                && oauthProperties.getIssuer() != null
+                && !oauthProperties.getIssuer().isBlank()) {
+            response.setHeader("WWW-Authenticate",
+                    "Bearer resource_metadata=\"" + oauthProperties.getIssuer()
+                            + "/.well-known/oauth-protected-resource\"");
+        }
+        response.sendError(HttpServletResponse.SC_UNAUTHORIZED);
     }
 
     /**
