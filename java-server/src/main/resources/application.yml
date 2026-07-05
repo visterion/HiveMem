@@ -16,6 +16,9 @@ spring:
 
 hivemem:
   language: ${HIVEMEM_LANGUAGE:de}
+  oauth:
+    enabled: ${HIVEMEM_OAUTH_ENABLED:false}
+    issuer: ${HIVEMEM_OAUTH_ISSUER:}
   embedding:
     base-url: ${HIVEMEM_EMBEDDING_URL:http://localhost:8081}
     timeout: ${HIVEMEM_EMBEDDING_TIMEOUT:PT5S}
