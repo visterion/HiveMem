@@ -55,7 +55,7 @@ class AuthFilterTest {
     void vistieriePathIsExemptFromAuthFilter() throws Exception {
         // shouldNotFilter must return true for /vistierie/** so the controller's own
         // webhook-token check runs instead of the api_tokens bearer check.
-        AuthFilter filter = new AuthFilter(Optional.empty(), new RateLimiter(), Optional.empty(), new OAuthProperties());
+        AuthFilter filter = new AuthFilter(Optional.empty(), new RateLimiter(), Optional.empty(), Optional.empty());
         MockHttpServletRequest req = new MockHttpServletRequest();
         req.setRequestURI("/vistierie/tools/find_isolated_cells");
         assertThat(filter.shouldNotFilter(req)).isTrue();
@@ -77,7 +77,7 @@ class AuthFilterTest {
     @Test
     void mcp401WithOAuthEnabledCarriesWwwAuthenticateHeader() throws Exception {
         AuthFilter filter = new AuthFilter(Optional.empty(), new RateLimiter(), Optional.empty(),
-                oauthProps(true, "https://hivemem.example.com"));
+                Optional.of(oauthProps(true, "https://hivemem.example.com")));
         MockHttpServletResponse res = new MockHttpServletResponse();
         int status = invokeUnauthenticated(filter, "/mcp", res);
         assertThat(status).isEqualTo(401);
@@ -88,7 +88,7 @@ class AuthFilterTest {
     @Test
     void mcp401WithOAuthDisabledHasNoWwwAuthenticateHeader() throws Exception {
         AuthFilter filter = new AuthFilter(Optional.empty(), new RateLimiter(), Optional.empty(),
-                oauthProps(false, "https://hivemem.example.com"));
+                Optional.of(oauthProps(false, "https://hivemem.example.com")));
         MockHttpServletResponse res = new MockHttpServletResponse();
         int status = invokeUnauthenticated(filter, "/mcp", res);
         assertThat(status).isEqualTo(401);
@@ -98,7 +98,7 @@ class AuthFilterTest {
     @Test
     void mcp401WithBlankIssuerHasNoWwwAuthenticateHeader() throws Exception {
         AuthFilter filter = new AuthFilter(Optional.empty(), new RateLimiter(), Optional.empty(),
-                oauthProps(true, ""));
+                Optional.of(oauthProps(true, "")));
         MockHttpServletResponse res = new MockHttpServletResponse();
         int status = invokeUnauthenticated(filter, "/mcp", res);
         assertThat(status).isEqualTo(401);
@@ -108,7 +108,7 @@ class AuthFilterTest {
     @Test
     void admin401WithOAuthEnabledHasNoMcpHeader() throws Exception {
         AuthFilter filter = new AuthFilter(Optional.empty(), new RateLimiter(), Optional.empty(),
-                oauthProps(true, "https://hivemem.example.com"));
+                Optional.of(oauthProps(true, "https://hivemem.example.com")));
         MockHttpServletResponse res = new MockHttpServletResponse();
         int status = invokeUnauthenticated(filter, "/admin/whatever", res);
         assertThat(status).isEqualTo(401);
@@ -161,11 +161,6 @@ class AuthFilterTest {
         @Bean
         TestMcpController testMcpController() {
             return new TestMcpController();
-        }
-
-        @Bean
-        OAuthProperties oauthProperties() {
-            return new OAuthProperties();
         }
     }
 

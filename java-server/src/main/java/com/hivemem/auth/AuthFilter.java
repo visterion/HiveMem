@@ -29,12 +29,12 @@ public class AuthFilter extends OncePerRequestFilter {
     private final Optional<TokenService> tokenService;
     private final RateLimiter rateLimiter;
     private final Optional<OAuthRepository> oauthRepository;
-    private final OAuthProperties oauthProperties;
+    private final Optional<OAuthProperties> oauthProperties;
 
     public AuthFilter(Optional<TokenService> tokenService,
                       RateLimiter rateLimiter,
                       Optional<OAuthRepository> oauthRepository,
-                      OAuthProperties oauthProperties) {
+                      Optional<OAuthProperties> oauthProperties) {
         this.tokenService = tokenService;
         this.rateLimiter = rateLimiter;
         this.oauthRepository = oauthRepository;
@@ -127,13 +127,13 @@ public class AuthFilter extends OncePerRequestFilter {
             throws IOException {
         rateLimiter.recordFailure(clientIp);
         String requestPath = request.getRequestURI().substring(request.getContextPath().length());
-        if (requestPath.startsWith("/mcp")
-                && oauthProperties.isEnabled()
-                && oauthProperties.getIssuer() != null
-                && !oauthProperties.getIssuer().isBlank()) {
-            response.setHeader("WWW-Authenticate",
-                    "Bearer resource_metadata=\"" + oauthProperties.getIssuer()
-                            + "/.well-known/oauth-protected-resource\"");
+        if (requestPath.startsWith("/mcp") && oauthProperties.isPresent()) {
+            OAuthProperties props = oauthProperties.get();
+            if (props.isEnabled() && props.getIssuer() != null && !props.getIssuer().isBlank()) {
+                response.setHeader("WWW-Authenticate",
+                        "Bearer resource_metadata=\"" + props.getIssuer()
+                                + "/.well-known/oauth-protected-resource\"");
+            }
         }
         response.sendError(HttpServletResponse.SC_UNAUTHORIZED);
     }
