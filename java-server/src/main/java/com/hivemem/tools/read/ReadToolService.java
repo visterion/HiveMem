@@ -218,7 +218,14 @@ public class ReadToolService {
             int limit,
             int offset
     ) {
-        String effectiveRealm = (realm == null || realm.isBlank()) ? "documents" : realm;
+        String effectiveRealm;
+        if (realm == null || realm.isBlank()) {
+            effectiveRealm = "documents";
+        } else if (realm.equals("none")) {
+            effectiveRealm = null;
+        } else {
+            effectiveRealm = realm;
+        }
         int clampedLimit = Math.min(Math.max(limit, 1), 200);
         int clampedOffset = Math.max(offset, 0);
         return documentListRepository.listDocuments(
