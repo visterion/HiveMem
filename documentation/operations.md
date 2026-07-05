@@ -60,6 +60,52 @@ EOF
 
 Deploy the application — Flyway applies pending migrations on startup.
 
+## Enabling OAuth (MCP Custom Connectors)
+
+HiveMem's OAuth 2.0 authorization server (used by Claude.ai / ChatGPT Custom Connectors) is
+**disabled by default**. While `HIVEMEM_OAUTH_ENABLED` is `false`, all `/oauth/*` and
+`/.well-known/oauth-*` endpoints return `404`. A non-blank `HIVEMEM_OAUTH_ISSUER` is
+additionally required for OAuth to *function* — with `enabled=true` but a blank issuer the
+discovery documents return `200` with an empty issuer and the `/mcp` `WWW-Authenticate`
+header is suppressed, so the connector flow will not work. For the full connector flow and
+security model see [OAuth 2.0 + Custom Connector Setup](oauth.md).
+
+| Variable | Default | Description |
+|---|---|---|
+| `HIVEMEM_OAUTH_ENABLED` | `false` | Set to `true` to activate the OAuth endpoints |
+| `HIVEMEM_OAUTH_ISSUER` | *(empty)* | The **public HTTPS origin** the server is reached at |
+
+`HIVEMEM_OAUTH_ISSUER` **must** be the public HTTPS origin (e.g. `https://mem.ufelmann.com`),
+not the internal container URL. It flows verbatim into the discovery metadata (`issuer`,
+`authorization_endpoint`, `token_endpoint`, …) and into the `iss` of issued tokens, so any
+mismatch fails client-side validation.
+
+Add both under the `hivemem` service's `environment:` block in `/opt/hivemem/docker-compose.yml`:
+
+```yaml
+services:
+  hivemem:
+    environment:
+      HIVEMEM_OAUTH_ENABLED: "true"
+      HIVEMEM_OAUTH_ISSUER: "https://mem.ufelmann.com"
+```
+
+Recreate only the `hivemem` service (this is an outward-facing change — get explicit
+authorization first):
+
+```bash
+cd /opt/hivemem && docker compose up -d hivemem
+```
+
+Verify the discovery endpoint responds with the configured issuer:
+
+```bash
+curl -s https://mem.ufelmann.com/.well-known/oauth-authorization-server | jq .issuer
+# → "https://mem.ufelmann.com"   (HTTP 200)
+```
+
+If OAuth is disabled, this returns `404`.
+
 ## Attachment Storage (SeaweedFS)
 
 Attachment storage is optional. Set `HIVEMEM_ATTACHMENT_ENABLED=true` to enable.

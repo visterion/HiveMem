@@ -31,6 +31,18 @@ hivemem:
 The `issuer` MUST be the exact URL the client reaches the discovery endpoint at —
 mismatch will fail validation in Claude.ai.
 
+Only `enabled` and `issuer` are required — the remaining keys have sensible defaults
+(shown above). In production these two are wired to environment variables:
+`HIVEMEM_OAUTH_ENABLED=true` and `HIVEMEM_OAUTH_ISSUER=https://hivemem.example.com`. See
+[Operations → Enabling OAuth](operations.md#enabling-oauth-mcp-custom-connectors) for the
+docker-compose deploy step.
+
+OAuth is **disabled by default**. While `enabled` is `false`, every `/oauth/*` and
+`/.well-known/oauth-*` endpoint returns `404`. A non-blank `issuer` is additionally
+required for OAuth to *function* — with `enabled=true` but a blank issuer the discovery
+documents respond `200` with an empty `issuer` string and the `/mcp` `WWW-Authenticate`
+header is suppressed, so the connector flow will not work.
+
 Spring is already configured for reverse-proxy correctness (see `application.yml`):
 
 ```yaml
@@ -123,7 +135,14 @@ curl -i -X POST https://hivemem.example.com/mcp \
      -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
 ```
 
-Expected: `HTTP/2 401`.
+Expected: `HTTP/2 401`. When OAuth is enabled, the response also carries an RFC 9728
+discovery header pointing MCP clients at the protected-resource metadata:
+
+```
+WWW-Authenticate: Bearer resource_metadata="https://hivemem.example.com/.well-known/oauth-protected-resource"
+```
+
+When OAuth is disabled, `/mcp` returns a bare `401` with no `WWW-Authenticate` header.
 
 ## 5. Security model
 
