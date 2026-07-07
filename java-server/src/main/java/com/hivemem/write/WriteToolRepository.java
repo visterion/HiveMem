@@ -549,6 +549,37 @@ public class WriteToolRepository {
         return results;
     }
 
+    /**
+     * Active (valid_until IS NULL) facts matching the given predicate, optionally narrowed to a
+     * single subject. Rows are returned with raw typed values (UUID/OffsetDateTime/Number), not
+     * stringified, so callers (e.g. kg_rename_predicate) can feed them straight back into
+     * {@link #addFact} without re-parsing.
+     */
+    public List<Map<String, Object>> findActiveFactsByPredicate(String predicate, String subject, int limit) {
+        List<Map<String, Object>> results = new ArrayList<>();
+        for (Record row : dslContext.fetch("""
+                SELECT id, subject, "object", confidence, source_id, status, created_by AS agent_id, valid_from
+                FROM facts
+                WHERE predicate = ?
+                  AND valid_until IS NULL
+                  AND (?::text IS NULL OR subject = ?)
+                ORDER BY valid_from, id
+                LIMIT ?
+                """, predicate, subject, subject, limit)) {
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("id", row.get("id", UUID.class));
+            result.put("subject", row.get("subject", String.class));
+            result.put("object", row.get("object", String.class));
+            result.put("confidence", row.get("confidence", Float.class));
+            result.put("source_id", row.get("source_id", UUID.class));
+            result.put("status", row.get("status", String.class));
+            result.put("agent_id", row.get("agent_id", String.class));
+            result.put("valid_from", row.get("valid_from", OffsetDateTime.class));
+            results.add(result);
+        }
+        return results;
+    }
+
     public int approvePending(List<UUID> ids, String decision) {
         UUID[] idArray = ids.toArray(UUID[]::new);
         return dslContext.transactionResult(configuration -> {

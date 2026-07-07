@@ -158,22 +158,37 @@ public class WriteToolService {
         String conflictMode = onConflict == null ? "insert" : onConflict;
         if (!conflictMode.equals("insert")
                 && !conflictMode.equals("return")
-                && !conflictMode.equals("reject")) {
+                && !conflictMode.equals("reject")
+                && !conflictMode.equals("supersede")) {
             throw new IllegalArgumentException("Invalid on_conflict");
         }
 
+        int superseded = 0;
         if (!conflictMode.equals("insert")) {
             List<Map<String, Object>> conflicts =
                     writeToolRepository.checkContradiction(subject, predicate, object);
             if (!conflicts.isEmpty()) {
-                if (conflictMode.equals("reject")) {
-                    throw new IllegalStateException(
+                switch (conflictMode) {
+                    case "reject" -> throw new IllegalStateException(
                             "kg_add rejected: conflicting active fact exists");
+                    case "return" -> {
+                        Map<String, Object> rejection = new java.util.LinkedHashMap<>();
+                        rejection.put("inserted", false);
+                        rejection.put("conflicts", conflicts);
+                        return rejection;
+                    }
+                    case "supersede" -> {
+                        for (Map<String, Object> conflict : conflicts) {
+                            UUID conflictId = UUID.fromString(String.valueOf(conflict.get("fact_id")));
+                            writeToolRepository.invalidateFact(conflictId);
+                            Map<String, Object> invalidatePayload = new java.util.LinkedHashMap<>();
+                            invalidatePayload.put("fact_id", conflictId.toString());
+                            pushDispatcher.dispatch(opLogWriter.append("kg_invalidate", invalidatePayload));
+                        }
+                        superseded = conflicts.size();
+                    }
+                    default -> throw new IllegalStateException("unreachable");
                 }
-                Map<String, Object> rejection = new java.util.LinkedHashMap<>();
-                rejection.put("inserted", false);
-                rejection.put("conflicts", conflicts);
-                return rejection;
             }
         }
 
@@ -204,7 +219,71 @@ public class WriteToolService {
         Map<String, Object> result = new java.util.LinkedHashMap<>();
         result.put("inserted", true);
         result.putAll(inserted);
+        if (conflictMode.equals("supersede")) {
+            result.put("superseded", superseded);
+        }
         return result;
+    }
+
+    /**
+     * Rename a predicate across every active fact matching it (optionally narrowed to a single
+     * subject): invalidates each matching fact and re-adds it under the new predicate, preserving
+     * subject, object, confidence, source, status and the ORIGINAL valid_from (the fact was true
+     * since then; only its name changed). Emits one kg_invalidate + one kg_add op per renamed
+     * fact, so OpReplayer replays it identically to a manual invalidate+add.
+     */
+    @Transactional
+    public Map<String, Object> kgRenamePredicate(AuthPrincipal principal, String from, String to,
+                                                 String subject, boolean confirm) {
+        if (from.equals(to)) {
+            throw new IllegalArgumentException("from and to must differ");
+        }
+        List<Map<String, Object>> facts =
+                writeToolRepository.findActiveFactsByPredicate(from, subject, BULK_SELECTOR_CAP + 1);
+        if (facts.size() > BULK_SELECTOR_CAP) {
+            throw new IllegalArgumentException(
+                    "kg_rename_predicate matches more than " + BULK_SELECTOR_CAP + " facts; narrow with subject");
+        }
+        if (facts.size() > BULK_CONFIRM_THRESHOLD && !confirm) {
+            throw new IllegalArgumentException(
+                    "kg_rename_predicate would touch " + facts.size() + " facts; pass confirm: true");
+        }
+        for (Map<String, Object> fact : facts) {
+            UUID factId = (UUID) fact.get("id");
+            writeToolRepository.invalidateFact(factId);
+            Map<String, Object> invalidatePayload = new java.util.LinkedHashMap<>();
+            invalidatePayload.put("fact_id", factId.toString());
+            pushDispatcher.dispatch(opLogWriter.append("kg_invalidate", invalidatePayload));
+
+            String factSubject = (String) fact.get("subject");
+            String object = (String) fact.get("object");
+            List<Float> embedding = null;
+            try {
+                embedding = embeddingClient.encodeDocument(factSubject + " " + to + " " + object);
+            } catch (RuntimeException e) {
+                log.warn("Fact embedding unavailable during rename, storing without embedding", e);
+            }
+            Map<String, Object> inserted = writeToolRepository.addFact(
+                    factSubject, to, object,
+                    ((Number) fact.get("confidence")).doubleValue(),
+                    (UUID) fact.get("source_id"),
+                    (String) fact.get("status"),
+                    (String) fact.get("agent_id"),
+                    (OffsetDateTime) fact.get("valid_from"),
+                    embedding);
+            Map<String, Object> addPayload = new java.util.LinkedHashMap<>();
+            addPayload.put("fact_id", inserted.get("id"));
+            addPayload.put("subject", factSubject);
+            addPayload.put("predicate", to);
+            addPayload.put("object", object);
+            addPayload.put("confidence", fact.get("confidence"));
+            addPayload.put("source_id", fact.get("source_id") == null ? null : fact.get("source_id").toString());
+            addPayload.put("status", fact.get("status"));
+            addPayload.put("agent_id", fact.get("agent_id"));
+            addPayload.put("valid_from", fact.get("valid_from") == null ? null : fact.get("valid_from").toString());
+            pushDispatcher.dispatch(opLogWriter.append("kg_add", addPayload));
+        }
+        return Map.of("renamed", facts.size(), "matched", facts.size());
     }
 
     @Transactional

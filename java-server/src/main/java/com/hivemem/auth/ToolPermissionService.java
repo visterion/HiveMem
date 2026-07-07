@@ -51,6 +51,7 @@ public class ToolPermissionService {
             "add_tunnel",
             "kg_add",
             "kg_invalidate",
+            "kg_rename_predicate",
             "update_identity",
             "add_reference",
             "link_reference",

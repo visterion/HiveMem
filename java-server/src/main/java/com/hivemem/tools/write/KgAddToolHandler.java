@@ -30,7 +30,9 @@ public class KgAddToolHandler implements ToolHandler {
 
     @Override
     public String description() {
-        return "Add a fact triple to the knowledge graph.";
+        return "Add a fact triple to the knowledge graph. on_conflict: insert (default) | return "
+                + "(report conflicts without inserting) | reject (error on conflict) | supersede "
+                + "(invalidate conflicting active facts, then insert; returns superseded: N).";
     }
 
     @Override
