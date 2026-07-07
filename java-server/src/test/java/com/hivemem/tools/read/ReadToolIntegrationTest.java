@@ -206,6 +206,71 @@ class ReadToolIntegrationTest {
     }
 
     @Test
+    void keywordScoreIsNormalizedByRankOverRankPlusOneWithoutSaturating() throws Exception {
+        // Flag 32 (rank/(rank+1)) replaces the old LEAST(ts_rank_cd, 1.0) clamp.
+        // Cell A repeats all three query lexemes many times so raw ts_rank_cd
+        // comfortably exceeds 1.0 (the old clamp would force it down to exactly
+        // 1.0); cell B contains a single occurrence of a single lexeme. Under
+        // the old clamp both could collide at 1.0 despite very different match
+        // richness; under flag 32 they must land at distinct, sub-1.0 scores.
+        UUID richId = UUID.fromString("00000000-0000-0000-0000-000000000601");
+        UUID sparseId = UUID.fromString("00000000-0000-0000-0000-000000000602");
+
+        insertDrawer(
+                richId,
+                null,
+                "alpha bravo charlie alpha bravo charlie alpha bravo charlie alpha bravo charlie",
+                "alpha",
+                "facts",
+                "rank",
+                "system",
+                1,
+                "alpha bravo charlie rich summary",
+                null,
+                null,
+                "committed",
+                "writer",
+                OffsetDateTime.parse("2026-04-03T10:00:00Z"),
+                OffsetDateTime.parse("2026-04-03T10:00:00Z"),
+                null
+        );
+        insertDrawer(
+                sparseId,
+                null,
+                "alpha only, nothing else relevant here",
+                "alpha",
+                "facts",
+                "rank",
+                "system",
+                1,
+                "alpha sparse summary",
+                null,
+                null,
+                "committed",
+                "writer",
+                OffsetDateTime.parse("2026-04-03T10:05:00Z"),
+                OffsetDateTime.parse("2026-04-03T10:05:00Z"),
+                null
+        );
+
+        JsonNode results = callToolContent("search", Map.of("query", "alpha bravo charlie", "limit", 10));
+        assertThat(results).hasSize(2);
+
+        Map<String, Double> scoresById = new java.util.HashMap<>();
+        for (JsonNode row : results) {
+            scoresById.put(row.path("id").asText(), row.path("score_keyword").asDouble());
+        }
+
+        double richScore = scoresById.get(richId.toString());
+        double sparseScore = scoresById.get(sparseId.toString());
+
+        assertThat(richScore).isLessThan(1.0d);
+        assertThat(sparseScore).isLessThan(1.0d);
+        assertThat(sparseScore).isGreaterThan(0.0d);
+        assertThat(richScore).isGreaterThan(sparseScore);
+    }
+
+    @Test
     void searchKgToolReturnsCommittedFactsOnly() throws Exception {
         seedStatusRows();
 

@@ -92,7 +92,7 @@ LANGUAGE SQL STABLE AS $$
             CASE WHEN c.embedding IS NOT NULL AND query_embedding IS NOT NULL
                  THEN (1 - ((c.embedding::vector({{DIM}})) <=> query_embedding))::REAL
                  ELSE 0::REAL END AS sem,
-            CASE WHEN q.tsq IS NOT NULL THEN LEAST(ts_rank_cd(c.tsv, q.tsq)::REAL, 1.0::REAL)
+            CASE WHEN q.tsq IS NOT NULL THEN ts_rank_cd(c.tsv, q.tsq, 32)::REAL
                  ELSE 0::REAL END AS kw,
             EXP(-0.693 * EXTRACT(EPOCH FROM (now() - c.created_at)) / (90 * 86400))::REAL AS rec,
             (CASE c.importance
