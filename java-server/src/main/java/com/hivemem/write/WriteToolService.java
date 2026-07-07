@@ -209,8 +209,10 @@ public class WriteToolService {
 
     @Transactional
     public Map<String, Object> kgInvalidate(UUID factId) {
-        writeToolRepository.invalidateFact(factId);
-
+        int updated = writeToolRepository.invalidateFact(factId);
+        if (updated == 0) {
+            return Map.of("invalidated", false);
+        }
         Map<String, Object> opPayload = new java.util.LinkedHashMap<>();
         opPayload.put("fact_id", factId.toString());
         UUID opId = opLogWriter.append("kg_invalidate", opPayload);
