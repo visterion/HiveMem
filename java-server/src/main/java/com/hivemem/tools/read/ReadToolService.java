@@ -5,6 +5,8 @@ import com.hivemem.auth.AuthPrincipal;
 import com.hivemem.cells.CellReadRepository;
 import com.hivemem.embedding.EmbeddingClient;
 import com.hivemem.search.CellSearchRepository;
+import com.hivemem.search.CellSelector;
+import com.hivemem.search.CellSelectorRepository;
 import com.hivemem.search.ConfidenceLevel;
 import com.hivemem.search.ConfidenceThresholds;
 import com.hivemem.search.DocumentListRepository;
@@ -40,6 +42,7 @@ public class ReadToolService {
     private final FacetRepository facetRepository;
     private final DocumentListRepository documentListRepository;
     private final MediaListRepository mediaListRepository;
+    private final CellSelectorRepository cellSelectorRepository;
 
     public ReadToolService(
             CellReadRepository cellReadRepository,
@@ -52,7 +55,8 @@ public class ReadToolService {
             AttachmentRepository attachmentRepository,
             FacetRepository facetRepository,
             DocumentListRepository documentListRepository,
-            MediaListRepository mediaListRepository
+            MediaListRepository mediaListRepository,
+            CellSelectorRepository cellSelectorRepository
     ) {
         this.cellReadRepository = cellReadRepository;
         this.kgSearchRepository = kgSearchRepository;
@@ -65,6 +69,16 @@ public class ReadToolService {
         this.facetRepository = facetRepository;
         this.documentListRepository = documentListRepository;
         this.mediaListRepository = mediaListRepository;
+        this.cellSelectorRepository = cellSelectorRepository;
+    }
+
+    public Map<String, Object> listCellIds(CellSelector selector, int limit, int offset) {
+        int clampedLimit = Math.min(Math.max(limit, 1), 1000);
+        int clampedOffset = Math.max(offset, 0);
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("ids", cellSelectorRepository.selectIds(selector, clampedLimit, clampedOffset));
+        result.put("total", cellSelectorRepository.countMatches(selector));
+        return result;
     }
 
     public Map<String, Object> status() {

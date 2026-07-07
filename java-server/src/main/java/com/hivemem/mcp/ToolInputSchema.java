@@ -129,6 +129,25 @@ public final class ToolInputSchema {
         return addArray(name, "string", "uuid", description, false);
     }
 
+    public ToolInputSchema optionalBoolean(String name, String description) {
+        return addScalar(name, "boolean", null, description, false);
+    }
+
+    public ToolInputSchema optionalObject(String name, String description, ToolInputSchema nested) {
+        Map<String, Object> prop = new LinkedHashMap<>();
+        prop.put("type", "object");
+        prop.put("properties", Map.copyOf(nested.properties));
+        if (!nested.required.isEmpty()) {
+            prop.put("required", List.copyOf(nested.required));
+        }
+        prop.put("additionalProperties", Boolean.FALSE);
+        if (description != null && !description.isBlank()) {
+            prop.put("description", description);
+        }
+        properties.put(name, Map.copyOf(prop));
+        return this;
+    }
+
     public Map<String, Object> build() {
         return schemaOf(Map.copyOf(properties), List.copyOf(required));
     }

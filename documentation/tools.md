@@ -1,10 +1,10 @@
 # Tools
 
-HiveMem exposes **46 MCP tools** across search, knowledge graph, progressive summarization, agent fleet, references, attachments, saved searches, tag management, and admin. Large file uploads can also use the REST endpoint (`POST /api/attachments`) — see [Attachments](#attachments).
+HiveMem exposes **47 MCP tools** across search, knowledge graph, progressive summarization, agent fleet, references, attachments, saved searches, tag management, and admin. Large file uploads can also use the REST endpoint (`POST /api/attachments`) — see [Attachments](#attachments).
 
 ## Feature Overview
 
-- **46 MCP tools** across search, knowledge graph, progressive summarization, agent fleet, references, attachments, saved searches, tag management, and admin
+- **47 MCP tools** across search, knowledge graph, progressive summarization, agent fleet, references, attachments, saved searches, tag management, and admin
 - **6-signal ranked search** — semantic similarity + keyword match + recency + importance + popularity + graph proximity
 - **Append-only versioning** — never lose history, revise with parent_id chains, point-in-time queries
 - **Progressive summarization** — content, summary, key_points, insight per cell
@@ -19,7 +19,7 @@ HiveMem exposes **46 MCP tools** across search, knowledge graph, progressive sum
 
 ## Tool List
 
-**Read (21):**
+**Read (22):**
 
 1. `status`: System overview and counts.
 2. `search`: Semantic similarity + keyword search; returns metadata by default and supports `include` for optional fields. Optional params: `tags` (string array — match-ANY overlap filter), `status` (`committed`|`pending`|`rejected`, default `committed`).
@@ -42,37 +42,38 @@ HiveMem exposes **46 MCP tools** across search, knowledge graph, progressive sum
 19. `list_documents`: Browse documents in a realm (no query) with tag/status filters, sort, and paging; joins the extraction-source attachment. Optional params: `realm` (default `documents`; pass `"none"` to list cells with no realm assigned), `signal`, `topic`, `tags` (match-ANY), `status` (`committed`|`pending`|`rejected`, default `committed`), `sort` (`newest`|`oldest`|`title`, default `newest`), `limit` (1–200, default 50), `offset` (0+, default 0). Each row includes a nullable `confidence` (per-document average of active-fact confidence).
 20. `list_media`: List image attachments for the photo gallery — committed cells Vision-classified `subtype_photo_general` or `subtype_whiteboard_photo`, joined to their extraction-source image attachment and per-image EXIF metadata (camera, width/height, capture date, GPS, reverse-geocoded place name). Optional params: `realm` (default: all realms), `sort` (`newest`|`oldest` by capture date, default `newest`), `limit` (1–500, default 100), `offset` (0+, default 0). Each row includes `attachment_id`, `thumbnail_uri`, `content_uri`, `taken_at`, `place_name`, and the EXIF fields. `document_scan` images are excluded (they appear in the Scans view).
 21. `list_saved_searches`: Return all active saved searches belonging to the calling user (`id`, `name`, `filter`, `created_at`). No params required. Use `save_search` to create and `delete_saved_search` to remove.
+22. `list_cell_ids`: List only cell IDs (+realm/signal/topic) matching a filter — the cheap discovery primitive for bulk operations. Optional param: `where` (object with `realm`, `realm_in` — array, may include `"none"` for cells without a realm — `signal`, `topic`, `tags` — match-ANY — `query` — full-text — and `status`, default `committed`; `realm` and `realm_in` are mutually exclusive). Also `limit` (1–1000, default 200) and `offset` (0+, default 0). Returns `{ids: [{id, realm, signal, topic}], total}`.
 
 **Write (21):**
 
-22. `add_cell`: Store a cell with content, summary, key points, and insight; optional `dedupe_threshold` runs an embedding-based dedupe gate in one call.
-23. `add_tunnel`: Link two cells together.
-24. `kg_add`: Fact triple; optional `on_conflict` (`insert`|`return`|`reject`) gates against active conflicts.
-25. `kg_invalidate`: Soft-delete/expire a fact.
-26. `update_identity`: Update session context facts.
-27. `add_reference`: Store source documents/URLs.
-28. `link_reference`: Cite source for a cell.
-29. `remove_tunnel`: Expire a cell link.
-30. `revise_cell`: Create a new version of a cell.
-31. `revise_fact`: Create a new version of a fact.
-32. `register_agent`: Add an agent to the fleet.
-33. `diary_write`: Agent-private reflection tool.
-34. `update_blueprint`: Update realm narrative.
-35. `reclassify_cell`: Move a cell to a different realm/signal/topic in-place without creating a new revision. Leaves content, embeddings, tunnels, facts, and references untouched. Use for taxonomy migrations.
-36. `upload_attachment`: Upload a file attachment (Base64-encoded). Required params: `realm` (target realm), `data` (Base64 payload), `filename`. Optional: `signal`, `topic`, `cell_id` (existing cell — creates a `related_to` tunnel). Always creates a new `pending` Cell whose content is the extracted text (or the filename if no text could be extracted); the Classifier agent enriches the cell asynchronously. Stores original in SeaweedFS, generates JPEG thumbnail at ingest. Returns `{ attachment_id, cell_id, mime_type, size_bytes, has_thumbnail }`. For large files (>~10 MB) prefer `POST /api/attachments` (multipart) — see [Attachments](#attachments).
-37. `save_search`: Persist the current Scans filter as a named saved search for the calling user. Required param: `name` (human-readable label). Optional: `filter` (JSON object describing the filter state, serialized by the UI; defaults to `{}`). Upserts by name — if a saved search with the same name already exists for this user it is replaced.
-38. `delete_saved_search`: Soft-delete a saved search by `id` (UUID). Only the owner can delete their own saved searches. Returns `{id, deleted}`.
-39. `add_tags`: Add one or more tags to a cell (idempotent union — already-present tags are ignored). Required params: `cell_id` (UUID), `tags` (string array). Returns `{updated: 1}` when the cell was found, `{updated: 0}` if not found or already closed.
-40. `remove_tags`: Remove one or more tags from a cell (idempotent — tags not present are ignored). Required params: `cell_id` (UUID), `tags` (string array). Returns `{updated: 1}` when the cell was found, `{updated: 0}` if not found or already closed.
-41. `bulk_tag`: Add and/or remove tags on multiple cells in a single transaction. Required param: `cell_ids` (UUID array). Optional: `add_tags` (string array), `remove_tags` (string array). At least one of `add_tags` or `remove_tags` must be provided. Operations are idempotent. Returns `{updated: N}` with the number of cells modified.
-42. `bulk_reclassify`: Reclassify multiple cells in-place (realm/signal/topic) in a single transaction. Required param: `cell_ids` (UUID array). Optional: `realm`, `signal` (`facts`|`events`|`discoveries`|`preferences`|`advice`), `topic`. At least one of realm/signal/topic must be provided. Returns `{updated: N}` with the number of cells reclassified.
+23. `add_cell`: Store a cell with content, summary, key points, and insight; optional `dedupe_threshold` runs an embedding-based dedupe gate in one call.
+24. `add_tunnel`: Link two cells together.
+25. `kg_add`: Fact triple; optional `on_conflict` (`insert`|`return`|`reject`) gates against active conflicts.
+26. `kg_invalidate`: Soft-delete/expire a fact.
+27. `update_identity`: Update session context facts.
+28. `add_reference`: Store source documents/URLs.
+29. `link_reference`: Cite source for a cell.
+30. `remove_tunnel`: Expire a cell link.
+31. `revise_cell`: Create a new version of a cell.
+32. `revise_fact`: Create a new version of a fact.
+33. `register_agent`: Add an agent to the fleet.
+34. `diary_write`: Agent-private reflection tool.
+35. `update_blueprint`: Update realm narrative.
+36. `reclassify_cell`: Move a cell to a different realm/signal/topic in-place without creating a new revision. Leaves content, embeddings, tunnels, facts, and references untouched. Use for taxonomy migrations.
+37. `upload_attachment`: Upload a file attachment (Base64-encoded). Required params: `realm` (target realm), `data` (Base64 payload), `filename`. Optional: `signal`, `topic`, `cell_id` (existing cell — creates a `related_to` tunnel). Always creates a new `pending` Cell whose content is the extracted text (or the filename if no text could be extracted); the Classifier agent enriches the cell asynchronously. Stores original in SeaweedFS, generates JPEG thumbnail at ingest. Returns `{ attachment_id, cell_id, mime_type, size_bytes, has_thumbnail }`. For large files (>~10 MB) prefer `POST /api/attachments` (multipart) — see [Attachments](#attachments).
+38. `save_search`: Persist the current Scans filter as a named saved search for the calling user. Required param: `name` (human-readable label). Optional: `filter` (JSON object describing the filter state, serialized by the UI; defaults to `{}`). Upserts by name — if a saved search with the same name already exists for this user it is replaced.
+39. `delete_saved_search`: Soft-delete a saved search by `id` (UUID). Only the owner can delete their own saved searches. Returns `{id, deleted}`.
+40. `add_tags`: Add one or more tags to a cell (idempotent union — already-present tags are ignored). Required params: `cell_id` (UUID), `tags` (string array). Returns `{updated: 1}` when the cell was found, `{updated: 0}` if not found or already closed.
+41. `remove_tags`: Remove one or more tags from a cell (idempotent — tags not present are ignored). Required params: `cell_id` (UUID), `tags` (string array). Returns `{updated: 1}` when the cell was found, `{updated: 0}` if not found or already closed.
+42. `bulk_tag`: Add and/or remove tags on multiple cells in a single transaction. Required param: `cell_ids` (UUID array). Optional: `add_tags` (string array), `remove_tags` (string array). At least one of `add_tags` or `remove_tags` must be provided. Operations are idempotent. Returns `{updated: N}` with the number of cells modified.
+43. `bulk_reclassify`: Reclassify multiple cells in-place (realm/signal/topic) in a single transaction. Required param: `cell_ids` (UUID array). Optional: `realm`, `signal` (`facts`|`events`|`discoveries`|`preferences`|`advice`), `topic`. At least one of realm/signal/topic must be provided. Returns `{updated: N}` with the number of cells reclassified.
 
 **Admin (4):**
 
-43. `approve_pending`: Admin tool to batch approve or reject agent writes.
-44. `health`: Monitor DB and service state.
-45. `queen_runs`: List recent Queen/Bee agent runs from Vistierie. Optional args: `limit` (1–200, default 50), `offset` (0+, default 0). Returns `{items:[{id,agent,trigger,status,startedAt,finishedAt,durationMs,llmCalls,costMicros}], total, costAvailable}`; on Vistierie outage returns `{items:[],total:0,costAvailable:false,unavailable:true}`. Cost fields (`llmCalls`, `costMicros`) are populated only when `HIVEMEM_QUEEN_VISTIERIE_ADMIN_TOKEN` is configured.
-46. `queen_run_detail`: Fetch full detail for a single Queen/Bee run. Required arg: `run_id` (string). Returns `{run:{...}, events:[{type,...}]}` (run metadata + Vistierie event timeline); on outage returns `{run:{},events:[],unavailable:true}`.
+44. `approve_pending`: Admin tool to batch approve or reject agent writes.
+45. `health`: Monitor DB and service state.
+46. `queen_runs`: List recent Queen/Bee agent runs from Vistierie. Optional args: `limit` (1–200, default 50), `offset` (0+, default 0). Returns `{items:[{id,agent,trigger,status,startedAt,finishedAt,durationMs,llmCalls,costMicros}], total, costAvailable}`; on Vistierie outage returns `{items:[],total:0,costAvailable:false,unavailable:true}`. Cost fields (`llmCalls`, `costMicros`) are populated only when `HIVEMEM_QUEEN_VISTIERIE_ADMIN_TOKEN` is configured.
+47. `queen_run_detail`: Fetch full detail for a single Queen/Bee run. Required arg: `run_id` (string). Returns `{run:{...}, events:[{type,...}]}` (run metadata + Vistierie event timeline); on outage returns `{run:{},events:[],unavailable:true}`.
 
 ## Attachments
 

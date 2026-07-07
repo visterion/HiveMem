@@ -40,7 +40,8 @@ public class ToolPermissionService {
             "facet_count",
             "list_documents",
             "list_media",
-            "list_saved_searches"
+            "list_saved_searches",
+            "list_cell_ids"
     );
 
     private static final Set<String> WRITE_TOOLS = tools(

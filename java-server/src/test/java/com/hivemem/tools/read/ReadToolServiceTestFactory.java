@@ -4,6 +4,7 @@ import com.hivemem.attachment.AttachmentRepository;
 import com.hivemem.cells.CellReadRepository;
 import com.hivemem.embedding.EmbeddingClient;
 import com.hivemem.search.CellSearchRepository;
+import com.hivemem.search.CellSelectorRepository;
 import com.hivemem.search.ConfidenceThresholds;
 import com.hivemem.search.DocumentListRepository;
 import com.hivemem.search.FacetRepository;
@@ -29,7 +30,8 @@ final class ReadToolServiceTestFactory {
                 mock(AttachmentRepository.class),
                 mock(FacetRepository.class),
                 repo,
-                mock(MediaListRepository.class)
+                mock(MediaListRepository.class),
+                mock(CellSelectorRepository.class)
         );
     }
 }
