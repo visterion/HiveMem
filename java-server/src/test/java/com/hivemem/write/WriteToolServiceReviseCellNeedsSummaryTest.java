@@ -9,6 +9,7 @@ import static org.mockito.Mockito.when;
 import com.hivemem.auth.AuthPrincipal;
 import com.hivemem.auth.AuthRole;
 import com.hivemem.embedding.EmbeddingClient;
+import com.hivemem.search.CellSelectorRepository;
 import com.hivemem.summarize.CellNeedsSummaryEvent;
 import com.hivemem.sync.OpLogWriter;
 import com.hivemem.sync.PushDispatcher;
@@ -26,6 +27,7 @@ class WriteToolServiceReviseCellNeedsSummaryTest {
         OpLogWriter opLog = mock(OpLogWriter.class);
         PushDispatcher push = mock(PushDispatcher.class);
         ApplicationEventPublisher events = mock(ApplicationEventPublisher.class);
+        CellSelectorRepository cellSelectorRepository = mock(CellSelectorRepository.class);
 
         UUID newId = UUID.randomUUID();
         UUID oldId = UUID.randomUUID();
@@ -35,7 +37,7 @@ class WriteToolServiceReviseCellNeedsSummaryTest {
         when(embedding.encodeForCell(any(), any())).thenReturn(null); // embedding value irrelevant to this test
 
         WriteToolService service = new WriteToolService(
-                repo, embedding, opLog, push, events);
+                repo, embedding, opLog, push, events, cellSelectorRepository);
 
         String longContent = "x".repeat(600); // > 500 → needs summary
         AuthPrincipal admin = new AuthPrincipal("system", AuthRole.ADMIN);

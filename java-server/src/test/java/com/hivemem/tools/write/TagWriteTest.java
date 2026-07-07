@@ -38,6 +38,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @ExtendWith(SpringExtension.class)
@@ -143,6 +144,26 @@ class TagWriteTest {
         JsonNode body = objectMapper.readTree(result.getResponse().getContentAsString());
         String textContent = body.path("result").path("content").get(0).path("text").asText();
         return objectMapper.readTree(textContent);
+    }
+
+    /** Calls a tool expected to fail validation; asserts HTTP 400 and returns the JSON-RPC error message. */
+    private String callToolError(String token, String toolName, Map<String, Object> arguments) throws Exception {
+        MvcResult result = mockMvc.perform(post("/mcp")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "jsonrpc", "2.0",
+                                "id", 1,
+                                "method", "tools/call",
+                                "params", Map.of(
+                                        "name", toolName,
+                                        "arguments", arguments
+                                )
+                        ))))
+                .andExpect(status().isBadRequest())
+                .andReturn();
+        JsonNode body = objectMapper.readTree(result.getResponse().getContentAsString());
+        return body.path("error").path("message").asText();
     }
 
     // ---- Tests ----
@@ -255,6 +276,7 @@ class TagWriteTest {
         ));
 
         assertThat(result.path("updated").asInt()).isEqualTo(2);
+        assertThat(result.path("matched").asInt()).isEqualTo(2);
 
         // cell1: has bulk-tag, no existing-tag (didn't have it)
         String[] tags1 = getCellTags(cell1);
@@ -277,6 +299,7 @@ class TagWriteTest {
         ));
 
         assertThat(result.path("updated").asInt()).isEqualTo(2);
+        assertThat(result.path("matched").asInt()).isEqualTo(2);
 
         assertThat(getCellTags(cell1)).contains("new-tag");
         assertThat(getCellTags(cell2)).contains("new-tag");
@@ -312,6 +335,7 @@ class TagWriteTest {
         ));
 
         assertThat(result.path("updated").asInt()).isEqualTo(2);
+        assertThat(result.path("matched").asInt()).isEqualTo(2);
 
         // Verify both cells reflect the reclassification
         JsonNode c1 = callToolContent("writer-token", "get_cell", Map.of("cell_id", cell1.toString()));
@@ -323,6 +347,105 @@ class TagWriteTest {
         assertThat(c2.path("realm").asText()).isEqualTo("new-realm");
         assertThat(c2.path("signal").asText()).isEqualTo("events");
         assertThat(c2.path("topic").asText()).isEqualTo("new-topic");
+    }
+
+    @Test
+    void bulkTagWithWhereSelector() throws Exception {
+        UUID cell1 = seedCell("merge-src cell 1", "merge-src");
+        UUID cell2 = seedCell("merge-src cell 2", "merge-src");
+        UUID cell3 = seedCell("merge-src cell 3", "merge-src");
+        UUID otherCell = seedCell("other realm cell", "other");
+
+        JsonNode result = callToolContent("writer-token", "bulk_tag", Map.of(
+                "where", Map.of("realm", "merge-src"),
+                "add_tags", List.of("x")
+        ));
+
+        assertThat(result.path("updated").asInt()).isEqualTo(3);
+        assertThat(result.path("matched").asInt()).isEqualTo(3);
+
+        assertThat(getCellTags(cell1)).contains("x");
+        assertThat(getCellTags(cell2)).contains("x");
+        assertThat(getCellTags(cell3)).contains("x");
+        assertThat(getCellTags(otherCell)).doesNotContain("x");
+    }
+
+    @Test
+    void bulkReclassifyWithWhereSelector() throws Exception {
+        UUID cell1 = seedCell("merge-src cell 1", "merge-src");
+        UUID cell2 = seedCell("merge-src cell 2", "merge-src");
+        UUID cell3 = seedCell("merge-src cell 3", "merge-src");
+        seedCell("other realm cell", "other");
+
+        JsonNode result = callToolContent("writer-token", "bulk_reclassify", Map.of(
+                "where", Map.of("realm", "merge-src"),
+                "realm", "merge-dst"
+        ));
+
+        assertThat(result.path("updated").asInt()).isEqualTo(3);
+        assertThat(result.path("matched").asInt()).isEqualTo(3);
+
+        for (UUID id : List.of(cell1, cell2, cell3)) {
+            JsonNode cell = callToolContent("writer-token", "get_cell", Map.of("cell_id", id.toString()));
+            assertThat(cell.path("realm").asText()).isEqualTo("merge-dst");
+        }
+    }
+
+    @Test
+    void bulkTagRejectsBothCellIdsAndWhere() throws Exception {
+        UUID cellId = seedCell("both selectors cell", "test-realm");
+
+        String message = callToolError("writer-token", "bulk_tag", Map.of(
+                "cell_ids", List.of(cellId.toString()),
+                "where", Map.of("realm", "test-realm"),
+                "add_tags", List.of("x")
+        ));
+
+        assertThat(message).contains("exactly one");
+    }
+
+    @Test
+    void bulkTagRejectsNeither() throws Exception {
+        String message = callToolError("writer-token", "bulk_tag", Map.of(
+                "add_tags", List.of("x")
+        ));
+
+        assertThat(message).contains("exactly one");
+    }
+
+    @Test
+    void bulkTagConfirmGate() throws Exception {
+        for (int i = 0; i < 201; i++) {
+            seedCell("confirm gate cell " + i, "confirm-gate-realm");
+        }
+
+        String message = callToolError("writer-token", "bulk_tag", Map.of(
+                "where", Map.of("realm", "confirm-gate-realm"),
+                "add_tags", List.of("x")
+        ));
+        assertThat(message).contains("confirm");
+
+        JsonNode result = callToolContent("writer-token", "bulk_tag", Map.of(
+                "where", Map.of("realm", "confirm-gate-realm"),
+                "add_tags", List.of("x"),
+                "confirm", true
+        ));
+        assertThat(result.path("updated").asInt()).isEqualTo(201);
+        assertThat(result.path("matched").asInt()).isEqualTo(201);
+    }
+
+    @Test
+    void bulkReclassifyExplicitIdsStillWork() throws Exception {
+        UUID cell1 = seedCell("explicit ids cell 1", "old-realm");
+        UUID cell2 = seedCell("explicit ids cell 2", "old-realm");
+
+        JsonNode result = callToolContent("writer-token", "bulk_reclassify", Map.of(
+                "cell_ids", List.of(cell1.toString(), cell2.toString()),
+                "realm", "new-realm"
+        ));
+
+        assertThat(result.path("updated").asInt()).isEqualTo(2);
+        assertThat(result.path("matched").asInt()).isEqualTo(2);
     }
 
     @TestConfiguration(proxyBeanMethods = false)

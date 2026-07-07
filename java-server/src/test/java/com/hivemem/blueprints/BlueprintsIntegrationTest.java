@@ -5,6 +5,7 @@ import com.hivemem.auth.AuthRole;
 import com.hivemem.cells.CellReadRepository;
 import com.hivemem.embedding.EmbeddingClient;
 import com.hivemem.embedding.FixedEmbeddingClient;
+import com.hivemem.search.CellSelectorRepository;
 import com.hivemem.search.CellSearchRepository;
 import com.hivemem.search.KgSearchRepository;
 import com.hivemem.search.ConfidenceThresholds;
@@ -264,6 +265,7 @@ class BlueprintsIntegrationTest {
     @EnableAutoConfiguration
     @Import({
             WriteToolService.class,
+            CellSelectorRepository.class,
             WriteToolRepository.class,
             ReadToolService.class,
             DocumentListRepository.class,

@@ -153,6 +153,7 @@ class CellSearchRepositoryReferencesTest {
     @EnableAutoConfiguration
     @Import({
             WriteToolService.class,
+            CellSelectorRepository.class,
             WriteToolRepository.class,
             ReadToolService.class,
             DocumentListRepository.class,

@@ -9,6 +9,7 @@ import com.hivemem.sync.OpLogWriter;
 import com.hivemem.sync.PeerClient;
 import com.hivemem.sync.PushDispatcher;
 import com.hivemem.sync.SyncOpsRepository;
+import com.hivemem.search.CellSelectorRepository;
 import com.hivemem.sync.SyncPeerRepository;
 import com.hivemem.testsupport.MockVistierieServer;
 import com.hivemem.write.WriteToolRepository;
@@ -245,7 +246,7 @@ class SummarizerServiceIT {
 
         org.springframework.context.ApplicationEventPublisher noopPublisher = e -> {};
         WriteToolService writeService = new WriteToolService(
-                writeRepo, embedding, opLogWriter, pushDispatcher, noopPublisher);
+                writeRepo, embedding, opLogWriter, pushDispatcher, noopPublisher, new CellSelectorRepository(dsl));
 
         return new SummarizerService(
                 props, extractionProps, repo, dsl, RestClient.builder(), writeService,

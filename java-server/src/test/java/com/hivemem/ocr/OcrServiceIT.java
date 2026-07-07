@@ -4,6 +4,7 @@ import com.hivemem.attachment.AttachmentProperties;
 import com.hivemem.attachment.SeaweedFsClient;
 import com.hivemem.embedding.EmbeddingClient;
 import com.hivemem.embedding.FixedEmbeddingClient;
+import com.hivemem.search.CellSelectorRepository;
 import com.hivemem.summarize.NeedsSummaryDecider;
 import com.hivemem.sync.InstanceConfig;
 import com.hivemem.sync.OpLogWriter;
@@ -156,7 +157,7 @@ class OcrServiceIT {
         ApplicationEventPublisher noopPublisher = e -> {};
 
         WriteToolService writeService = new WriteToolService(
-                writeRepo, embedding, opLogWriter, pushDispatcher, noopPublisher);
+                writeRepo, embedding, opLogWriter, pushDispatcher, noopPublisher, new CellSelectorRepository(dsl));
 
         OcrService service = new OcrService(
                 ocrProps, ocrRepo, seaweed, writeService,

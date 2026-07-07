@@ -3,6 +3,8 @@ package com.hivemem.write;
 import com.hivemem.auth.AuthPrincipal;
 import com.hivemem.auth.AuthRole;
 import com.hivemem.embedding.EmbeddingClient;
+import com.hivemem.search.CellSelector;
+import com.hivemem.search.CellSelectorRepository;
 import com.hivemem.summarize.CellNeedsSummaryEvent;
 import com.hivemem.summarize.NeedsSummaryDecider;
 import com.hivemem.sync.OpLogWriter;
@@ -22,25 +24,30 @@ public class WriteToolService {
     private static final String STATUS_PENDING = "pending";
     private static final String STATUS_COMMITTED = "committed";
     private static final String STATUS_REJECTED = "rejected";
+    private static final int BULK_SELECTOR_CAP = 1000;
+    private static final int BULK_CONFIRM_THRESHOLD = 200;
 
     private final WriteToolRepository writeToolRepository;
     private final EmbeddingClient embeddingClient;
     private final OpLogWriter opLogWriter;
     private final PushDispatcher pushDispatcher;
     private final ApplicationEventPublisher eventPublisher;
+    private final CellSelectorRepository cellSelectorRepository;
 
     public WriteToolService(
             WriteToolRepository writeToolRepository,
             EmbeddingClient embeddingClient,
             OpLogWriter opLogWriter,
             PushDispatcher pushDispatcher,
-            ApplicationEventPublisher eventPublisher
+            ApplicationEventPublisher eventPublisher,
+            CellSelectorRepository cellSelectorRepository
     ) {
         this.writeToolRepository = writeToolRepository;
         this.embeddingClient = embeddingClient;
         this.opLogWriter = opLogWriter;
         this.pushDispatcher = pushDispatcher;
         this.eventPublisher = eventPublisher;
+        this.cellSelectorRepository = cellSelectorRepository;
     }
 
     @Transactional
@@ -354,7 +361,7 @@ public class WriteToolService {
         opPayload.put("agent_id", principal.name());
         UUID opId = opLogWriter.append("bulk_tag", opPayload);
         pushDispatcher.dispatch(opId);
-        return Map.of("updated", updated);
+        return Map.of("updated", updated, "matched", cellIds.size());
     }
 
     @Transactional
@@ -364,7 +371,36 @@ public class WriteToolService {
             reclassifyCell(principal, id, realm, topic, signal);
             updated++;
         }
-        return Map.of("updated", updated);
+        return Map.of("updated", updated, "matched", cellIds.size());
+    }
+
+    @Transactional
+    public Map<String, Object> bulkTagBySelector(AuthPrincipal principal, CellSelector selector,
+            List<String> addTagsList, List<String> removeTagsList, boolean confirm) {
+        List<UUID> ids = resolveSelector(selector, confirm);
+        Map<String, Object> inner = bulkTag(principal, ids, addTagsList, removeTagsList);
+        return Map.of("updated", inner.get("updated"), "matched", ids.size());
+    }
+
+    @Transactional
+    public Map<String, Object> bulkReclassifyBySelector(AuthPrincipal principal, CellSelector selector,
+            String realm, String signal, String topic, boolean confirm) {
+        List<UUID> ids = resolveSelector(selector, confirm);
+        Map<String, Object> inner = bulkReclassify(principal, ids, realm, signal, topic);
+        return Map.of("updated", inner.get("updated"), "matched", ids.size());
+    }
+
+    private List<UUID> resolveSelector(CellSelector selector, boolean confirm) {
+        List<UUID> ids = cellSelectorRepository.selectAllIds(selector, BULK_SELECTOR_CAP + 1);
+        if (ids.size() > BULK_SELECTOR_CAP) {
+            throw new IllegalArgumentException(
+                    "where matches more than " + BULK_SELECTOR_CAP + " cells — narrow the selector");
+        }
+        if (ids.size() > BULK_CONFIRM_THRESHOLD && !confirm) {
+            throw new IllegalArgumentException("where matches " + ids.size()
+                    + " cells (> " + BULK_CONFIRM_THRESHOLD + ") — pass confirm: true to proceed");
+        }
+        return ids;
     }
 
     private static String normalizeClassification(String value, String field) {

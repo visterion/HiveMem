@@ -5,6 +5,7 @@ import com.hivemem.summarize.AnthropicSummarizer;
 import com.hivemem.summarize.SummarizerProperties;
 import com.hivemem.summarize.SummarizerRepository;
 import com.hivemem.summarize.SummarizerService;
+import com.hivemem.search.CellSelectorRepository;
 import com.hivemem.sync.InstanceConfig;
 import com.hivemem.sync.OpLogWriter;
 import com.hivemem.sync.PeerClient;
@@ -105,7 +106,8 @@ class ExtractionIntegrationIT {
         PushDispatcher pushDispatcher = new PushDispatcher(peerRepo, syncOpsRepo, peerClient, instanceConfig);
         ApplicationEventPublisher noopPublisher = e -> {};
         WriteToolService writeService = new WriteToolService(
-                writeRepo, new FixedEmbeddingClient(), opLogWriter, pushDispatcher, noopPublisher);
+                writeRepo, new FixedEmbeddingClient(), opLogWriter, pushDispatcher, noopPublisher,
+                new CellSelectorRepository(dsl));
 
         SummarizerProperties props = new SummarizerProperties();
         props.setEnabled(true);

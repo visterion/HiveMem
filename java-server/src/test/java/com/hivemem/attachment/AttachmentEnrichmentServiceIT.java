@@ -8,6 +8,7 @@ import com.hivemem.sync.PeerClient;
 import com.hivemem.sync.PushDispatcher;
 import com.hivemem.sync.SyncOpsRepository;
 import com.hivemem.sync.SyncPeerRepository;
+import com.hivemem.search.CellSelectorRepository;
 import com.hivemem.write.WriteToolRepository;
 import com.hivemem.write.WriteToolService;
 import org.jooq.DSLContext;
@@ -203,6 +204,6 @@ class AttachmentEnrichmentServiceIT {
         PushDispatcher pushDispatcher = new PushDispatcher(peerRepo, syncOpsRepo, peerClient, instanceConfig);
         ApplicationEventPublisher noop = e -> {};
         return new WriteToolService(writeRepo, new FixedEmbeddingClient(),
-                opLogWriter, pushDispatcher, noop);
+                opLogWriter, pushDispatcher, noop, new CellSelectorRepository(dsl));
     }
 }

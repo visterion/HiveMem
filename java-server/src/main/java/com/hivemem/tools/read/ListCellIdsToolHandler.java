@@ -5,6 +5,7 @@ import com.hivemem.auth.AuthPrincipal;
 import com.hivemem.mcp.ToolHandler;
 import com.hivemem.mcp.ToolInputSchema;
 import com.hivemem.search.CellSelector;
+import com.hivemem.search.CellSelectorSchemas;
 import com.hivemem.write.WriteArgumentParser;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
@@ -14,15 +15,6 @@ import java.util.Map;
 @Component
 @Order(47)
 public class ListCellIdsToolHandler implements ToolHandler {
-
-    static final ToolInputSchema WHERE_SCHEMA = ToolInputSchema.object()
-            .optionalString("realm", "Exact realm, or \"none\" for cells without a realm")
-            .optionalStringList("realm_in", "Match any of these realms; may include \"none\"")
-            .optionalEnumString("signal", "Signal filter", "facts", "events", "discoveries", "preferences", "advice")
-            .optionalString("topic", "Exact topic")
-            .optionalStringList("tags", "Cells having ANY of these tags")
-            .optionalString("query", "Full-text filter (tsv, simple dictionary)")
-            .optionalEnumString("status", "Status filter (default committed)", "committed", "pending", "rejected");
 
     private final ReadToolService readToolService;
 
@@ -43,7 +35,8 @@ public class ListCellIdsToolHandler implements ToolHandler {
     @Override
     public Map<String, Object> inputSchema() {
         return ToolInputSchema.object()
-                .optionalObject("where", "Filter: realm | realm_in | signal | topic | tags | query | status", WHERE_SCHEMA)
+                .optionalObject("where", "Filter: realm | realm_in | signal | topic | tags | query | status",
+                        CellSelectorSchemas.where())
                 .optionalIntegerInRange("limit", "Max ids to return (default 200)", 1, 1000)
                 .optionalInteger("offset", "Pagination offset (default 0)")
                 .build();

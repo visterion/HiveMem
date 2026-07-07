@@ -5,6 +5,7 @@ import com.hivemem.auth.AuthRole;
 import com.hivemem.auth.RateLimiter;
 import com.hivemem.embedding.EmbeddingClient;
 import com.hivemem.embedding.FixedEmbeddingClient;
+import com.hivemem.search.CellSelectorRepository;
 import com.hivemem.search.CellSearchRepository;
 import com.hivemem.write.WriteToolRepository;
 import com.hivemem.sync.InstanceConfig;
@@ -499,6 +500,7 @@ class ConcurrencyIntegrationTest {
     @EnableAutoConfiguration
     @Import({
             WriteToolService.class,
+            CellSelectorRepository.class,
             WriteToolRepository.class,
             CellSearchRepository.class,
             OpLogWriter.class,
