@@ -647,13 +647,58 @@ class ReadToolIntegrationTest {
         );
 
         JsonNode content = callToolContent("traverse", Map.of("cell_id", "00000000-0000-0000-0000-000000000002", "max_depth", 1));
-        assertThat(content.get(0).path("from_cell").asText()).isEqualTo("00000000-0000-0000-0000-000000000001");
-        assertThat(content.get(0).path("to_cell").asText()).isEqualTo("00000000-0000-0000-0000-000000000002");
-        assertThat(content.get(0).path("relation").asText()).isEqualTo("related_to");
-        assertThat(content.get(0).path("depth").asInt()).isEqualTo(1);
-        assertThat(content.get(1).path("from_cell").asText()).isEqualTo("00000000-0000-0000-0000-000000000002");
-        assertThat(content.get(1).path("to_cell").asText()).isEqualTo("00000000-0000-0000-0000-000000000004");
-        assertThat(content).hasSize(2);
+        JsonNode edges = content.path("edges");
+        assertThat(edges.get(0).path("from_cell").asText()).isEqualTo("00000000-0000-0000-0000-000000000001");
+        assertThat(edges.get(0).path("to_cell").asText()).isEqualTo("00000000-0000-0000-0000-000000000002");
+        assertThat(edges.get(0).path("relation").asText()).isEqualTo("related_to");
+        assertThat(edges.get(0).path("depth").asInt()).isEqualTo(1);
+        assertThat(edges.get(1).path("from_cell").asText()).isEqualTo("00000000-0000-0000-0000-000000000002");
+        assertThat(edges.get(1).path("to_cell").asText()).isEqualTo("00000000-0000-0000-0000-000000000004");
+        assertThat(edges).hasSize(2);
+        assertThat(content.path("node_count").asInt()).isEqualTo(3);
+        assertThat(content.path("truncated").asBoolean()).isFalse();
+    }
+
+    @Test
+    void traverseToolTruncatesWhenMaxNodesExceeded() throws Exception {
+        UUID root = UUID.fromString("00000000-0000-0000-0000-000000000700");
+        insertDrawer(
+                root, null, "Chain node 0", "alpha", "facts", "chain", "system", 1,
+                "Chain summary 0", null, null, "committed", "writer",
+                OffsetDateTime.parse("2026-05-01T10:00:00Z"),
+                OffsetDateTime.parse("2026-05-01T10:00:00Z"),
+                null
+        );
+        UUID previous = root;
+        for (int i = 1; i <= 11; i++) {
+            UUID current = UUID.fromString(String.format("00000000-0000-0000-0000-0000000007%02d", i));
+            insertDrawer(
+                    current, null, "Chain node " + i, "alpha", "facts", "chain", "system", 1,
+                    "Chain summary " + i, null, null, "committed", "writer",
+                    OffsetDateTime.parse("2026-05-01T10:00:00Z").plusMinutes(i),
+                    OffsetDateTime.parse("2026-05-01T10:00:00Z").plusMinutes(i),
+                    null
+            );
+            insertTunnel(
+                    UUID.fromString(String.format("00000000-0000-0000-0000-0000000008%02d", i)),
+                    previous,
+                    current,
+                    "related_to",
+                    "Chain link " + i,
+                    "committed",
+                    "writer",
+                    OffsetDateTime.parse("2026-05-01T11:00:00Z").plusMinutes(i),
+                    OffsetDateTime.parse("2026-05-01T11:00:00Z").plusMinutes(i),
+                    null
+            );
+            previous = current;
+        }
+
+        JsonNode content = callToolContent("traverse", Map.of(
+                "cell_id", root.toString(), "max_depth", 50, "max_nodes", 5));
+        assertThat(content.path("truncated").asBoolean()).isTrue();
+        assertThat(content.path("node_count").asInt()).isLessThanOrEqualTo(5);
+        assertThat(content.path("edges")).isNotEmpty();
     }
 
     @Test

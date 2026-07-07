@@ -26,7 +26,7 @@ HiveMem exposes **48 MCP tools** across search, knowledge graph, progressive sum
 3. `search_kg`: Knowledge graph triple lookup.
 4. `get_cell`: Read a single knowledge item (logs access automatically); supports `include` for optional fields including `content` and `confidence` (per-document average confidence of active facts, nullable `real`; pass `include=['confidence']` to request it).
 5. `list`: Navigate the Realm→Signal→Topic→Cell hierarchy (omit all params for realms; add `realm` for signals; add `realm`+`signal` for topics; add `realm`+`signal`+`topic` for cells).
-6. `traverse`: Recursive graph traversal.
+6. `traverse`: Recursive bidirectional graph traversal from a starting cell. Required param: `cell_id`. Optional: `relation_filter`, `max_depth` (default 2, max 100), `max_nodes` (cap on distinct cells in the result, 1–1000, default 200). **Breaking change (response shape):** the tool no longer returns a bare edge array — it returns `{edges: [...], node_count: N, truncated: bool}`. `truncated` is `true` when the `max_nodes` cap or the internal 5000-edge backstop cut the traversal short; edges are accumulated in depth order, so the result is always the closest neighborhood of the start cell.
 7. `quick_facts`: Context-aware facts about an entity.
 8. `time_machine`: Historical knowledge retrieval.
 9. `wake_up`: Initial session context. The response includes a `default_language` field (the backend-configured default UI language, set via `HIVEMEM_LANGUAGE`, default `de`).

@@ -27,11 +27,15 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 
 @Service
 public class ReadToolService {
 
     private static final Logger log = LoggerFactory.getLogger(ReadToolService.class);
+
+    /** Backstop on the number of edges fetched from the recursive traversal SQL. */
+    private static final int HARD_EDGE_LIMIT = 5000;
 
     private final CellReadRepository cellReadRepository;
     private final KgSearchRepository kgSearchRepository;
@@ -171,8 +175,29 @@ public class ReadToolService {
         }
     }
 
-    public List<Map<String, Object>> traverse(UUID cellId, int maxDepth, String relationFilter) {
-        return cellReadRepository.traverse(cellId, maxDepth, relationFilter);
+    public Map<String, Object> traverse(UUID cellId, int maxDepth, String relationFilter, int maxNodes) {
+        List<Map<String, Object>> rows = cellReadRepository.traverse(cellId, maxDepth, relationFilter, HARD_EDGE_LIMIT + 1);
+        boolean truncated = rows.size() > HARD_EDGE_LIMIT;
+        if (truncated) rows = rows.subList(0, HARD_EDGE_LIMIT);
+        Set<Object> nodes = new LinkedHashSet<>();
+        nodes.add(cellId.toString());
+        List<Map<String, Object>> edges = new ArrayList<>();
+        for (Map<String, Object> edge : rows) {   // rows are ordered by depth
+            Set<Object> candidate = new LinkedHashSet<>(nodes);
+            candidate.add(edge.get("from_cell"));
+            candidate.add(edge.get("to_cell"));
+            if (candidate.size() > maxNodes) {
+                truncated = true;
+                break;
+            }
+            nodes = candidate;
+            edges.add(edge);
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("edges", edges);
+        result.put("node_count", nodes.size());
+        result.put("truncated", truncated);
+        return result;
     }
 
     public List<Map<String, Object>> quickFacts(String entity) {
@@ -196,7 +221,7 @@ public class ReadToolService {
         List<Map<String, Object>> tunnels = List.of();
         if (!cells.isEmpty()) {
             UUID topCell = UUID.fromString((String) cells.get(0).get("id"));
-            tunnels = cellReadRepository.traverse(topCell, 1, null);
+            tunnels = cellReadRepository.traverse(topCell, 1, null, HARD_EDGE_LIMIT);
         }
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("cells", cells);

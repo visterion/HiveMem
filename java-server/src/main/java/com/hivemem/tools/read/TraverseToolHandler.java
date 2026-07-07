@@ -15,6 +15,9 @@ import java.util.UUID;
 public class TraverseToolHandler implements ToolHandler {
     private static final int DEFAULT_MAX_DEPTH = 2;
     private static final int MAX_MAX_DEPTH = 100;
+    private static final int DEFAULT_MAX_NODES = 200;
+    private static final int MIN_MAX_NODES = 1;
+    private static final int MAX_MAX_NODES = 1000;
 
     private final ReadToolService readToolService;
 
@@ -29,7 +32,8 @@ public class TraverseToolHandler implements ToolHandler {
 
     @Override
     public String description() {
-        return "Bidirectional cell-to-cell graph traversal.";
+        return "Bidirectional cell-to-cell graph traversal. Returns {edges, node_count, truncated}; "
+                + "truncated=true when max_nodes (default 200) or the internal edge backstop was hit.";
     }
 
     @Override
@@ -38,6 +42,7 @@ public class TraverseToolHandler implements ToolHandler {
                 .requiredUuid("cell_id", "UUID of the starting cell")
                 .optionalString("relation_filter", "Limit traversal to this relation type")
                 .optionalInteger("max_depth", "Maximum traversal depth (default 2, max 100)")
+                .optionalIntegerInRange("max_nodes", "Cap on distinct cells in the result (default 200)", 1, 1000)
                 .build();
     }
 
@@ -54,7 +59,8 @@ public class TraverseToolHandler implements ToolHandler {
 
         String relationFilter = textValue(arguments, "relation_filter");
         int maxDepth = intValue(arguments, "max_depth");
-        return readToolService.traverse(UUID.fromString(cellId), maxDepth, relationFilter);
+        int maxNodes = maxNodesValue(arguments);
+        return readToolService.traverse(UUID.fromString(cellId), maxDepth, relationFilter, maxNodes);
     }
 
     private static String textValue(JsonNode arguments, String field) {
@@ -63,6 +69,21 @@ public class TraverseToolHandler implements ToolHandler {
         }
         String value = arguments.get(field).asText();
         return value.isBlank() ? null : value;
+    }
+
+    private static int maxNodesValue(JsonNode arguments) {
+        if (arguments == null || !arguments.hasNonNull("max_nodes")) {
+            return DEFAULT_MAX_NODES;
+        }
+        JsonNode node = arguments.get("max_nodes");
+        if (!node.canConvertToInt()) {
+            throw new IllegalArgumentException("Invalid max_nodes");
+        }
+        int value = node.intValue();
+        if (value < MIN_MAX_NODES || value > MAX_MAX_NODES) {
+            throw new IllegalArgumentException("Invalid max_nodes");
+        }
+        return value;
     }
 
     private static int intValue(JsonNode arguments, String field) {

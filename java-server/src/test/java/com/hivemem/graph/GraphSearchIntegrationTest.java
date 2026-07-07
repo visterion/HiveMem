@@ -110,7 +110,7 @@ class GraphSearchIntegrationTest {
 
         writeToolService.addTunnel(WRITER, idA, idB, "builds_on", null, "committed");
 
-        List<Map<String, Object>> results = readToolService.traverse(idB, 1, null);
+        List<Map<String, Object>> results = traverseEdges(idB, 1, null);
 
         Set<UUID> reachable = collectAllDrawerIds(results);
         assertThat(reachable).contains(idA);
@@ -130,7 +130,7 @@ class GraphSearchIntegrationTest {
         writeToolService.addTunnel(WRITER, idA, idB, "related_to", null, "committed");
         writeToolService.addTunnel(WRITER, idA, idC, "builds_on", null, "committed");
 
-        List<Map<String, Object>> results = readToolService.traverse(idA, 3, "related_to");
+        List<Map<String, Object>> results = traverseEdges(idA, 3, "related_to");
 
         Set<UUID> reachable = collectToDrawerIds(results);
         assertThat(reachable).contains(idB);
@@ -154,7 +154,7 @@ class GraphSearchIntegrationTest {
         writeToolService.addTunnel(WRITER, idB, idC, "builds_on", null, "committed");
         writeToolService.addTunnel(WRITER, idC, idD, "related_to", null, "committed");
 
-        List<Map<String, Object>> results = readToolService.traverse(idA, 5, "builds_on");
+        List<Map<String, Object>> results = traverseEdges(idA, 5, "builds_on");
 
         Set<UUID> reachable = collectAllDrawerIds(results);
         assertThat(reachable).contains(idB, idC);
@@ -173,7 +173,7 @@ class GraphSearchIntegrationTest {
         // Agent role forces status=pending on addTunnel
         writeToolService.addTunnel(AGENT, idA, idB, "related_to", null, "committed");
 
-        List<Map<String, Object>> results = readToolService.traverse(idA, 1, null);
+        List<Map<String, Object>> results = traverseEdges(idA, 1, null);
 
         assertThat(results).isEmpty();
     }
@@ -191,7 +191,7 @@ class GraphSearchIntegrationTest {
         UUID tunnelId = UUID.fromString((String) tunnel.get("id"));
         writeToolService.removeTunnel(tunnelId);
 
-        List<Map<String, Object>> results = readToolService.traverse(idA, 1, null);
+        List<Map<String, Object>> results = traverseEdges(idA, 1, null);
 
         assertThat(results).isEmpty();
     }
@@ -211,7 +211,7 @@ class GraphSearchIntegrationTest {
         writeToolService.addTunnel(WRITER, idA, idB, "related_to", null, "committed");
         writeToolService.addTunnel(WRITER, idB, idC, "related_to", null, "committed");
 
-        List<Map<String, Object>> results = readToolService.traverse(idA, 1, null);
+        List<Map<String, Object>> results = traverseEdges(idA, 1, null);
 
         Set<UUID> reachable = collectToDrawerIds(results);
         assertThat(reachable).contains(idB);
@@ -233,7 +233,7 @@ class GraphSearchIntegrationTest {
         writeToolService.addTunnel(WRITER, idA, idB, "related_to", null, "committed");
         writeToolService.addTunnel(WRITER, idB, idC, "related_to", null, "committed");
 
-        List<Map<String, Object>> results = readToolService.traverse(idA, 0, null);
+        List<Map<String, Object>> results = traverseEdges(idA, 0, null);
 
         Set<UUID> reachable = collectToDrawerIds(results);
         assertThat(reachable).contains(idB);
@@ -313,6 +313,13 @@ class GraphSearchIntegrationTest {
 
     private static UUID id(Map<String, Object> result) {
         return UUID.fromString((String) result.get("id"));
+    }
+
+    /** Calls the traverse service (new {edges, node_count, truncated} shape) and unwraps the edge list. */
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> traverseEdges(UUID cellId, int maxDepth, String relationFilter) {
+        Map<String, Object> result = readToolService.traverse(cellId, maxDepth, relationFilter, 200);
+        return (List<Map<String, Object>>) result.get("edges");
     }
 
     private static Set<UUID> collectAllDrawerIds(List<Map<String, Object>> edges) {

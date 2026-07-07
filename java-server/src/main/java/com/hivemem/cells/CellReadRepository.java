@@ -127,7 +127,7 @@ public class CellReadRepository {
         return results;
     }
 
-    public List<Map<String, Object>> traverse(UUID cellId, int maxDepth, String relationFilter) {
+    public List<Map<String, Object>> traverse(UUID cellId, int maxDepth, String relationFilter, int edgeLimit) {
         String normalizedRelationFilter = relationFilter == null || relationFilter.isBlank() ? null : relationFilter;
         List<Object> params = new ArrayList<>();
         String sql;
@@ -155,11 +155,13 @@ public class CellReadRepository {
                     SELECT DISTINCT from_cell, to_cell, relation, note, depth
                     FROM graph
                     ORDER BY depth, from_cell
+                    LIMIT ?
                     """;
             params.add(normalizedRelationFilter);
             params.add(normalizedRelationFilter);
             params.add(cellId);
             params.add(maxDepth);
+            params.add(edgeLimit);
         } else {
             sql = """
                     WITH RECURSIVE
@@ -183,9 +185,11 @@ public class CellReadRepository {
                     SELECT DISTINCT from_cell, to_cell, relation, note, depth
                     FROM graph
                     ORDER BY depth, from_cell
+                    LIMIT ?
                     """;
             params.add(cellId);
             params.add(maxDepth);
+            params.add(edgeLimit);
         }
 
         List<Map<String, Object>> results = new ArrayList<>();

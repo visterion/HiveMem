@@ -196,7 +196,9 @@ class SqlRobustnessIntegrationTest {
         writeToolService.addTunnel(WRITER, idB, idD, "related_to", null, "committed");
         writeToolService.addTunnel(WRITER, idC, idD, "related_to", null, "committed");
 
-        List<Map<String, Object>> results = readToolService.traverse(idA, 3, null);
+        Map<String, Object> traverseResult = readToolService.traverse(idA, 3, null, 200);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> results = (List<Map<String, Object>>) traverseResult.get("edges");
 
         Set<UUID> found = new HashSet<>();
         for (Map<String, Object> row : results) {
