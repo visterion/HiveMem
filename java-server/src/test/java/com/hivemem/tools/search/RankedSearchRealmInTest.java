@@ -1,4 +1,4 @@
-package com.hivemem.search;
+package com.hivemem.tools.search;
 
 import com.hivemem.auth.AuthPrincipal;
 import com.hivemem.auth.AuthRole;
@@ -7,10 +7,15 @@ import com.hivemem.embedding.EmbeddingClient;
 import com.hivemem.embedding.EmbeddingStateRepository;
 import com.hivemem.embedding.FixedEmbeddingClient;
 import com.hivemem.attachment.AttachmentRepository;
-import com.hivemem.search.FacetRepository;
-import com.hivemem.tools.read.ReadToolService;
+import com.hivemem.search.CellSearchRepository;
+import com.hivemem.search.CellSelectorRepository;
+import com.hivemem.search.ConfidenceThresholds;
 import com.hivemem.search.DocumentListRepository;
+import com.hivemem.search.FacetRepository;
+import com.hivemem.search.KgSearchRepository;
 import com.hivemem.search.MediaListRepository;
+import com.hivemem.search.SearchWeightsProperties;
+import com.hivemem.tools.read.ReadToolService;
 import com.hivemem.write.AdminToolRepository;
 import com.hivemem.write.AdminToolService;
 import com.hivemem.write.WriteToolRepository;
@@ -22,11 +27,11 @@ import org.jooq.DSLContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.SpringBootConfiguration;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
 import org.springframework.test.context.ActiveProfiles;
@@ -40,23 +45,26 @@ import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Verifies that the Java {@link CellSearchRepository#rankedSearch} method exposes
- * the new {@code scoreGraphProximity} field via {@link CellSearchRepository.RankedRow}
- * when called with the new 12th weight argument.
+ * Verifies that {@link CellSearchRepository#rankedSearch} accepts a trailing
+ * {@code realmIn} parameter that filters by realm, with the sentinel entry
+ * {@code "none"} matching cells whose realm is NULL (never a literal realm
+ * named "none").
  */
 @SpringBootTest(
-        classes = CellSearchRepositoryGraphTest.TestApplication.class,
+        classes = RankedSearchRealmInTest.TestApplication.class,
         webEnvironment = SpringBootTest.WebEnvironment.NONE
 )
 @ActiveProfiles("test")
 @Testcontainers
-class CellSearchRepositoryGraphTest {
+class RankedSearchRealmInTest {
 
     private static final AuthPrincipal WRITER = new AuthPrincipal("writer-1", AuthRole.WRITER);
     private static final OffsetDateTime BASE_TIME = OffsetDateTime.parse("2026-04-15T09:00:00Z");
@@ -93,28 +101,53 @@ class CellSearchRepositoryGraphTest {
     @Autowired
     private EmbeddingStateRepository embeddingStateRepository;
 
+    private UUID cellA;
+    private UUID cellB;
+    private UUID cellC;
+    private UUID cellNullRealm;
+
     @BeforeEach
     void resetDatabase() {
         dslContext.execute("TRUNCATE TABLE agent_diary, cell_references, references_, blueprints, identity, agents, facts, tunnels, cells CASCADE");
         embeddingStateRepository.replaceRankedSearchFunction(DIMS);
+
+        cellA = createCell("keyword match cell in realm a", "a");
+        cellB = createCell("keyword match cell in realm b", "b");
+        cellC = createCell("keyword match cell in realm c", "c");
+        cellNullRealm = createCell("keyword match cell in no realm", null);
     }
 
     @Test
-    void rankedSearchSurfacesGraphProximityScore() {
-        UUID anchor = createCell("semantic anchor cell");
-        for (int i = 0; i < 24; i++) {
-            createCell("semantic filler cell " + i);
-        }
-        UUID connected = createCell("alpha bridge target");
-        UUID unconnected = createCell("alpha lonely target");
+    void realmInFiltersToGivenRealms() {
+        List<CellSearchRepository.RankedRow> rows = search(List.of("a", "b"));
+        assertThat(ids(rows)).containsExactlyInAnyOrder(cellA, cellB);
+    }
 
-        writeToolService.addTunnel(WRITER, anchor, connected, "builds_on", null, "committed");
+    @Test
+    void realmInNoneSentinelMatchesOnlyNullRealm() {
+        List<CellSearchRepository.RankedRow> rows = search(List.of("none"));
+        assertThat(ids(rows)).containsExactly(cellNullRealm);
+    }
 
+    @Test
+    void realmInCombinesNamedRealmsAndNoneSentinel() {
+        List<CellSearchRepository.RankedRow> rows = search(List.of("a", "none"));
+        assertThat(ids(rows)).containsExactlyInAnyOrder(cellA, cellNullRealm);
+    }
+
+    @Test
+    void realmInNullMeansNoFilter() {
+        List<CellSearchRepository.RankedRow> rows = search(null);
+        assertThat(ids(rows)).containsExactlyInAnyOrder(cellA, cellB, cellC, cellNullRealm);
+    }
+
+    // ---- helpers ----
+
+    private List<CellSearchRepository.RankedRow> search(List<String> realmIn) {
         List<Float> queryEmbedding = paddedEmbedding(1.0f, 0.0f, 0.0f);
-
-        List<CellSearchRepository.RankedRow> rows = cellSearchRepository.rankedSearch(
+        return cellSearchRepository.rankedSearch(
                 queryEmbedding,
-                "alpha",
+                "keyword",
                 null,
                 null,
                 null,
@@ -127,26 +160,19 @@ class CellSearchRepositoryGraphTest {
                 0.10,
                 null,
                 null,
-                null
+                realmIn
         );
-
-        assertThat(rows).isNotEmpty();
-        Map<UUID, CellSearchRepository.RankedRow> byId = new java.util.HashMap<>();
-        for (CellSearchRepository.RankedRow row : rows) {
-            byId.put(row.id(), row);
-        }
-        assertThat(byId).containsKeys(connected, unconnected);
-        assertThat(byId.get(connected).scoreGraphProximity()).isGreaterThan(0.0);
-        assertThat(byId.get(unconnected).scoreGraphProximity()).isEqualTo(0.0);
     }
 
-    // ---- helpers ----
+    private static Set<UUID> ids(List<CellSearchRepository.RankedRow> rows) {
+        return rows.stream().map(CellSearchRepository.RankedRow::id).collect(Collectors.toSet());
+    }
 
-    private UUID createCell(String content) {
+    private UUID createCell(String content, String realm) {
         Map<String, Object> result = writeToolService.addCell(
                 WRITER,
                 content,
-                "test",
+                realm,
                 "facts",
                 null,
                 "system",
@@ -171,7 +197,7 @@ class CellSearchRepositoryGraphTest {
         return vec;
     }
 
-    @SpringBootConfiguration
+    @Configuration
     @EnableAutoConfiguration
     @Import({
             WriteToolService.class,

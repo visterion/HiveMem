@@ -90,7 +90,7 @@ class SearchFilterTest {
         List<CellSearchRepository.RankedRow> results = repo.rankedSearch(
                 null, "alpha", "docs", null, null, 50,
                 0.3, 0.15, 0.15, 0.15, 0.15, 0.10,
-                List.of("contract"), null);
+                List.of("contract"), null, null);
 
         Set<UUID> ids = results.stream().map(CellSearchRepository.RankedRow::id).collect(Collectors.toSet());
         assertThat(ids).containsExactly(ID_A);
@@ -101,7 +101,7 @@ class SearchFilterTest {
         List<CellSearchRepository.RankedRow> results = repo.rankedSearch(
                 null, "alpha", "docs", null, null, 50,
                 0.3, 0.15, 0.15, 0.15, 0.15, 0.10,
-                null, "pending");
+                null, "pending", null);
 
         Set<UUID> ids = results.stream().map(CellSearchRepository.RankedRow::id).collect(Collectors.toSet());
         assertThat(ids).containsExactly(ID_C);
@@ -112,7 +112,7 @@ class SearchFilterTest {
         List<CellSearchRepository.RankedRow> results = repo.rankedSearch(
                 null, "alpha", "docs", null, null, 50,
                 0.3, 0.15, 0.15, 0.15, 0.15, 0.10,
-                null, null);
+                null, null, null);
 
         Set<UUID> ids = results.stream().map(CellSearchRepository.RankedRow::id).collect(Collectors.toSet());
         assertThat(ids).containsExactlyInAnyOrder(ID_A, ID_B);
@@ -130,7 +130,7 @@ class SearchFilterTest {
 
         List<CellSearchRepository.RankedRow> rows = repo.rankedSearch(
                 null, "attachment service", "docs", null, null, 10,
-                0.30, 0.15, 0.15, 0.15, 0.15, 0.10, null, null);
+                0.30, 0.15, 0.15, 0.15, 0.15, 0.10, null, null, null);
 
         assertThat(rows).isNotEmpty();
         assertThat(rows.get(0).scoreKeyword()).isGreaterThan(0.0);
@@ -148,7 +148,7 @@ class SearchFilterTest {
         // "gubbins" does not match anything -- old AND-semantics (plainto_tsquery) would return nothing.
         List<CellSearchRepository.RankedRow> rows = repo.rankedSearch(
                 null, "attachment gubbins", "docs", null, null, 10,
-                0.30, 0.15, 0.15, 0.15, 0.15, 0.10, null, null);
+                0.30, 0.15, 0.15, 0.15, 0.15, 0.10, null, null, null);
 
         assertThat(rows).isNotEmpty();
         assertThat(rows.get(0).scoreKeyword()).isGreaterThan(0.0);
@@ -165,13 +165,13 @@ class SearchFilterTest {
 
         List<CellSearchRepository.RankedRow> rows = repo.rankedSearch(
                 null, "orphan", "none", null, null, 10,
-                0.30, 0.15, 0.15, 0.15, 0.15, 0.10, null, null);
+                0.30, 0.15, 0.15, 0.15, 0.15, 0.10, null, null, null);
         assertThat(rows).hasSize(1);
         assertThat(rows.get(0).id()).isEqualTo(id);
 
         List<CellSearchRepository.RankedRow> rowsOther = repo.rankedSearch(
                 null, "orphan", "some-realm", null, null, 10,
-                0.30, 0.15, 0.15, 0.15, 0.15, 0.10, null, null);
+                0.30, 0.15, 0.15, 0.15, 0.15, 0.10, null, null, null);
         assertThat(rowsOther).isEmpty();
     }
 
@@ -193,7 +193,7 @@ class SearchFilterTest {
 
         List<CellSearchRepository.RankedRow> rows = repo.rankedSearch(
                 null, "literalnone", "none", null, null, 10,
-                0.30, 0.15, 0.15, 0.15, 0.15, 0.10, null, null);
+                0.30, 0.15, 0.15, 0.15, 0.15, 0.10, null, null, null);
         assertThat(rows).hasSize(1);
         assertThat(rows.get(0).id()).isEqualTo(nullRealmId);
     }

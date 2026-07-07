@@ -125,13 +125,14 @@ public class ReadToolService {
             double weightPopularity,
             double weightGraphProximity,
             List<String> tags,
-            String status
+            String status,
+            List<String> realmIn
     ) {
         List<Float> queryVector = embeddingClient.encodeQuery(query);
         List<CellSearchRepository.RankedRow> rows = cellSearchRepository.rankedSearch(
                 queryVector, query, realm, signal, topic, limit,
                 weightSemantic, weightKeyword, weightRecency, weightImportance, weightPopularity,
-                weightGraphProximity, tags, status
+                weightGraphProximity, tags, status, realmIn
         );
         return rows.stream()
                 .map(row -> projectRow(row, selection,
@@ -227,7 +228,7 @@ public class ReadToolService {
     public Map<String, Object> entityOverview(String subject, int limit) {
         List<Map<String, Object>> cells = search(subject, limit, null, null, null,
                 CellFieldSelection.forSearch(null),
-                0.30d, 0.15d, 0.15d, 0.15d, 0.15d, 0.10d, null, null);
+                0.30d, 0.15d, 0.15d, 0.15d, 0.15d, 0.10d, null, null, null);
         List<Map<String, Object>> facts = new ArrayList<>(cellReadRepository.quickFacts(subject));
         if (facts.size() < limit) {
             Set<Object> seen = facts.stream().map(f -> f.get("id")).collect(java.util.stream.Collectors.toSet());

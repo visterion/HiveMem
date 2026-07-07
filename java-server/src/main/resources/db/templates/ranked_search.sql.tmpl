@@ -18,7 +18,8 @@ CREATE OR REPLACE FUNCTION ranked_search(
     p_status TEXT DEFAULT NULL,
     p_relation_weights JSONB DEFAULT
         '{"builds_on":1.0,"refines":0.8,"related_to":0.6,"contradicts":0.4}'::jsonb,
-    p_graph_max_depth INT DEFAULT 2
+    p_graph_max_depth INT DEFAULT 2,
+    p_realms TEXT[] DEFAULT NULL
 )
 RETURNS TABLE (
     id UUID, content TEXT, summary TEXT, realm TEXT, signal TEXT, topic TEXT,
@@ -43,6 +44,9 @@ LANGUAGE SQL STABLE AS $$
           AND c.embedding IS NOT NULL
           AND query_embedding IS NOT NULL
           AND (p_realm IS NULL OR (p_realm = 'none' AND c.realm IS NULL) OR (p_realm <> 'none' AND c.realm = p_realm))
+          AND (p_realms IS NULL
+               OR c.realm = ANY(array_remove(p_realms, 'none'))
+               OR ('none' = ANY(p_realms) AND c.realm IS NULL))
           AND (p_signal IS NULL OR c.signal = p_signal)
           AND (p_topic IS NULL OR c.topic = p_topic)
           AND (p_tags IS NULL OR c.tags && p_tags)
@@ -57,6 +61,9 @@ LANGUAGE SQL STABLE AS $$
           AND c.status = COALESCE(p_status, 'committed')
           AND q.tsq IS NOT NULL AND c.tsv @@ q.tsq
           AND (p_realm IS NULL OR (p_realm = 'none' AND c.realm IS NULL) OR (p_realm <> 'none' AND c.realm = p_realm))
+          AND (p_realms IS NULL
+               OR c.realm = ANY(array_remove(p_realms, 'none'))
+               OR ('none' = ANY(p_realms) AND c.realm IS NULL))
           AND (p_signal IS NULL OR c.signal = p_signal)
           AND (p_topic IS NULL OR c.topic = p_topic)
           AND (p_tags IS NULL OR c.tags && p_tags)

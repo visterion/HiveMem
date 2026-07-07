@@ -121,6 +121,20 @@ public class EmbeddingStateRepository {
     }
 
     public void replaceRankedSearchFunction(int dimension) {
+        // Adding a parameter to ranked_search via CREATE OR REPLACE creates a new
+        // overload rather than replacing the existing function signature, which would
+        // make the old positional-arg call sites ambiguous. Drop all existing
+        // overloads first so only the freshly rendered signature remains.
+        dslContext.execute("""
+                DO $do$
+                DECLARE r RECORD;
+                BEGIN
+                    FOR r IN SELECT oid::regprocedure AS sig FROM pg_proc WHERE proname = 'ranked_search' LOOP
+                        EXECUTE 'DROP FUNCTION ' || r.sig;
+                    END LOOP;
+                END
+                $do$
+                """);
         String sql = RankedSearchTemplate.render(dimension);
         dslContext.execute(sql);
     }

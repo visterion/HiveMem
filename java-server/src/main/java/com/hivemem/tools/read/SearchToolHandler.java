@@ -94,7 +94,8 @@ public class SearchToolHandler implements ToolHandler {
                 weightPopularity,
                 weightGraphProximity,
                 tags,
-                status
+                status,
+                null
         );
     }
 
