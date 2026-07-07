@@ -183,14 +183,19 @@ public class ReadToolService {
         nodes.add(cellId.toString());
         List<Map<String, Object>> edges = new ArrayList<>();
         for (Map<String, Object> edge : rows) {   // rows are ordered by depth
-            Set<Object> candidate = new LinkedHashSet<>(nodes);
-            candidate.add(edge.get("from_cell"));
-            candidate.add(edge.get("to_cell"));
-            if (candidate.size() > maxNodes) {
+            Object from = edge.get("from_cell");
+            Object to = edge.get("to_cell");
+            int missing = 0;
+            if (!nodes.contains(from)) missing++;
+            if (!nodes.contains(to) && !to.equals(from)) missing++;
+            if (nodes.size() + missing > maxNodes) {
+                // Skip only this edge: later edges between already-admitted nodes
+                // (cycles/reconvergence) must still be admitted.
                 truncated = true;
-                break;
+                continue;
             }
-            nodes = candidate;
+            nodes.add(from);
+            nodes.add(to);
             edges.add(edge);
         }
         Map<String, Object> result = new LinkedHashMap<>();

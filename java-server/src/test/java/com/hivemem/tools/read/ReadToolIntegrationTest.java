@@ -31,9 +31,11 @@ import org.springframework.test.web.servlet.MvcResult;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import java.time.OffsetDateTime;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -699,6 +701,85 @@ class ReadToolIntegrationTest {
         assertThat(content.path("truncated").asBoolean()).isTrue();
         assertThat(content.path("node_count").asInt()).isLessThanOrEqualTo(5);
         assertThat(content.path("edges")).isNotEmpty();
+
+        // Every returned edge's endpoints must be within the counted node set.
+        Set<String> countedNodes = new HashSet<>();
+        countedNodes.add(root.toString());
+        for (JsonNode edge : content.path("edges")) {
+            countedNodes.add(edge.path("from_cell").asText());
+            countedNodes.add(edge.path("to_cell").asText());
+        }
+        assertThat(countedNodes).hasSizeLessThanOrEqualTo(5);
+        assertThat(countedNodes).hasSize(content.path("node_count").asInt());
+    }
+
+    @Test
+    void traverseToolAdmitsInSetEdgesAfterNodeCapOverflow() throws Exception {
+        // Triangle A-B, A-C, B-C plus a tail A-T1, T1-T2. UUIDs are chosen so that at
+        // depth 2 the overflowing tail edge T1->T2 (from_cell ...0901) sorts BEFORE the
+        // in-set triangle edge B->C (from_cell ...0903). With max_nodes=4 the tail edge
+        // must be skipped (truncated=true) while B->C, whose endpoints are both already
+        // counted, must still be admitted.
+        UUID cellA = UUID.fromString("00000000-0000-0000-0000-000000000900");
+        UUID cellT1 = UUID.fromString("00000000-0000-0000-0000-000000000901");
+        UUID cellT2 = UUID.fromString("00000000-0000-0000-0000-000000000902");
+        UUID cellB = UUID.fromString("00000000-0000-0000-0000-000000000903");
+        UUID cellC = UUID.fromString("00000000-0000-0000-0000-000000000904");
+        int i = 0;
+        for (UUID cell : List.of(cellA, cellT1, cellT2, cellB, cellC)) {
+            insertDrawer(
+                    cell, null, "Triangle node " + i, "alpha", "facts", "triangle", "system", 1,
+                    "Triangle summary " + i, null, null, "committed", "writer",
+                    OffsetDateTime.parse("2026-05-02T10:00:00Z").plusMinutes(i),
+                    OffsetDateTime.parse("2026-05-02T10:00:00Z").plusMinutes(i),
+                    null
+            );
+            i++;
+        }
+        UUID[][] tunnels = {
+                {UUID.fromString("00000000-0000-0000-0000-000000000911"), cellA, cellB},
+                {UUID.fromString("00000000-0000-0000-0000-000000000912"), cellA, cellC},
+                {UUID.fromString("00000000-0000-0000-0000-000000000913"), cellA, cellT1},
+                {UUID.fromString("00000000-0000-0000-0000-000000000914"), cellB, cellC},
+                {UUID.fromString("00000000-0000-0000-0000-000000000915"), cellT1, cellT2},
+        };
+        int j = 0;
+        for (UUID[] tunnel : tunnels) {
+            insertTunnel(
+                    tunnel[0], tunnel[1], tunnel[2], "related_to", "Triangle link " + j,
+                    "committed", "writer",
+                    OffsetDateTime.parse("2026-05-02T11:00:00Z").plusMinutes(j),
+                    OffsetDateTime.parse("2026-05-02T11:00:00Z").plusMinutes(j),
+                    null
+            );
+            j++;
+        }
+
+        JsonNode content = callToolContent("traverse", Map.of(
+                "cell_id", cellA.toString(), "max_depth", 3, "max_nodes", 4));
+
+        assertThat(content.path("truncated").asBoolean()).isTrue();
+        assertThat(content.path("node_count").asInt()).isEqualTo(4);
+
+        boolean hasTriangleClosingEdge = false;
+        Set<String> countedNodes = new HashSet<>();
+        countedNodes.add(cellA.toString());
+        for (JsonNode edge : content.path("edges")) {
+            String from = edge.path("from_cell").asText();
+            String to = edge.path("to_cell").asText();
+            countedNodes.add(from);
+            countedNodes.add(to);
+            if (from.equals(cellB.toString()) && to.equals(cellC.toString())) {
+                hasTriangleClosingEdge = true;
+            }
+        }
+        // The in-set edge B->C sorts after the overflowing tail edge but must be admitted.
+        assertThat(hasTriangleClosingEdge).isTrue();
+        // Endpoint containment: no edge may reference a node beyond the counted set.
+        assertThat(countedNodes).hasSize(content.path("node_count").asInt());
+        assertThat(countedNodes).containsExactlyInAnyOrder(
+                cellA.toString(), cellB.toString(), cellC.toString(), cellT1.toString());
+        assertThat(countedNodes).doesNotContain(cellT2.toString());
     }
 
     @Test
