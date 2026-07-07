@@ -43,7 +43,8 @@ public class ToolPermissionService {
             "list_saved_searches",
             "list_cell_ids",
             "entity_overview",
-            "blueprints_missing"
+            "blueprints_missing",
+            "data_quality_report"
     );
 
     private static final Set<String> WRITE_TOOLS = tools(

@@ -9,6 +9,7 @@ import com.hivemem.search.CellSelector;
 import com.hivemem.search.CellSelectorRepository;
 import com.hivemem.search.ConfidenceLevel;
 import com.hivemem.search.ConfidenceThresholds;
+import com.hivemem.search.DataQualityRepository;
 import com.hivemem.search.DocumentListRepository;
 import com.hivemem.search.MediaListRepository;
 import com.hivemem.search.FacetRepository;
@@ -49,6 +50,7 @@ public class ReadToolService {
     private final DocumentListRepository documentListRepository;
     private final MediaListRepository mediaListRepository;
     private final CellSelectorRepository cellSelectorRepository;
+    private final DataQualityRepository dataQualityRepository;
 
     public ReadToolService(
             CellReadRepository cellReadRepository,
@@ -62,7 +64,8 @@ public class ReadToolService {
             FacetRepository facetRepository,
             DocumentListRepository documentListRepository,
             MediaListRepository mediaListRepository,
-            CellSelectorRepository cellSelectorRepository
+            CellSelectorRepository cellSelectorRepository,
+            DataQualityRepository dataQualityRepository
     ) {
         this.cellReadRepository = cellReadRepository;
         this.kgSearchRepository = kgSearchRepository;
@@ -76,6 +79,7 @@ public class ReadToolService {
         this.documentListRepository = documentListRepository;
         this.mediaListRepository = mediaListRepository;
         this.cellSelectorRepository = cellSelectorRepository;
+        this.dataQualityRepository = dataQualityRepository;
     }
 
     public Map<String, Object> listCellIds(CellSelector selector, int limit, int offset) {
@@ -101,6 +105,31 @@ public class ReadToolService {
 
     public List<Map<String, Object>> blueprintsMissing() {
         return cellReadRepository.blueprintsMissing();
+    }
+
+    public Map<String, Object> dataQualityReport(List<String> include, double threshold, int limit) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        if (include.contains("unclassified")) {
+            Map<String, Object> unclassified = new LinkedHashMap<>();
+            unclassified.put("missing_realm", dataQualityRepository.missingRealm());
+            unclassified.put("missing_signal", dataQualityRepository.missingSignal());
+            unclassified.put("missing_topic", dataQualityRepository.missingTopic());
+            result.put("unclassified", unclassified);
+        }
+        if (include.contains("disconnected")) {
+            result.put("disconnected", dataQualityRepository.disconnected());
+        }
+        if (include.contains("duplicate_clusters")) {
+            int dimension = embeddingClient.getInfo().dimension();
+            if (dimension <= 0) {
+                Map<String, Object> note = new LinkedHashMap<>();
+                note.put("note", "embeddings unavailable");
+                result.put("duplicate_clusters", note);
+            } else {
+                result.put("duplicate_clusters", dataQualityRepository.duplicatePairs(dimension, threshold, limit));
+            }
+        }
+        return result;
     }
 
     public List<Map<String, Object>> listTopics(String realm, String signal) {

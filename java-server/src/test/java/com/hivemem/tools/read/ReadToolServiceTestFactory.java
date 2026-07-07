@@ -6,6 +6,7 @@ import com.hivemem.embedding.EmbeddingClient;
 import com.hivemem.search.CellSearchRepository;
 import com.hivemem.search.CellSelectorRepository;
 import com.hivemem.search.ConfidenceThresholds;
+import com.hivemem.search.DataQualityRepository;
 import com.hivemem.search.DocumentListRepository;
 import com.hivemem.search.FacetRepository;
 import com.hivemem.search.KgSearchRepository;
@@ -31,7 +32,8 @@ final class ReadToolServiceTestFactory {
                 mock(FacetRepository.class),
                 repo,
                 mock(MediaListRepository.class),
-                mock(CellSelectorRepository.class)
+                mock(CellSelectorRepository.class),
+                mock(DataQualityRepository.class)
         );
     }
 }
