@@ -56,6 +56,7 @@ erDiagram
         TEXT subject
         TEXT predicate
         TEXT object
+        vector embedding
         REAL confidence
         UUID source_id FK
         TEXT status
@@ -281,6 +282,14 @@ Every HiveMem tool is mapped to a specific role to ensure least privilege. Write
 ### `ranked_search` PostgreSQL function
 
 The `ranked_search` stored function powers the `search` tool. It is **not** managed by Flyway; instead it is recreated on every startup by `EmbeddingMigrationService` from an in-code template. This is intentional — the function signature must stay in sync with the embedding vector dimension, which can change between deployments. As of SP-C1 the function accepts the optional parameters `p_tags TEXT[]` (match-ANY array overlap filter) and `p_status TEXT` (filter by cell status, default `committed`).
+
+### Facts embedding & semantic `search_kg`
+
+`facts` carries a nullable `embedding vector` column (V0037), mirroring the cells lifecycle: `EmbeddingStateRepository.createFactsEmbeddingIndex`/`dropFactsEmbeddingIndex` manage an `idx_facts_embedding` HNSW index (cosine ops) whose dimension is (re)bound at startup by `EmbeddingMigrationService`, and a model/dimension change triggers a full facts re-encode alongside the existing cells re-encode. `active_facts` is a `SELECT *` view, so V0037 dropped and recreated it to carry the new column through.
+
+On write, `WriteToolService.kgAdd`/`reviseFact` embed `subject + " " + predicate + " " + object` via `embeddingClient.encodeDocument(...)` and store the vector; embedding failures are caught and logged, never fail the fact write (the fact is stored with `embedding = NULL`). `EmbeddingBackfillService` runs a parallel facts pass (alongside its existing cells pass) that finds committed, active facts with `embedding IS NULL` and encodes them in the background.
+
+`search_kg` gained an optional `query` param: when present, `ReadToolService.searchKg` embeds it via `encodeQuery` and calls `KgSearchRepository.semanticSearch`, which ranks `active_facts` by cosine distance (`embedding <=> query`) and returns a `score` field (`1 - cosine_distance`) alongside the usual triple fields; the existing `subject`/`predicate`/`object_` ILIKE filters still narrow the semantic result set. If embedding the query fails (or returns `null`), it falls back to the original ILIKE-only `search` path. Calling `search_kg` without `query` is unchanged.
 
 ## Security & Compliance
 

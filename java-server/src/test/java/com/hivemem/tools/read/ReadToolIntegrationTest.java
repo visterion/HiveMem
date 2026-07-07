@@ -239,6 +239,43 @@ class ReadToolIntegrationTest {
     }
 
     @Test
+    void searchKgIlikePathUnchanged() throws Exception {
+        seedStatusRows();
+
+        JsonNode content = callToolContent("search_kg", Map.of("subject", "HiveMem", "limit", 10));
+        assertThat(content.get(0).path("subject").asText()).isEqualTo("HiveMem");
+        assertThat(content.get(0).path("predicate").asText()).isEqualTo("runs on");
+        assertThat(content.get(0).path("object").asText()).isEqualTo("PostgreSQL");
+        assertThat(content.get(1).path("object").asText()).isEqualTo("Java");
+        assertThat(content).hasSize(2);
+        assertThat(content.get(0).has("score")).isFalse();
+    }
+
+    @Test
+    void searchKgSemanticQueryFindsFactWithoutSubstringMatch() throws Exception {
+        callToolContent("kg_add", Map.of(
+                "subject", "Widget",
+                "predicate", "manufactured by",
+                "object_", "AcmeCorp"
+        ));
+        callToolContent("kg_add", Map.of(
+                "subject", "Gadget",
+                "predicate", "sold by",
+                "object_", "OtherCorp"
+        ));
+
+        JsonNode content = callToolContent("search_kg", Map.of(
+                "query", "Widget manufactured by AcmeCorp",
+                "limit", 10
+        ));
+
+        assertThat(content).isNotEmpty();
+        assertThat(content.get(0).path("subject").asText()).isEqualTo("Widget");
+        assertThat(content.get(0).has("score")).isTrue();
+        assertThat(content.get(0).path("score").asDouble()).isCloseTo(1.0, org.assertj.core.data.Offset.offset(0.0001));
+    }
+
+    @Test
     void getDrawerToolReturnsStoredDrawerPayload() throws Exception {
         UUID drawerId = UUID.fromString("00000000-0000-0000-0000-000000000111");
         insertDrawer(

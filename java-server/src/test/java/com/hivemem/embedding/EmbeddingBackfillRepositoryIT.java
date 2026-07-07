@@ -114,6 +114,36 @@ class EmbeddingBackfillRepositoryIT {
     }
 
     @Test
+    void findsAndBackfillsFactMissingEmbedding() {
+        EmbeddingBackfillRepository repo = new EmbeddingBackfillRepository(dsl);
+
+        UUID id = UUID.randomUUID();
+        dsl.execute(
+                "INSERT INTO facts (id, subject, predicate, \"object\", embedding, status, created_by, valid_from) "
+                + "VALUES (?, 'Widget', 'manufactured by', 'AcmeCorp', NULL, 'committed', 'test', now())",
+                id);
+
+        List<UUID> missing = repo.findFactsMissingEmbedding(10);
+        assertTrue(missing.contains(id), "fact with NULL embedding should be returned");
+
+        var snap = repo.findFactSnapshot(id);
+        assertTrue(snap.isPresent());
+        assertEquals("Widget", snap.get().subject());
+        assertEquals("manufactured by", snap.get().predicate());
+        assertEquals("AcmeCorp", snap.get().object());
+
+        int dims = 1024;
+        List<Float> vecList = new ArrayList<>(Collections.nCopies(dims, 0.0f));
+        vecList.set(0, 0.5f);
+        Float[] vec = vecList.toArray(Float[]::new);
+
+        repo.setFactEmbedding(id, vec);
+
+        List<UUID> stillMissing = repo.findFactsMissingEmbedding(10);
+        assertFalse(stillMissing.contains(id), "fact should no longer appear after embedding is set");
+    }
+
+    @Test
     void doesNotReturnSoftDeletedCells() {
         EmbeddingBackfillRepository repo = new EmbeddingBackfillRepository(dsl);
 

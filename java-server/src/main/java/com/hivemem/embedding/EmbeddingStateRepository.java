@@ -76,6 +76,30 @@ public class EmbeddingStateRepository {
                 embeddingArray, cellId);
     }
 
+    public int countFactsCommitted() {
+        Record row = dslContext.fetchOne(
+                "SELECT count(*) AS cnt FROM facts WHERE status = 'committed'");
+        return row == null ? 0 : row.get("cnt", Number.class).intValue();
+    }
+
+    public List<FactRow> fetchFactBatch(int offset, int batchSize) {
+        return dslContext.fetch("""
+                SELECT id, subject, predicate, "object" FROM facts
+                WHERE status = 'committed'
+                ORDER BY created_at ASC
+                LIMIT ? OFFSET ?
+                """, batchSize, offset)
+                .map(r -> new FactRow(r.get("id", UUID.class), r.get("subject", String.class),
+                        r.get("predicate", String.class), r.get("object", String.class)));
+    }
+
+    public void updateFactEmbedding(UUID factId, List<Float> embedding) {
+        Float[] embeddingArray = embedding.toArray(Float[]::new);
+        dslContext.execute(
+                "UPDATE facts SET embedding = ?::vector WHERE id = ?",
+                embeddingArray, factId);
+    }
+
     public void dropEmbeddingIndex() {
         dslContext.execute("DROP INDEX IF EXISTS idx_cells_embedding");
     }
@@ -84,6 +108,16 @@ public class EmbeddingStateRepository {
         dslContext.execute(
                 "CREATE INDEX IF NOT EXISTS idx_cells_embedding " +
                 "ON cells USING hnsw ((embedding::vector(" + dimension + ")) vector_cosine_ops)");
+    }
+
+    public void dropFactsEmbeddingIndex() {
+        dslContext.execute("DROP INDEX IF EXISTS idx_facts_embedding");
+    }
+
+    public void createFactsEmbeddingIndex(int dimension) {
+        dslContext.execute(
+                "CREATE INDEX IF NOT EXISTS idx_facts_embedding " +
+                "ON facts USING hnsw ((embedding::vector(" + dimension + ")) vector_cosine_ops)");
     }
 
     public void replaceRankedSearchFunction(int dimension) {
@@ -113,5 +147,8 @@ public class EmbeddingStateRepository {
     }
 
     public record CellRow(UUID id, String content, String summary) {
+    }
+
+    public record FactRow(UUID id, String subject, String predicate, String object) {
     }
 }

@@ -41,5 +41,30 @@ public class EmbeddingBackfillRepository {
         dsl.execute("UPDATE cells SET tags = array_remove(tags, 'embedding_pending') WHERE id = ?", id);
     }
 
+    public List<UUID> findFactsMissingEmbedding(int limit) {
+        var rows = dsl.fetch(
+                "SELECT id FROM facts WHERE embedding IS NULL AND status = 'committed' "
+                + "AND (valid_until IS NULL OR valid_until > now()) ORDER BY created_at LIMIT ?", limit);
+        List<UUID> ids = new ArrayList<>();
+        for (Record r : rows) ids.add(r.get(0, UUID.class));
+        return ids;
+    }
+
+    public Optional<FactSnapshot> findFactSnapshot(UUID id) {
+        var rec = dsl.fetchOptional(
+                "SELECT subject, predicate, \"object\" FROM facts WHERE id = ? AND status = 'committed' "
+                + "AND (valid_until IS NULL OR valid_until > now())", id);
+        return rec.map(r -> new FactSnapshot(
+                r.get("subject", String.class),
+                r.get("predicate", String.class),
+                r.get("object", String.class)));
+    }
+
+    public void setFactEmbedding(UUID id, Float[] embedding) {
+        dsl.execute("UPDATE facts SET embedding = ?::vector WHERE id = ?", embedding, id);
+    }
+
     public record Snapshot(String content, String summary) {}
+
+    public record FactSnapshot(String subject, String predicate, String object) {}
 }

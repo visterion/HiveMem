@@ -33,6 +33,11 @@ public class EmbeddingBackfillService {
 
     @Scheduled(fixedRateString = "${hivemem.embedding.backfill-interval-ms:300000}")
     public void backfill() {
+        backfillCells();
+        backfillFacts();
+    }
+
+    private void backfillCells() {
         List<UUID> ids = repo.findCellsMissingEmbedding(batchSize);
         for (UUID id : ids) {
             try {
@@ -42,10 +47,28 @@ public class EmbeddingBackfillService {
                 if (vec == null) continue;
                 repo.setEmbedding(id, vec.toArray(Float[]::new));
             } catch (EmbeddingUnavailableException e) {
-                log.warn("Embedding service still unavailable; deferring backfill (had {} pending)", ids.size());
+                log.warn("Embedding service still unavailable; deferring cell backfill (had {} pending)", ids.size());
                 return;
             } catch (Exception e) {
                 log.warn("Embedding backfill failed for cell {}: {}", id, e.getMessage());
+            }
+        }
+    }
+
+    private void backfillFacts() {
+        List<UUID> ids = repo.findFactsMissingEmbedding(batchSize);
+        for (UUID id : ids) {
+            try {
+                var snap = repo.findFactSnapshot(id).orElse(null);
+                if (snap == null) continue;
+                List<Float> vec = client.encodeDocument(snap.subject() + " " + snap.predicate() + " " + snap.object());
+                if (vec == null) continue;
+                repo.setFactEmbedding(id, vec.toArray(Float[]::new));
+            } catch (EmbeddingUnavailableException e) {
+                log.warn("Embedding service still unavailable; deferring fact backfill (had {} pending)", ids.size());
+                return;
+            } catch (Exception e) {
+                log.warn("Embedding backfill failed for fact {}: {}", id, e.getMessage());
             }
         }
     }

@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 @Repository
@@ -39,13 +40,15 @@ public class WriteToolRepository {
             UUID sourceId,
             String status,
             String createdBy,
-            OffsetDateTime validFrom
+            OffsetDateTime validFrom,
+            List<Float> embedding
     ) {
+        Float[] embeddingArray = embedding == null ? null : embedding.toArray(Float[]::new);
         Record row = dslContext.fetchOne("""
-                INSERT INTO facts (subject, predicate, "object", confidence, source_id, status, created_by, valid_from)
-                VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(?::timestamptz, now()))
+                INSERT INTO facts (subject, predicate, "object", confidence, source_id, status, created_by, valid_from, embedding)
+                VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(?::timestamptz, now()), ?::vector)
                 RETURNING id, subject, predicate, "object", status
-                """, subject, predicate, object, confidence, sourceId, status, createdBy, validFrom);
+                """, subject, predicate, object, confidence, sourceId, status, createdBy, validFrom, embeddingArray);
         return factRow(row);
     }
 
@@ -309,8 +312,10 @@ public class WriteToolRepository {
             UUID oldId,
             String newObject,
             String createdBy,
-            String status
+            String status,
+            List<Float> embedding
     ) {
+        Float[] embeddingArray = embedding == null ? null : embedding.toArray(Float[]::new);
         return dslContext.transactionResult(configuration -> {
             DSLContext tx = DSL.using(configuration);
             Record timestampRow = tx.fetchOne("SELECT now() AS ts");
@@ -332,8 +337,8 @@ public class WriteToolRepository {
                     """, revisionTimestamp, oldId);
 
             Record newRow = tx.fetchOne("""
-                    INSERT INTO facts (parent_id, subject, predicate, "object", confidence, source_id, status, created_by, valid_from)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?::timestamptz)
+                    INSERT INTO facts (parent_id, subject, predicate, "object", confidence, source_id, status, created_by, valid_from, embedding)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?::timestamptz, ?::vector)
                     RETURNING id
                     """,
                     oldId,
@@ -344,7 +349,8 @@ public class WriteToolRepository {
                     oldRow.get("source_id", UUID.class),
                     status,
                     createdBy,
-                    revisionTimestamp);
+                    revisionTimestamp,
+                    embeddingArray);
             return Map.of(
                     "old_id", oldId.toString(),
                     "new_id", uuidValue(newRow, "id")
@@ -567,6 +573,18 @@ public class WriteToolRepository {
                     """, decision, idArray);
             return cellCount + factCount + tunnelCount;
         });
+    }
+
+    public Optional<String[]> findFactSubjectPredicate(UUID id) {
+        Record row = dslContext.fetchOne("""
+                SELECT subject, predicate
+                FROM facts
+                WHERE id = ? AND valid_until IS NULL
+                """, id);
+        if (row == null) {
+            return Optional.empty();
+        }
+        return Optional.of(new String[] {row.get("subject", String.class), row.get("predicate", String.class)});
     }
 
     private static Map<String, Object> factRow(Record row) {

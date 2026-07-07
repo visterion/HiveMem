@@ -28,12 +28,13 @@ public class SearchKgToolHandler implements ToolHandler {
 
     @Override
     public String description() {
-        return "ILIKE search on active facts.";
+        return "Search active facts. ILIKE filters by default; pass query for semantic search over facts.embedding (falls back to ILIKE filters if unavailable).";
     }
 
     @Override
     public Map<String, Object> inputSchema() {
         return ToolInputSchema.object()
+                .optionalString("query", "Semantic search over facts (embeds the query; falls back to ILIKE filters if unavailable)")
                 .optionalString("subject", "Filter by subject (ILIKE pattern)")
                 .optionalString("predicate", "Filter by predicate (ILIKE pattern)")
                 .optionalString("object_", "Filter by object (ILIKE pattern)")
@@ -43,11 +44,12 @@ public class SearchKgToolHandler implements ToolHandler {
 
     @Override
     public Object call(AuthPrincipal principal, JsonNode arguments) {
+        String query = textValue(arguments, "query");
         String subject = textValue(arguments, "subject");
         String predicate = textValue(arguments, "predicate");
         String object_ = textValue(arguments, "object_");
         int limit = intValue(arguments, "limit");
-        return readToolService.searchKg(subject, predicate, object_, limit);
+        return readToolService.searchKg(query, subject, predicate, object_, limit);
     }
 
     private static String textValue(JsonNode arguments, String field) {

@@ -9,6 +9,8 @@ import com.hivemem.summarize.CellNeedsSummaryEvent;
 import com.hivemem.summarize.NeedsSummaryDecider;
 import com.hivemem.sync.OpLogWriter;
 import com.hivemem.sync.PushDispatcher;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,11 +18,13 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
 public class WriteToolService {
 
+    private static final Logger log = LoggerFactory.getLogger(WriteToolService.class);
     private static final String STATUS_PENDING = "pending";
     private static final String STATUS_COMMITTED = "committed";
     private static final String STATUS_REJECTED = "rejected";
@@ -173,9 +177,16 @@ public class WriteToolService {
             }
         }
 
+        List<Float> factEmbedding = null;
+        try {
+            factEmbedding = embeddingClient.encodeDocument(subject + " " + predicate + " " + object);
+        } catch (RuntimeException e) {
+            log.warn("Fact embedding unavailable, storing without embedding", e);
+        }
+
         Map<String, Object> inserted = writeToolRepository.addFact(
                 subject, predicate, object, confidence,
-                sourceId, status, principal.name(), validFrom);
+                sourceId, status, principal.name(), validFrom, factEmbedding);
 
         Map<String, Object> opPayload = new java.util.LinkedHashMap<>();
         opPayload.put("fact_id", inserted.get("id"));
@@ -210,7 +221,19 @@ public class WriteToolService {
     @Transactional
     public Map<String, Object> reviseFact(AuthPrincipal principal, UUID oldId, String newObject) {
         String status = principal.role() == AuthRole.AGENT ? STATUS_PENDING : STATUS_COMMITTED;
-        Map<String, Object> result = writeToolRepository.reviseFact(oldId, newObject, principal.name(), status);
+
+        List<Float> factEmbedding = null;
+        try {
+            Optional<String[]> subjectPredicate = writeToolRepository.findFactSubjectPredicate(oldId);
+            if (subjectPredicate.isPresent()) {
+                String[] sp = subjectPredicate.get();
+                factEmbedding = embeddingClient.encodeDocument(sp[0] + " " + sp[1] + " " + newObject);
+            }
+        } catch (RuntimeException e) {
+            log.warn("Fact embedding unavailable, storing without embedding", e);
+        }
+
+        Map<String, Object> result = writeToolRepository.reviseFact(oldId, newObject, principal.name(), status, factEmbedding);
 
         Map<String, Object> opPayload = new java.util.LinkedHashMap<>();
         opPayload.put("fact_id", oldId.toString());

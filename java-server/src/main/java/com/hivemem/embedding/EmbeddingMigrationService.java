@@ -63,6 +63,7 @@ public class EmbeddingMigrationService implements ApplicationRunner {
                     currentInfo.model(), currentInfo.dimension());
             stateRepository.saveInfo(currentInfo);
             stateRepository.createEmbeddingIndex(currentInfo.dimension());
+            stateRepository.createFactsEmbeddingIndex(currentInfo.dimension());
             log.info("Created HNSW index for dimension {}", currentInfo.dimension());
             ensureRankedSearchFunction(currentInfo.dimension());
             return;
@@ -75,6 +76,7 @@ public class EmbeddingMigrationService implements ApplicationRunner {
             // deployment won't have one yet. CREATE INDEX IF NOT EXISTS is a no-op
             // when the index already exists.
             stateRepository.createEmbeddingIndex(currentInfo.dimension());
+            stateRepository.createFactsEmbeddingIndex(currentInfo.dimension());
             ensureRankedSearchFunction(currentInfo.dimension());
             return;
         }
@@ -124,6 +126,31 @@ public class EmbeddingMigrationService implements ApplicationRunner {
 
             stateRepository.createEmbeddingIndex(to.dimension());
             log.info("Recreated HNSW index");
+
+            int totalFacts = stateRepository.countFactsCommitted();
+            log.info("Reencoding {} facts: {} → {}", totalFacts, from.model(), to.model());
+
+            stateRepository.dropFactsEmbeddingIndex();
+            log.info("Dropped facts HNSW index");
+
+            int doneFacts = 0;
+            while (doneFacts < totalFacts) {
+                List<EmbeddingStateRepository.FactRow> batch = stateRepository.fetchFactBatch(doneFacts, BATCH_SIZE);
+                if (batch.isEmpty()) {
+                    break;
+                }
+                for (EmbeddingStateRepository.FactRow row : batch) {
+                    List<Float> embedding = embeddingClient.encodeDocument(
+                            row.subject() + " " + row.predicate() + " " + row.object());
+                    stateRepository.updateFactEmbedding(row.id(), embedding);
+                }
+                doneFacts += batch.size();
+                log.info("Reencoding facts progress: {}/{}", doneFacts, totalFacts);
+            }
+
+            stateRepository.createFactsEmbeddingIndex(to.dimension());
+            log.info("Recreated facts HNSW index");
+
             ensureRankedSearchFunction(to.dimension());
 
             stateRepository.saveInfo(to);
