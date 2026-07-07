@@ -4,6 +4,8 @@ import tools.jackson.databind.JsonNode;
 import com.hivemem.auth.AuthPrincipal;
 import com.hivemem.mcp.ToolHandler;
 import com.hivemem.mcp.ToolInputSchema;
+import com.hivemem.search.CellSelector;
+import com.hivemem.search.CellSelectorSchemas;
 import com.hivemem.write.WriteArgumentParser;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
@@ -35,7 +37,8 @@ public class SearchToolHandler implements ToolHandler {
     @Override
     public String description() {
         return "6-signal ranked search over committed cells with metadata by default; use include to request extra fields such as content. "
-                + "Pass realm=\"none\" to restrict to cells with no realm assigned.";
+                + "Pass realm=\"none\" to restrict to cells with no realm assigned. "
+                + "Alternatively, pass a where object (realm | realm_in | signal | topic | tags | status) instead of the flat filter params.";
     }
 
     @Override
@@ -55,6 +58,9 @@ public class SearchToolHandler implements ToolHandler {
                 .optionalNumber("weight_graph_proximity", "Graph proximity weight (default 0.10)")
                 .optionalStringList("tags", "Filter to cells that have ANY of the given tags (array overlap)")
                 .optionalString("status", "Restrict to a status: committed | pending | rejected (default committed)")
+                .optionalObject("where", "Alternative filter object: realm | realm_in | signal | topic | tags | status. "
+                        + "Mutually exclusive with the flat realm/signal/topic/tags/status params. 'query' is not allowed here.",
+                        CellSelectorSchemas.where())
                 .build();
     }
 
@@ -66,6 +72,7 @@ public class SearchToolHandler implements ToolHandler {
         String signal = WriteArgumentParser.optionalText(arguments, "signal");
         String topic = WriteArgumentParser.optionalText(arguments, "topic");
         CellFieldSelection selection = CellFieldSelection.forSearch(CellFieldSelection.parseInclude(arguments));
+        List<String> realmIn = null;
         double weightSemantic = optionalWeight(arguments, "weight_semantic", 0.30d);
         double weightKeyword = optionalWeight(arguments, "weight_keyword", 0.15d);
         double weightRecency = optionalWeight(arguments, "weight_recency", 0.15d);
@@ -79,6 +86,22 @@ public class SearchToolHandler implements ToolHandler {
             for (JsonNode element : arguments.get("tags")) {
                 tags.add(element.asText());
             }
+        }
+        JsonNode whereNode = arguments == null ? null : arguments.get("where");
+        if (whereNode != null && !whereNode.isNull()) {
+            if (realm != null || signal != null || topic != null || tags != null || status != null) {
+                throw new IllegalArgumentException("where is mutually exclusive with flat filter params");
+            }
+            CellSelector sel = CellSelector.fromJson(whereNode);
+            if (sel.query() != null) {
+                throw new IllegalArgumentException("where.query is not supported on search; use the top-level query");
+            }
+            realm = sel.realm();
+            realmIn = sel.realmIn();
+            signal = sel.signal();
+            topic = sel.topic();
+            tags = sel.tags() == null ? null : new ArrayList<>(sel.tags());
+            status = sel.status();
         }
         return readToolService.search(
                 query,
@@ -95,7 +118,7 @@ public class SearchToolHandler implements ToolHandler {
                 weightGraphProximity,
                 tags,
                 status,
-                null
+                realmIn
         );
     }
 
