@@ -50,7 +50,10 @@ public final class CellFieldSelection {
     }
 
     public static List<String> searchIncludeFields() {
-        return OPTIONAL_FIELDS;
+        List<String> all = new ArrayList<>();
+        all.add("realm");
+        all.addAll(OPTIONAL_FIELDS);
+        return List.copyOf(all);
     }
 
     public static List<String> getCellIncludeFields() {

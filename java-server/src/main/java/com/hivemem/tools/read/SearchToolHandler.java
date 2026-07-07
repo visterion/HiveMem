@@ -34,7 +34,8 @@ public class SearchToolHandler implements ToolHandler {
 
     @Override
     public String description() {
-        return "5-signal ranked search over committed cells with metadata by default; use include to request extra fields such as content.";
+        return "5-signal ranked search over committed cells with metadata by default; use include to request extra fields such as content. "
+                + "Pass realm=\"none\" to restrict to cells with no realm assigned.";
     }
 
     @Override
@@ -42,7 +43,7 @@ public class SearchToolHandler implements ToolHandler {
         return ToolInputSchema.object()
                 .requiredString("query", "Full-text search query")
                 .optionalInteger("limit", "Maximum number of results (default 10, max 100)")
-                .optionalString("realm", "Restrict search to this realm")
+                .optionalString("realm", "Restrict search to this realm; pass \"none\" to match cells with no realm assigned")
                 .optionalString("signal", "Restrict search to this signal")
                 .optionalString("topic", "Restrict search to this topic")
                 .optionalEnumStringList("include", "Optional fields to return. Defaults to summary, tags, importance, created_at.", INCLUDE_FIELDS)

@@ -170,4 +170,53 @@ class FacetCountTest {
                 java.util.List.of("fact:evil"), 20))
                 .isInstanceOf(IllegalArgumentException.class);
     }
+
+    // ── realm "none" sentinel tests ────────────────────────────────────────────
+
+    @Test
+    void realmNoneSentinelCountsOnlyNullRealmCells() {
+        // Clean up any null-realm cells left by other tests in this class (order is not guaranteed).
+        dslContext.execute("DELETE FROM cells WHERE realm IS NULL");
+        dslContext.execute("DELETE FROM cells WHERE topic = 'norealm-t'");
+        for (int i = 0; i < 2; i++) {
+            dslContext.execute(
+                    "INSERT INTO cells (id, content, realm, signal, topic, tags, status, valid_from, created_at) " +
+                    "VALUES (?, 'no realm doc', NULL, 'facts', 'norealm-t', '{}', 'committed', now(), now())",
+                    UUID.randomUUID());
+        }
+        for (int i = 0; i < 3; i++) {
+            dslContext.execute(
+                    "INSERT INTO cells (id, content, realm, signal, topic, tags, status, valid_from, created_at) " +
+                    "VALUES (?, 'has realm doc', 'norealm-x', 'facts', 'norealm-t', '{}', 'committed', now(), now())",
+                    UUID.randomUUID());
+        }
+
+        var result = facetRepository.facetCounts("none", null, null, null, null, null, List.of("status"), 10);
+        assertThat(((Number) result.get("status").get(0).get("count")).intValue()).isEqualTo(2);
+    }
+
+    @Test
+    void factFacetRespectsNoneSentinel() {
+        dslContext.execute("DELETE FROM facts WHERE source_id IN (SELECT id FROM cells WHERE topic = 'norealm-fact-t')");
+        dslContext.execute("DELETE FROM cells WHERE topic = 'norealm-fact-t'");
+
+        UUID noRealmDoc = UUID.randomUUID();
+        dslContext.execute(
+                "INSERT INTO cells (id, content, realm, signal, topic, tags, status, valid_from, created_at) " +
+                "VALUES (?, 'doc content', NULL, 'facts', 'norealm-fact-t', '{}', 'committed', now(), now())",
+                noRealmDoc);
+        UUID hasRealmDoc = UUID.randomUUID();
+        dslContext.execute(
+                "INSERT INTO cells (id, content, realm, signal, topic, tags, status, valid_from, created_at) " +
+                "VALUES (?, 'doc content', 'norealm-fact-x', 'facts', 'norealm-fact-t', '{}', 'committed', now(), now())",
+                hasRealmDoc);
+        seedFact(noRealmDoc, "vendor", "NoRealmVendor");
+        seedFact(hasRealmDoc, "vendor", "OtherVendor");
+
+        var result = facetRepository.facetCounts("none", null, null, null, null, null, List.of("fact:vendor"), 10);
+        var vendor = result.get("fact:vendor");
+        assertThat(vendor).hasSize(1);
+        assertThat(vendor.get(0).get("value")).isEqualTo("NoRealmVendor");
+        assertThat(((Number) vendor.get(0).get("count")).intValue()).isEqualTo(1);
+    }
 }

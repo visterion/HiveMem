@@ -22,7 +22,7 @@ HiveMem exposes **47 MCP tools** across search, knowledge graph, progressive sum
 **Read (22):**
 
 1. `status`: System overview and counts.
-2. `search`: Semantic similarity + keyword search; returns metadata by default and supports `include` for optional fields. Optional params: `tags` (string array — match-ANY overlap filter), `status` (`committed`|`pending`|`rejected`, default `committed`).
+2. `search`: Semantic similarity + keyword search; returns metadata by default and supports `include` for optional fields (including `realm`). Optional params: `realm` (pass `"none"` to restrict to cells with no realm assigned), `tags` (string array — match-ANY overlap filter), `status` (`committed`|`pending`|`rejected`, default `committed`).
 3. `search_kg`: Knowledge graph triple lookup.
 4. `get_cell`: Read a single knowledge item (logs access automatically); supports `include` for optional fields including `content` and `confidence` (per-document average confidence of active facts, nullable `real`; pass `include=['confidence']` to request it).
 5. `list`: Navigate the Realm→Signal→Topic→Cell hierarchy (omit all params for realms; add `realm` for signals; add `realm`+`signal` for topics; add `realm`+`signal`+`topic` for cells).
@@ -38,7 +38,7 @@ HiveMem exposes **47 MCP tools** across search, knowledge graph, progressive sum
 15. `diary_read`: Read agent diary entries.
 16. `list_attachments`: List all file attachments linked to a cell (metadata only, no file content).
 17. `get_attachment_info`: Get metadata for a single attachment by ID. Return fields include `cell_id` (UUID of the extraction cell), `content_uri` (`hivemem://attachments/{id}/content`), `thumbnail_uri` (`hivemem://attachments/{id}/thumbnail` or null), and `page_count` (INTEGER for PDFs, `null` for other types). Download via `GET /api/attachments/{id}/content`.
-18. `facet_count`: Aggregate document counts grouped by one or more cell fields. Required param: `fields` (array of one or more of `tag`, `status`, `realm`, `year`, `signal`, or `fact:<predicate>` — e.g. `fact:vendor`, `fact:party`). Optional filters: `realm`, `signal`, `topic`, `status` (`committed`|`pending`|`rejected`), `query` (full-text/semantic), `tags` (match-ANY), `limit` (max values per field, default 10, max 100). Returns `{field: [{value, count}, …]}` for each requested field. Allowed `fact:<predicate>` values: `vendor`, `party`, `amount_total`, `value_per_period`, `document_date`, `due_date`, `invoice_number`, `contract_number`.
+18. `facet_count`: Aggregate document counts grouped by one or more cell fields. Required param: `fields` (array of one or more of `tag`, `status`, `realm`, `year`, `signal`, or `fact:<predicate>` — e.g. `fact:vendor`, `fact:party`). Optional filters: `realm` (pass `"none"` to restrict to cells with no realm assigned), `signal`, `topic`, `status` (`committed`|`pending`|`rejected`), `query` (full-text/semantic), `tags` (match-ANY), `limit` (max values per field, default 10, max 100). Returns `{field: [{value, count}, …]}` for each requested field. Allowed `fact:<predicate>` values: `vendor`, `party`, `amount_total`, `value_per_period`, `document_date`, `due_date`, `invoice_number`, `contract_number`.
 19. `list_documents`: Browse documents in a realm (no query) with tag/status filters, sort, and paging; joins the extraction-source attachment. Optional params: `realm` (default `documents`; pass `"none"` to list cells with no realm assigned), `signal`, `topic`, `tags` (match-ANY), `status` (`committed`|`pending`|`rejected`, default `committed`), `sort` (`newest`|`oldest`|`title`, default `newest`), `limit` (1–200, default 50), `offset` (0+, default 0). Each row includes a nullable `confidence` (per-document average of active-fact confidence).
 20. `list_media`: List image attachments for the photo gallery — committed cells Vision-classified `subtype_photo_general` or `subtype_whiteboard_photo`, joined to their extraction-source image attachment and per-image EXIF metadata (camera, width/height, capture date, GPS, reverse-geocoded place name). Optional params: `realm` (default: all realms), `sort` (`newest`|`oldest` by capture date, default `newest`), `limit` (1–500, default 100), `offset` (0+, default 0). Each row includes `attachment_id`, `thumbnail_uri`, `content_uri`, `taken_at`, `place_name`, and the EXIF fields. `document_scan` images are excluded (they appear in the Scans view).
 21. `list_saved_searches`: Return all active saved searches belonging to the calling user (`id`, `name`, `filter`, `created_at`). No params required. Use `save_search` to create and `delete_saved_search` to remove.
@@ -93,7 +93,7 @@ The `search` tool combines 6 signals with configurable weights:
 | Signal | Default Weight | Description |
 |---|---|---|
 | Semantic | 0.30 | Vector cosine similarity |
-| Keyword | 0.15 | PostgreSQL full-text search (tsvector, BM25-like) |
+| Keyword | 0.15 | PostgreSQL full-text search (tsvector, BM25-like). Matching is OR-of-lexemes: any query term hitting the `tsv` column scores > 0 (`ts_rank_cd`), with results containing more of the query's terms ranking higher — it is not an AND-of-terms requirement. |
 | Recency | 0.15 | Exponential decay, 90-day half-life |
 | Importance | 0.15 | User/agent assigned 1-5 scale |
 | Popularity | 0.15 | Access frequency (materialized view) |

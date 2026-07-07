@@ -73,4 +73,18 @@ class CellFieldSelectionTest {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("Invalid include field: bogus");
     }
+
+    @Test
+    void searchIncludeFieldsExposesRealmInEnum() {
+        assertThat(CellFieldSelection.searchIncludeFields()).contains("realm");
+    }
+
+    @Test
+    void forSearchToleratesRealmInIncludeList() {
+        CellFieldSelection selection = CellFieldSelection.forSearch(List.of("realm", "summary"));
+
+        assertThat(selection.responseFields()).containsExactly(
+                "id", "realm", "signal", "topic", "summary"
+        );
+    }
 }

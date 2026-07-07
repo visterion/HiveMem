@@ -182,10 +182,11 @@ class ReadToolIntegrationTest {
         assertThat(results.get(0).path("score_total").isNumber()).isTrue();
         assertThat(results.get(0).path("score_semantic").isNumber()).isTrue();
         assertThat(results.get(0).path("score_keyword").isNumber()).isTrue();
-        // plainto_tsquery uses AND semantics: only the cell containing both
-        // "semantic" and "oracle" matches. The "keyword oracle" cell lacks
-        // "semantic" and has no embedding, so the SQL hard filter excludes it.
-        assertThat(results).hasSize(1);
+        // Keyword matching uses OR-of-lexemes semantics: both cells contain "oracle",
+        // so both pass the kw > 0 hard filter. The "semantic oracle" cell matches both
+        // query lexemes (higher ts_rank_cd) and ranks first; the "keyword oracle" cell
+        // matches only "oracle" but still scores keyword > 0.
+        assertThat(results).hasSize(2);
 
         // Query "oracle" matches both cells; weighting favours importance, so
         // the importance=1 cell ranks above the importance=5 cell.

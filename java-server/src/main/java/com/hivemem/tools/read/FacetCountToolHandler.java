@@ -34,13 +34,14 @@ public class FacetCountToolHandler implements ToolHandler {
     public String description() {
         return "Aggregate document counts grouped by a cell field (tag, status, realm, year, signal) " +
                "or by a fact predicate using 'fact:<predicate>' fields (e.g. 'fact:vendor', 'fact:party'), " +
-               "honoring realm/signal/topic/tags/status/query filters.";
+               "honoring realm/signal/topic/tags/status/query filters. Pass realm=\"none\" to restrict to " +
+               "cells with no realm assigned.";
     }
 
     @Override
     public Map<String, Object> inputSchema() {
         return ToolInputSchema.object()
-                .optionalString("realm", "Restrict to this realm")
+                .optionalString("realm", "Restrict to this realm; pass \"none\" to match cells with no realm assigned")
                 .optionalString("signal", "Restrict to this signal")
                 .optionalString("topic", "Restrict to this topic")
                 .optionalStringList("tags", "Filter to cells that have ANY of the given tags")

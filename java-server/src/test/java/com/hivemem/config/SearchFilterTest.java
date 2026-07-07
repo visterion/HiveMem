@@ -118,4 +118,60 @@ class SearchFilterTest {
         assertThat(ids).containsExactlyInAnyOrder(ID_A, ID_B);
         assertThat(ids).doesNotContain(ID_C);
     }
+
+    @Test
+    void exactTermHitYieldsNonZeroKeywordScore() {
+        UUID id = UUID.fromString("00000000-0000-0000-0000-000000000dd4");
+        dslContext.execute(
+                "INSERT INTO cells (id, content, summary, realm, signal, topic, status, valid_from, created_at) " +
+                "VALUES (?, 'attachment service handles uploads', 'attachment service handles uploads', " +
+                "'docs', 'facts', 't', 'committed', now(), now())",
+                id);
+
+        List<CellSearchRepository.RankedRow> rows = repo.rankedSearch(
+                null, "attachment service", "docs", null, null, 10,
+                0.30, 0.15, 0.15, 0.15, 0.15, 0.10, null, null);
+
+        assertThat(rows).isNotEmpty();
+        assertThat(rows.get(0).scoreKeyword()).isGreaterThan(0.0);
+    }
+
+    @Test
+    void partialTermHitStillScoresKeyword() {
+        UUID id = UUID.fromString("00000000-0000-0000-0000-000000000dd5");
+        dslContext.execute(
+                "INSERT INTO cells (id, content, summary, realm, signal, topic, status, valid_from, created_at) " +
+                "VALUES (?, 'attachment service handles uploads', 'attachment service handles uploads', " +
+                "'docs', 'facts', 't', 'committed', now(), now())",
+                id);
+
+        // "gubbins" does not match anything -- old AND-semantics (plainto_tsquery) would return nothing.
+        List<CellSearchRepository.RankedRow> rows = repo.rankedSearch(
+                null, "attachment gubbins", "docs", null, null, 10,
+                0.30, 0.15, 0.15, 0.15, 0.15, 0.10, null, null);
+
+        assertThat(rows).isNotEmpty();
+        assertThat(rows.get(0).scoreKeyword()).isGreaterThan(0.0);
+    }
+
+    @Test
+    void realmNoneSentinelFindsNullRealmCells() {
+        dslContext.execute("DELETE FROM cells WHERE topic = 'orphan-t'");
+        UUID id = UUID.fromString("00000000-0000-0000-0000-000000000dd6");
+        dslContext.execute(
+                "INSERT INTO cells (id, content, summary, realm, signal, topic, status, valid_from, created_at) " +
+                "VALUES (?, 'orphan alpha item', 'orphan alpha item', NULL, 'facts', 'orphan-t', 'committed', now(), now())",
+                id);
+
+        List<CellSearchRepository.RankedRow> rows = repo.rankedSearch(
+                null, "orphan", "none", null, null, 10,
+                0.30, 0.15, 0.15, 0.15, 0.15, 0.10, null, null);
+        assertThat(rows).hasSize(1);
+        assertThat(rows.get(0).id()).isEqualTo(id);
+
+        List<CellSearchRepository.RankedRow> rowsOther = repo.rankedSearch(
+                null, "orphan", "some-realm", null, null, 10,
+                0.30, 0.15, 0.15, 0.15, 0.15, 0.10, null, null);
+        assertThat(rowsOther).isEmpty();
+    }
 }

@@ -29,14 +29,20 @@ RETURNS TABLE (
     score_total REAL
 )
 LANGUAGE SQL STABLE AS $$
-    WITH ann AS (
+    WITH q AS (
+        SELECT to_tsquery('simple',
+               (SELECT string_agg('''' || replace(lex, '''', '''''') || '''', ' | ')
+                FROM unnest(tsvector_to_array(to_tsvector('simple', coalesce(query_text, '')))) AS lex)
+        ) AS tsq
+    ),
+    ann AS (
         SELECT c.id
         FROM cells c
         WHERE (c.valid_until IS NULL OR c.valid_until > now())
           AND c.status = COALESCE(p_status, 'committed')
           AND c.embedding IS NOT NULL
           AND query_embedding IS NOT NULL
-          AND (p_realm IS NULL OR c.realm = p_realm)
+          AND (p_realm IS NULL OR (p_realm = 'none' AND c.realm IS NULL) OR c.realm = p_realm)
           AND (p_signal IS NULL OR c.signal = p_signal)
           AND (p_topic IS NULL OR c.topic = p_topic)
           AND (p_tags IS NULL OR c.tags && p_tags)
@@ -46,11 +52,11 @@ LANGUAGE SQL STABLE AS $$
     kw AS (
         SELECT c.id
         FROM cells c
+        CROSS JOIN q
         WHERE (c.valid_until IS NULL OR c.valid_until > now())
           AND c.status = COALESCE(p_status, 'committed')
-          AND query_text IS NOT NULL AND query_text != ''
-          AND c.tsv @@ plainto_tsquery('simple', query_text)
-          AND (p_realm IS NULL OR c.realm = p_realm)
+          AND q.tsq IS NOT NULL AND c.tsv @@ q.tsq
+          AND (p_realm IS NULL OR (p_realm = 'none' AND c.realm IS NULL) OR c.realm = p_realm)
           AND (p_signal IS NULL OR c.signal = p_signal)
           AND (p_topic IS NULL OR c.topic = p_topic)
           AND (p_tags IS NULL OR c.tags && p_tags)
@@ -86,8 +92,7 @@ LANGUAGE SQL STABLE AS $$
             CASE WHEN c.embedding IS NOT NULL AND query_embedding IS NOT NULL
                  THEN (1 - ((c.embedding::vector({{DIM}})) <=> query_embedding))::REAL
                  ELSE 0::REAL END AS sem,
-            CASE WHEN query_text IS NOT NULL AND query_text != ''
-                 THEN LEAST(ts_rank_cd(c.tsv, plainto_tsquery('simple', query_text))::REAL, 1.0::REAL)
+            CASE WHEN q.tsq IS NOT NULL THEN LEAST(ts_rank_cd(c.tsv, q.tsq)::REAL, 1.0::REAL)
                  ELSE 0::REAL END AS kw,
             EXP(-0.693 * EXTRACT(EPOCH FROM (now() - c.created_at)) / (90 * 86400))::REAL AS rec,
             (CASE c.importance
@@ -96,6 +101,7 @@ LANGUAGE SQL STABLE AS $$
             COALESCE(cp.recent_access_count::REAL / (SELECT val FROM max_pop), 0)::REAL AS pop,
             COALESCE(g.score, 0)::REAL AS gp
         FROM cells c
+        CROSS JOIN q
         JOIN candidates ca ON ca.id = c.id
         LEFT JOIN cell_popularity cp ON cp.cell_id = c.id
         LEFT JOIN graph g ON g.cell_id = c.id
