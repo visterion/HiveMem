@@ -30,6 +30,8 @@ public class KgRenamePredicateToolHandler implements ToolHandler {
     public String description() {
         return "Rename a KG predicate: invalidates every active fact with predicate 'from' and re-adds it "
              + "under predicate 'to', preserving subject, object, confidence, source, status and valid_from. "
+             + "Matches all non-invalidated facts regardless of status (pending/committed); each renamed fact "
+             + "keeps its original status. "
              + "Optional subject filter. Requires confirm: true above 200 matched facts; hard cap 1000.";
     }
 

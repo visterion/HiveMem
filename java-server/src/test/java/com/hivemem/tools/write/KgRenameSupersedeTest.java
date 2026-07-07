@@ -200,6 +200,42 @@ class KgRenameSupersedeTest {
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
+    @Test
+    void renameCoversPendingFactsAndPreservesStatus() {
+        UUID pendingId = addFactWithStatus("hivemem", "legacy_pred", "pending-value", "pending");
+        UUID committedId = addFactWithStatus("hivemem-ui", "legacy_pred", "committed-value", "committed");
+
+        Map<String, Object> result = writeToolService.kgRenamePredicate(
+                principal, "legacy_pred", "canonical_pred", null, false);
+
+        assertThat(result).containsEntry("renamed", 2);
+        assertThat(result).containsEntry("matched", 2);
+
+        for (UUID oldId : new UUID[] {pendingId, committedId}) {
+            Record oldRow = dsl.fetchOne("SELECT valid_until FROM facts WHERE id = ?", oldId);
+            assertThat(oldRow.get("valid_until")).isNotNull();
+        }
+
+        Record renamedPending = dsl.fetchOne(
+                "SELECT predicate, status FROM facts WHERE subject = ? AND \"object\" = ? AND valid_until IS NULL",
+                "hivemem", "pending-value");
+        assertThat(renamedPending.get("predicate", String.class)).isEqualTo("canonical_pred");
+        assertThat(renamedPending.get("status", String.class)).isEqualTo("pending");
+
+        Record renamedCommitted = dsl.fetchOne(
+                "SELECT predicate, status FROM facts WHERE subject = ? AND \"object\" = ? AND valid_until IS NULL",
+                "hivemem-ui", "committed-value");
+        assertThat(renamedCommitted.get("predicate", String.class)).isEqualTo("canonical_pred");
+        assertThat(renamedCommitted.get("status", String.class)).isEqualTo("committed");
+    }
+
+    private UUID addFactWithStatus(String subject, String predicate, String object, String status) {
+        Map<String, Object> result = writeToolService.kgAdd(
+                principal, subject, predicate, object, 0.95, null, status,
+                OffsetDateTime.now(), "insert");
+        return UUID.fromString(result.get("id").toString());
+    }
+
     private UUID addFact(String subject, String predicate, String object, String onConflict) {
         Map<String, Object> result = writeToolService.kgAdd(
                 principal, subject, predicate, object, 0.95, null, "committed",
