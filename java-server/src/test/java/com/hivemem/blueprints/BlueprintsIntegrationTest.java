@@ -261,6 +261,47 @@ class BlueprintsIntegrationTest {
         return dslContext.fetchOne(sql, bindings).get("cnt", Long.class);
     }
 
+    // --- 9. blueprintsMissing: realms with cells but no active blueprint ---
+
+    @Test
+    void blueprintsMissingReturnsOnlyRealmsWithoutActiveBlueprint() {
+        seedCell("covered", "covered cell 1");
+        seedCell("covered", "covered cell 2");
+        seedCell("uncovered", "uncovered cell 1");
+
+        writeToolService.updateBlueprint(WRITER, "covered", "Covered Map",
+                "Covered narrative", List.of(), List.of());
+
+        List<Map<String, Object>> missing = readToolService.blueprintsMissing();
+
+        assertThat(missing).hasSize(1);
+        assertThat(missing.get(0)).containsEntry("realm", "uncovered");
+        assertThat(missing.get(0).get("cell_count")).isEqualTo(1L);
+    }
+
+    @Test
+    void blueprintsMissingTreatsSoftClosedBlueprintAsMissing() {
+        seedCell("closed-realm", "closed realm cell");
+
+        writeToolService.updateBlueprint(WRITER, "closed-realm", "Old Map",
+                "Old narrative", List.of(), List.of());
+        // Soft-close the only blueprint version for this realm.
+        dslContext.execute("UPDATE blueprints SET valid_until = now() WHERE realm = ?", "closed-realm");
+
+        List<Map<String, Object>> missing = readToolService.blueprintsMissing();
+
+        assertThat(missing).hasSize(1);
+        assertThat(missing.get(0)).containsEntry("realm", "closed-realm");
+        assertThat(missing.get(0).get("cell_count")).isEqualTo(1L);
+    }
+
+    private void seedCell(String realm, String content) {
+        dslContext.execute(
+                "INSERT INTO cells (id, content, realm, signal, topic, tags, status, valid_from, created_at) " +
+                "VALUES (?, ?, ?, 'facts', 'blueprints-missing-test', '{}', 'committed', now(), now())",
+                java.util.UUID.randomUUID(), content, realm);
+    }
+
     @SpringBootConfiguration
     @EnableAutoConfiguration
     @Import({

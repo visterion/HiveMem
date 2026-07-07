@@ -71,6 +71,24 @@ public class CellReadRepository {
         return results;
     }
 
+    public List<Map<String, Object>> blueprintsMissing() {
+        List<Map<String, Object>> results = new ArrayList<>();
+        for (Record row : dslContext.fetch("""
+                SELECT c.realm, count(*) AS cell_count
+                FROM active_cells c
+                WHERE c.realm IS NOT NULL
+                  AND NOT EXISTS (SELECT 1 FROM active_blueprints b WHERE b.realm = c.realm)
+                GROUP BY c.realm
+                ORDER BY c.realm
+                """)) {
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("realm", row.get("realm", String.class));
+            result.put("cell_count", countValue(row, "cell_count"));
+            results.add(result);
+        }
+        return results;
+    }
+
     public List<Map<String, Object>> listSignals(String realm) {
         List<Map<String, Object>> results = new ArrayList<>();
         for (Record row : dslContext.fetch("""

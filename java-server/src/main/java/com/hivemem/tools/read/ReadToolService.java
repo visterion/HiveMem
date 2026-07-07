@@ -99,6 +99,10 @@ public class ReadToolService {
         return cellReadRepository.listSignals(realm);
     }
 
+    public List<Map<String, Object>> blueprintsMissing() {
+        return cellReadRepository.blueprintsMissing();
+    }
+
     public List<Map<String, Object>> listTopics(String realm, String signal) {
         return cellReadRepository.listTopics(realm, signal);
     }
