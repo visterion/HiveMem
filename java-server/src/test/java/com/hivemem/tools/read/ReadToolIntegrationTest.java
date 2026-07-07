@@ -683,6 +683,99 @@ class ReadToolIntegrationTest {
     }
 
     @Test
+    void entityOverviewReturnsCellsFactsAndTunnelsForKnownSubject() throws Exception {
+        UUID serverCell = UUID.fromString("00000000-0000-0000-0000-000000000601");
+        UUID relatedCell = UUID.fromString("00000000-0000-0000-0000-000000000602");
+        insertDrawer(
+                serverCell,
+                null,
+                "hivemem-server runs the production stack",
+                "hivemem",
+                "facts",
+                "infra",
+                "system",
+                3,
+                "hivemem-server summary",
+                null,
+                null,
+                "committed",
+                "writer",
+                OffsetDateTime.parse("2026-04-10T10:00:00Z"),
+                OffsetDateTime.parse("2026-04-10T10:00:00Z"),
+                null
+        );
+        insertDrawer(
+                relatedCell,
+                null,
+                "Companion note about hivemem-server topology",
+                "hivemem",
+                "facts",
+                "infra",
+                "system",
+                2,
+                "companion summary",
+                null,
+                null,
+                "committed",
+                "writer",
+                OffsetDateTime.parse("2026-04-10T10:05:00Z"),
+                OffsetDateTime.parse("2026-04-10T10:05:00Z"),
+                null
+        );
+        insertTunnel(
+                UUID.fromString("00000000-0000-0000-0000-000000000603"),
+                serverCell,
+                relatedCell,
+                "related_to",
+                "Server to companion link",
+                "committed",
+                "writer",
+                OffsetDateTime.parse("2026-04-10T10:10:00Z"),
+                OffsetDateTime.parse("2026-04-10T10:10:00Z"),
+                null
+        );
+        insertFact(
+                UUID.fromString("00000000-0000-0000-0000-000000000604"),
+                null,
+                "hivemem-server",
+                "runs_on",
+                "lxc-145",
+                0.95f,
+                serverCell,
+                "committed",
+                "writer",
+                OffsetDateTime.parse("2026-04-10T10:15:00Z"),
+                OffsetDateTime.parse("2026-04-10T10:15:00Z"),
+                null
+        );
+
+        JsonNode content = callToolContent("entity_overview", Map.of("subject", "hivemem-server"));
+
+        assertThat(content.path("cells").isArray()).isTrue();
+        assertThat(content.path("cells")).isNotEmpty();
+        assertThat(content.path("facts")).isNotEmpty();
+        boolean hasExactFact = false;
+        for (JsonNode fact : content.path("facts")) {
+            if (fact.path("subject").asText().equals("hivemem-server")
+                    && fact.path("predicate").asText().equals("runs_on")
+                    && fact.path("object").asText().equals("lxc-145")) {
+                hasExactFact = true;
+            }
+        }
+        assertThat(hasExactFact).isTrue();
+        assertThat(content.path("tunnels")).isNotEmpty();
+    }
+
+    @Test
+    void entityOverviewReturnsEmptyArraysForUnknownSubject() throws Exception {
+        JsonNode content = callToolContent("entity_overview", Map.of("subject", "no-such-entity-xyz"));
+
+        assertThat(content.path("cells")).isEmpty();
+        assertThat(content.path("facts")).isEmpty();
+        assertThat(content.path("tunnels")).isEmpty();
+    }
+
+    @Test
     void timeMachineToolReturnsCurrentAndHistoricalSnapshots() throws Exception {
         seedAliceHistoryRows();
 

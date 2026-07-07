@@ -41,7 +41,8 @@ public class ToolPermissionService {
             "list_documents",
             "list_media",
             "list_saved_searches",
-            "list_cell_ids"
+            "list_cell_ids",
+            "entity_overview"
     );
 
     private static final Set<String> WRITE_TOOLS = tools(

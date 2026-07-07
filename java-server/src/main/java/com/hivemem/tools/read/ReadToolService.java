@@ -20,9 +20,11 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.LinkedHashMap;
 
@@ -175,6 +177,32 @@ public class ReadToolService {
 
     public List<Map<String, Object>> quickFacts(String entity) {
         return cellReadRepository.quickFacts(entity);
+    }
+
+    public Map<String, Object> entityOverview(String subject, int limit) {
+        List<Map<String, Object>> cells = search(subject, limit, null, null, null,
+                CellFieldSelection.forSearch(null),
+                0.30d, 0.15d, 0.15d, 0.15d, 0.15d, 0.10d, null, null);
+        List<Map<String, Object>> facts = new ArrayList<>(cellReadRepository.quickFacts(subject));
+        if (facts.size() < limit) {
+            Set<Object> seen = facts.stream().map(f -> f.get("id")).collect(java.util.stream.Collectors.toSet());
+            for (Map<String, Object> f : kgSearchRepository.search(subject, null, null, limit)) {
+                if (facts.size() >= limit) break;
+                if (seen.add(f.get("id"))) facts.add(f);
+            }
+        } else {
+            facts = facts.subList(0, limit);
+        }
+        List<Map<String, Object>> tunnels = List.of();
+        if (!cells.isEmpty()) {
+            UUID topCell = UUID.fromString((String) cells.get(0).get("id"));
+            tunnels = cellReadRepository.traverse(topCell, 1, null);
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("cells", cells);
+        result.put("facts", facts);
+        result.put("tunnels", tunnels);
+        return result;
     }
 
     public List<Map<String, Object>> timeMachine(String subject, OffsetDateTime asOf, OffsetDateTime asOfIngestion, int limit) {
