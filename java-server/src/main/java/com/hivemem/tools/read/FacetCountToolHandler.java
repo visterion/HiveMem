@@ -4,6 +4,8 @@ import tools.jackson.databind.JsonNode;
 import com.hivemem.auth.AuthPrincipal;
 import com.hivemem.mcp.ToolHandler;
 import com.hivemem.mcp.ToolInputSchema;
+import com.hivemem.search.CellSelector;
+import com.hivemem.search.CellSelectorSchemas;
 import com.hivemem.write.WriteArgumentParser;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
@@ -35,7 +37,8 @@ public class FacetCountToolHandler implements ToolHandler {
         return "Aggregate document counts grouped by a cell field (tag, status, realm, year, signal) " +
                "or by a fact predicate using 'fact:<predicate>' fields (e.g. 'fact:vendor', 'fact:party'), " +
                "honoring realm/signal/topic/tags/status/query filters. Pass realm=\"none\" to restrict to " +
-               "cells with no realm assigned.";
+               "cells with no realm assigned. Alternatively, pass a where object " +
+               "(realm | realm_in | signal | topic | tags | status | query) instead of the flat filter params.";
     }
 
     @Override
@@ -49,12 +52,16 @@ public class FacetCountToolHandler implements ToolHandler {
                 .optionalString("query", "Optional full-text filter applied before counting")
                 .requiredStringList("fields", "Fields to facet on: tag, status, realm, year, signal, or fact:<predicate> (e.g. fact:vendor, fact:party)")
                 .optionalInteger("limit", "Maximum buckets per facet (default 10, max 100)")
+                .optionalObject("where", "Alternative filter object: realm | realm_in | signal | topic | tags | status | query. "
+                        + "Mutually exclusive with the flat realm/signal/topic/tags/status/query params.",
+                        CellSelectorSchemas.where())
                 .build();
     }
 
     @Override
     public Object call(AuthPrincipal principal, JsonNode arguments) {
         String realm = WriteArgumentParser.optionalText(arguments, "realm");
+        List<String> realmIn = null;
         String signal = WriteArgumentParser.optionalText(arguments, "signal");
         String topic = WriteArgumentParser.optionalText(arguments, "topic");
         String status = WriteArgumentParser.optionalText(arguments, "status");
@@ -66,6 +73,21 @@ public class FacetCountToolHandler implements ToolHandler {
             for (JsonNode element : arguments.get("tags")) {
                 tags.add(element.asText());
             }
+        }
+
+        JsonNode whereNode = arguments == null ? null : arguments.get("where");
+        if (whereNode != null && !whereNode.isNull()) {
+            if (realm != null || signal != null || topic != null || tags != null || status != null || query != null) {
+                throw new IllegalArgumentException("where is mutually exclusive with flat filter params");
+            }
+            CellSelector sel = CellSelector.fromJson(whereNode);
+            realm = sel.realm();
+            realmIn = sel.realmIn();
+            signal = sel.signal();
+            topic = sel.topic();
+            tags = sel.tags() == null ? null : new ArrayList<>(sel.tags());
+            status = sel.status();
+            query = sel.query();
         }
 
         if (arguments == null || !arguments.hasNonNull("fields") || !arguments.get("fields").isArray()) {
@@ -88,6 +110,6 @@ public class FacetCountToolHandler implements ToolHandler {
             limit = limitArg;
         }
 
-        return readToolService.facetCount(realm, signal, topic, tags, status, query, fields, limit);
+        return readToolService.facetCount(realm, realmIn, signal, topic, tags, status, query, fields, limit);
     }
 }

@@ -94,7 +94,7 @@ class FacetCountTest {
     @Test
     void facetCountReturnsCorrectTagStatusAndYearCounts() {
         Map<String, List<Map<String, Object>>> result = facetRepository.facetCounts(
-                "fdocs", null, null, null, null, null,
+                "fdocs", null, null, null, null, null, null,
                 List.of("tag", "status", "year"), 20);
 
         // tag facet: contract:3 (sorted desc), invoice:1
@@ -122,7 +122,7 @@ class FacetCountTest {
     @Test
     void unknownFieldThrowsIllegalArgumentException() {
         assertThatThrownBy(() -> facetRepository.facetCounts(
-                "fdocs", null, null, null, null, null,
+                "fdocs", null, null, null, null, null, null,
                 List.of("evil"), 20))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("evil");
@@ -154,7 +154,7 @@ class FacetCountTest {
         seedFact(d2, "vendor", "HUK-COBURG");
         seedFact(d3, "vendor", "Telekom");
 
-        var fc = facetRepository.facetCounts("fdocs", null, null, null, null, null,
+        var fc = facetRepository.facetCounts("fdocs", null, null, null, null, null, null,
                 java.util.List.of("fact:vendor"), 20);
 
         var vendor = fc.get("fact:vendor");
@@ -166,7 +166,7 @@ class FacetCountTest {
 
     @Test
     void unknownFactPredicateRejected() {
-        assertThatThrownBy(() -> facetRepository.facetCounts("fdocs", null, null, null, null, null,
+        assertThatThrownBy(() -> facetRepository.facetCounts("fdocs", null, null, null, null, null, null,
                 java.util.List.of("fact:evil"), 20))
                 .isInstanceOf(IllegalArgumentException.class);
     }
@@ -191,7 +191,7 @@ class FacetCountTest {
                     UUID.randomUUID());
         }
 
-        var result = facetRepository.facetCounts("none", null, null, null, null, null, List.of("status"), 10);
+        var result = facetRepository.facetCounts("none", null, null, null, null, null, null, List.of("status"), 10);
         assertThat(((Number) result.get("status").get(0).get("count")).intValue()).isEqualTo(2);
     }
 
@@ -211,7 +211,7 @@ class FacetCountTest {
                 "VALUES (?, 'literal none realm doc', 'none', 'facts', 'literal-none-t', '{}', 'committed', now(), now())",
                 UUID.randomUUID());
 
-        var result = facetRepository.facetCounts("none", null, null, null, null, null, List.of("status"), 10);
+        var result = facetRepository.facetCounts("none", null, null, null, null, null, null, List.of("status"), 10);
         assertThat(((Number) result.get("status").get(0).get("count")).intValue()).isEqualTo(1);
     }
 
@@ -233,7 +233,7 @@ class FacetCountTest {
         seedFact(noRealmDoc, "vendor", "NoRealmVendor");
         seedFact(hasRealmDoc, "vendor", "OtherVendor");
 
-        var result = facetRepository.facetCounts("none", null, null, null, null, null, List.of("fact:vendor"), 10);
+        var result = facetRepository.facetCounts("none", null, null, null, null, null, null, List.of("fact:vendor"), 10);
         var vendor = result.get("fact:vendor");
         assertThat(vendor).hasSize(1);
         assertThat(vendor.get(0).get("value")).isEqualTo("NoRealmVendor");

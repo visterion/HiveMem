@@ -285,6 +285,7 @@ public class ReadToolService {
 
     public Map<String, List<Map<String, Object>>> facetCount(
             String realm,
+            List<String> realmIn,
             String signal,
             String topic,
             List<String> tags,
@@ -293,7 +294,7 @@ public class ReadToolService {
             List<String> fields,
             int limit
     ) {
-        return facetRepository.facetCounts(realm, signal, topic, tags, status, query, fields, limit);
+        return facetRepository.facetCounts(realm, realmIn, signal, topic, tags, status, query, fields, limit);
     }
 
     public List<Map<String, Object>> listDocuments(

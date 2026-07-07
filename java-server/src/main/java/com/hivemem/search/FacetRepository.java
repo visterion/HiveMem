@@ -39,6 +39,7 @@ public class FacetRepository {
      * Returns aggregate document counts grouped by each requested field.
      *
      * @param realm   optional realm filter
+     * @param realmIn optional realm-in filter (matches any of these realms; "none" matches NULL realm)
      * @param signal  optional signal filter
      * @param topic   optional topic filter
      * @param tags    optional tag-overlap filter (any of these tags)
@@ -50,6 +51,7 @@ public class FacetRepository {
      */
     public Map<String, List<Map<String, Object>>> facetCounts(
             String realm,
+            List<String> realmIn,
             String signal,
             String topic,
             List<String> tags,
@@ -70,14 +72,16 @@ public class FacetRepository {
         }
 
         String[] tagsArr = (tags != null && !tags.isEmpty()) ? tags.toArray(new String[0]) : null;
+        String[] realmInArr = (realmIn != null && !realmIn.isEmpty()) ? realmIn.toArray(new String[0]) : null;
 
         // Shared WHERE clause with positional ? parameters.
-        // Parameter order per field query: realm x4, signal x2, topic x2, tags x2, status x2, query x3
+        // Parameter order per field query: realm x4, realm_in x3, signal x2, topic x2, tags x2, status x2, query x3
         // The realm sentinel "none" matches NULL realms only (never a literal realm named
         // "none"), so the equality branch is gated on the param NOT being the sentinel.
         String sharedWhere =
                 "valid_until IS NULL " +
                 "AND (?::text IS NULL OR (?::text = 'none' AND realm IS NULL) OR (?::text <> 'none' AND realm  = ?::text)) " +
+                "AND (?::text[] IS NULL OR realm  = ANY(array_remove(?::text[], 'none')) OR ('none' = ANY(?::text[]) AND realm IS NULL)) " +
                 "AND (?::text IS NULL OR signal = ?::text) " +
                 "AND (?::text IS NULL OR topic  = ?::text) " +
                 "AND (?::text[] IS NULL OR tags && ?::text[]) " +
@@ -87,7 +91,7 @@ public class FacetRepository {
         Map<String, List<Map<String, Object>>> result = new LinkedHashMap<>();
 
         for (String field : fields) {
-            List<Object> binds = buildBinds(realm, signal, topic, tagsArr, status, query);
+            List<Object> binds = buildBinds(realm, realmInArr, signal, topic, tagsArr, status, query);
             String sql;
             if (field.startsWith("fact:")) {
                 String predicate = field.substring(5);
@@ -111,14 +115,15 @@ public class FacetRepository {
 
     /**
      * Builds the bind parameter list for the shared WHERE clause.
-     * Order: realm×4, signal×2, topic×2, tags×2, status×2, query×3
+     * Order: realm×4, realm_in×3, signal×2, topic×2, tags×2, status×2, query×3
      */
     private static List<Object> buildBinds(
-            String realm, String signal, String topic,
+            String realm, Object realmInArr, String signal, String topic,
             Object tagsArr, String status, String query
     ) {
         List<Object> b = new ArrayList<>();
         b.add(realm);   b.add(realm);   b.add(realm);   b.add(realm);
+        b.add(realmInArr); b.add(realmInArr); b.add(realmInArr);
         b.add(signal);  b.add(signal);
         b.add(topic);   b.add(topic);
         b.add(tagsArr); b.add(tagsArr);
