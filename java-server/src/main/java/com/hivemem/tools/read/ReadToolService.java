@@ -139,16 +139,13 @@ public class ReadToolService {
                 .toList();
     }
 
-    public List<Map<String, Object>> searchKg(String subject, String predicate, String object_, int limit) {
-        return kgSearchRepository.search(subject, predicate, object_, limit);
-    }
-
     public List<Map<String, Object>> searchKg(String query, String subject, String predicate, String object_, int limit) {
         if (query != null && !query.isBlank()) {
             try {
                 List<Float> vec = embeddingClient.encodeQuery(query);
                 if (vec != null) {
-                    return kgSearchRepository.semanticSearch(vec, subject, predicate, object_, limit);
+                    int dimension = embeddingClient.getInfo().dimension();
+                    return kgSearchRepository.semanticSearch(vec, subject, predicate, object_, limit, dimension);
                 }
             } catch (RuntimeException e) {
                 log.warn("search_kg semantic path unavailable, falling back to ILIKE", e);

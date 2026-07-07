@@ -46,7 +46,7 @@ export class MockApiClient implements ApiClient {
       search: (args: { query?: string; limit?: number }) => this.search(args),
       get_cell: (args: { cell_id: string }) => this.getCell(args),
       quick_facts: (args: { subject: string }) => this.quickFacts(args),
-      traverse: (args: { cell_id: string; depth?: number }) => this.traverse(args),
+      traverse: (args: { cell_id: string; depth?: number; max_depth?: number }) => this.traverse(args),
       hivemem_list_tunnels: () => mockPalace.tunnels,
       hivemem_stream_next: (args: { since?: string; timeout_ms?: number }) => this.streamNext(args),
       reading_list: () => mockPalace.references ?? [],
@@ -466,8 +466,8 @@ export class MockApiClient implements ApiClient {
     return { cells: [next], tunnels: ready, done: this.streamQueue.length === 0 }
   }
 
-  private traverse(args: { cell_id: string; depth?: number }): Tunnel[] {
-    const depth = args.depth ?? 1
+  private traverse(args: { cell_id: string; depth?: number; max_depth?: number }): { edges: Tunnel[]; node_count: number; truncated: boolean } {
+    const depth = args.max_depth ?? args.depth ?? 1
     const seen = new Set<string>([args.cell_id])
     const frontier = [args.cell_id]
     const result: Tunnel[] = []
@@ -481,7 +481,7 @@ export class MockApiClient implements ApiClient {
       }
       frontier.splice(0, frontier.length, ...next)
     }
-    return result
+    return { edges: result, node_count: seen.size, truncated: false }
   }
 
   private queenRuns() {

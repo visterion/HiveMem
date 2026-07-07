@@ -160,14 +160,14 @@ class AgentFleetIntegrationTest {
         assertThat(fact.get("status")).isEqualTo("pending");
 
         // Not visible in active facts while pending
-        List<Map<String, Object>> activeBeforeReject = readToolService.searchKg("HiveMem", null, null, 100);
+        List<Map<String, Object>> activeBeforeReject = readToolService.searchKg(null, "HiveMem", null, null, 100);
         assertThat(activeBeforeReject).isEmpty();
 
         // Admin rejects
         writeToolService.approvePending(List.of(UUID.fromString(factId)), "rejected");
 
         // Still not in active facts
-        List<Map<String, Object>> activeAfterReject = readToolService.searchKg("HiveMem", null, null, 100);
+        List<Map<String, Object>> activeAfterReject = readToolService.searchKg(null, "HiveMem", null, null, 100);
         assertThat(activeAfterReject).isEmpty();
 
         // But the row exists in facts with status=rejected

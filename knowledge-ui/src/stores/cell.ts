@@ -35,7 +35,9 @@ export const useCellStore = defineStore('cell', {
           const api = useApi()
           const [cell, tunnels] = await Promise.all([
             api.call<Cell>('get_cell', { cell_id: id }),
-            api.call<Tunnel[]>('traverse', { cell_id: id, depth: 1 }).catch(() => [])
+            api.call<{ edges: Tunnel[] }>('traverse', { cell_id: id, max_depth: 1 })
+              .then(r => r.edges ?? [])
+              .catch(() => [])
           ])
           const facts = await fetchFacts(cell)
           this.store(id, { cell, facts, tunnels })
@@ -52,7 +54,9 @@ export const useCellStore = defineStore('cell', {
       try {
         const id = cell.id
         if (!this.cache.has(id)) {
-          const tunnels = await useApi().call<Tunnel[]>('traverse', { cell_id: id, depth: 1 }).catch(() => [])
+          const tunnels = await useApi().call<{ edges: Tunnel[] }>('traverse', { cell_id: id, max_depth: 1 })
+            .then(r => r.edges ?? [])
+            .catch(() => [])
           const facts = await fetchFacts(cell)
           this.store(id, { cell, facts, tunnels })
         }

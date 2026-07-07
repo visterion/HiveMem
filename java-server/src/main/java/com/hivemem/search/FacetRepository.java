@@ -72,10 +72,12 @@ public class FacetRepository {
         String[] tagsArr = (tags != null && !tags.isEmpty()) ? tags.toArray(new String[0]) : null;
 
         // Shared WHERE clause with positional ? parameters.
-        // Parameter order per field query: realm x3, signal x2, topic x2, tags x2, status x2, query x3
+        // Parameter order per field query: realm x4, signal x2, topic x2, tags x2, status x2, query x3
+        // The realm sentinel "none" matches NULL realms only (never a literal realm named
+        // "none"), so the equality branch is gated on the param NOT being the sentinel.
         String sharedWhere =
                 "valid_until IS NULL " +
-                "AND (?::text IS NULL OR (?::text = 'none' AND realm IS NULL) OR realm  = ?::text) " +
+                "AND (?::text IS NULL OR (?::text = 'none' AND realm IS NULL) OR (?::text <> 'none' AND realm  = ?::text)) " +
                 "AND (?::text IS NULL OR signal = ?::text) " +
                 "AND (?::text IS NULL OR topic  = ?::text) " +
                 "AND (?::text[] IS NULL OR tags && ?::text[]) " +
@@ -109,14 +111,14 @@ public class FacetRepository {
 
     /**
      * Builds the bind parameter list for the shared WHERE clause.
-     * Order: realm×3, signal×2, topic×2, tags×2, status×2, query×3
+     * Order: realm×4, signal×2, topic×2, tags×2, status×2, query×3
      */
     private static List<Object> buildBinds(
             String realm, String signal, String topic,
             Object tagsArr, String status, String query
     ) {
         List<Object> b = new ArrayList<>();
-        b.add(realm);   b.add(realm);   b.add(realm);
+        b.add(realm);   b.add(realm);   b.add(realm);   b.add(realm);
         b.add(signal);  b.add(signal);
         b.add(topic);   b.add(topic);
         b.add(tagsArr); b.add(tagsArr);

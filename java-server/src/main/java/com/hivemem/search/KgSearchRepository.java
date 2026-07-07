@@ -64,7 +64,10 @@ public class KgSearchRepository {
     }
 
     public List<Map<String, Object>> semanticSearch(List<Float> queryVector, String subject,
-            String predicate, String object_, int limit) {
+            String predicate, String object_, int limit, int dimension) {
+        if (dimension <= 0) {
+            throw new IllegalArgumentException("dimension must be positive, got " + dimension);
+        }
         List<Object> params = new ArrayList<>();
         List<String> conditions = new ArrayList<>();
         conditions.add("embedding IS NOT NULL");
@@ -82,10 +85,14 @@ public class KgSearchRepository {
         }
         Float[] vec = queryVector.toArray(Float[]::new);
 
+        // Cast the column to the active embedding dimension in both the score expression and
+        // the ORDER BY so the planner can use the HNSW index on (embedding::vector(dim)); a bare
+        // `embedding <=> ?` on an untyped vector column bypasses the index entirely.
+        String vectorExpr = "(embedding::vector(" + dimension + "))";
         String sql = "SELECT id, subject, predicate, object, confidence, valid_from, valid_until, "
-                + "(1 - (embedding <=> ?::vector))::float8 AS score "
+                + "(1 - (" + vectorExpr + " <=> ?::vector))::float8 AS score "
                 + "FROM active_facts WHERE " + String.join(" AND ", conditions)
-                + " ORDER BY embedding <=> ?::vector LIMIT ?";
+                + " ORDER BY " + vectorExpr + " <=> ?::vector LIMIT ?";
 
         List<Object> allParams = new ArrayList<>();
         allParams.add(vec);

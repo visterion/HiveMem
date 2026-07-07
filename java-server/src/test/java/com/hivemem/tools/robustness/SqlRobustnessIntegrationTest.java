@@ -146,7 +146,7 @@ class SqlRobustnessIntegrationTest {
             );
         }
 
-        List<Map<String, Object>> results = readToolService.searchKg("Entity", null, null, 3);
+        List<Map<String, Object>> results = readToolService.searchKg(null, "Entity", null, null, 3);
         assertThat(results).hasSizeLessThanOrEqualTo(3);
     }
 

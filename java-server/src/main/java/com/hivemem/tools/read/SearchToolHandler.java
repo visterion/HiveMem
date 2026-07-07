@@ -34,7 +34,7 @@ public class SearchToolHandler implements ToolHandler {
 
     @Override
     public String description() {
-        return "5-signal ranked search over committed cells with metadata by default; use include to request extra fields such as content. "
+        return "6-signal ranked search over committed cells with metadata by default; use include to request extra fields such as content. "
                 + "Pass realm=\"none\" to restrict to cells with no realm assigned.";
     }
 

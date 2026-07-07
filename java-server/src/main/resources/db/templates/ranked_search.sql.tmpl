@@ -42,7 +42,7 @@ LANGUAGE SQL STABLE AS $$
           AND c.status = COALESCE(p_status, 'committed')
           AND c.embedding IS NOT NULL
           AND query_embedding IS NOT NULL
-          AND (p_realm IS NULL OR (p_realm = 'none' AND c.realm IS NULL) OR c.realm = p_realm)
+          AND (p_realm IS NULL OR (p_realm = 'none' AND c.realm IS NULL) OR (p_realm <> 'none' AND c.realm = p_realm))
           AND (p_signal IS NULL OR c.signal = p_signal)
           AND (p_topic IS NULL OR c.topic = p_topic)
           AND (p_tags IS NULL OR c.tags && p_tags)
@@ -56,7 +56,7 @@ LANGUAGE SQL STABLE AS $$
         WHERE (c.valid_until IS NULL OR c.valid_until > now())
           AND c.status = COALESCE(p_status, 'committed')
           AND q.tsq IS NOT NULL AND c.tsv @@ q.tsq
-          AND (p_realm IS NULL OR (p_realm = 'none' AND c.realm IS NULL) OR c.realm = p_realm)
+          AND (p_realm IS NULL OR (p_realm = 'none' AND c.realm IS NULL) OR (p_realm <> 'none' AND c.realm = p_realm))
           AND (p_signal IS NULL OR c.signal = p_signal)
           AND (p_topic IS NULL OR c.topic = p_topic)
           AND (p_tags IS NULL OR c.tags && p_tags)

@@ -174,4 +174,27 @@ class SearchFilterTest {
                 0.30, 0.15, 0.15, 0.15, 0.15, 0.10, null, null);
         assertThat(rowsOther).isEmpty();
     }
+
+    @Test
+    void realmNoneSentinelDoesNotMatchLiteralNoneRealm() {
+        // The "none" sentinel means "NULL realm" — it must never also match a cell whose realm
+        // column literally contains the string 'none' (seeded via direct SQL, bypassing the
+        // normal add_cell realm normalization that would never produce this value itself).
+        dslContext.execute("DELETE FROM cells WHERE topic = 'literal-none-t'");
+        UUID nullRealmId = UUID.fromString("00000000-0000-0000-0000-000000000dd7");
+        dslContext.execute(
+                "INSERT INTO cells (id, content, summary, realm, signal, topic, status, valid_from, created_at) " +
+                "VALUES (?, 'literalnone alpha item', 'literalnone alpha item', NULL, 'facts', 'literal-none-t', 'committed', now(), now())",
+                nullRealmId);
+        dslContext.execute(
+                "INSERT INTO cells (id, content, summary, realm, signal, topic, status, valid_from, created_at) " +
+                "VALUES (?, 'literalnone alpha item', 'literalnone alpha item', 'none', 'facts', 'literal-none-t', 'committed', now(), now())",
+                UUID.fromString("00000000-0000-0000-0000-000000000dd8"));
+
+        List<CellSearchRepository.RankedRow> rows = repo.rankedSearch(
+                null, "literalnone", "none", null, null, 10,
+                0.30, 0.15, 0.15, 0.15, 0.15, 0.10, null, null);
+        assertThat(rows).hasSize(1);
+        assertThat(rows.get(0).id()).isEqualTo(nullRealmId);
+    }
 }

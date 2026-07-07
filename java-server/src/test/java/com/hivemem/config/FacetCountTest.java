@@ -196,6 +196,26 @@ class FacetCountTest {
     }
 
     @Test
+    void realmNoneSentinelDoesNotMatchLiteralNoneRealm() {
+        // The sentinel "none" must only match NULL realms, never a cell whose realm column is
+        // literally the string 'none' (bypassing normal add_cell realm validation via direct SQL).
+        dslContext.execute("DELETE FROM cells WHERE realm IS NULL OR realm = 'none'");
+        dslContext.execute("DELETE FROM cells WHERE topic = 'literal-none-t'");
+        UUID nullRealmDoc = UUID.randomUUID();
+        dslContext.execute(
+                "INSERT INTO cells (id, content, realm, signal, topic, tags, status, valid_from, created_at) " +
+                "VALUES (?, 'no realm doc', NULL, 'facts', 'literal-none-t', '{}', 'committed', now(), now())",
+                nullRealmDoc);
+        dslContext.execute(
+                "INSERT INTO cells (id, content, realm, signal, topic, tags, status, valid_from, created_at) " +
+                "VALUES (?, 'literal none realm doc', 'none', 'facts', 'literal-none-t', '{}', 'committed', now(), now())",
+                UUID.randomUUID());
+
+        var result = facetRepository.facetCounts("none", null, null, null, null, null, List.of("status"), 10);
+        assertThat(((Number) result.get("status").get(0).get("count")).intValue()).isEqualTo(1);
+    }
+
+    @Test
     void factFacetRespectsNoneSentinel() {
         dslContext.execute("DELETE FROM facts WHERE source_id IN (SELECT id FROM cells WHERE topic = 'norealm-fact-t')");
         dslContext.execute("DELETE FROM cells WHERE topic = 'norealm-fact-t'");
