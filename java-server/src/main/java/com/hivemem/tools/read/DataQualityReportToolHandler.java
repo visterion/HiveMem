@@ -16,13 +16,15 @@ import java.util.Set;
 @Order(51)
 public class DataQualityReportToolHandler implements ToolHandler {
 
-    private static final Set<String> VALID_SECTIONS = Set.of("unclassified", "disconnected", "duplicate_clusters");
+    private static final Set<String> VALID_SECTIONS =
+            Set.of("unclassified", "disconnected", "duplicate_clusters", "potential_conflicts");
     private static final double MIN_THRESHOLD = 0.5;
     private static final double MAX_THRESHOLD = 1.0;
     private static final double DEFAULT_THRESHOLD = 0.90;
     private static final int MIN_LIMIT = 1;
     private static final int MAX_LIMIT = 200;
     private static final int DEFAULT_LIMIT = 50;
+    private static final double DEFAULT_SUBJECT_SIMILARITY = 0.3;
 
     private final ReadToolService readToolService;
 
@@ -38,17 +40,20 @@ public class DataQualityReportToolHandler implements ToolHandler {
     @Override
     public String description() {
         return "Report memory health: cells missing realm/signal/topic, cells with no tunnels and no facts "
-             + "(disconnected), and near-duplicate cell pairs by embedding cosine similarity. "
-             + "Sections default to all three; pass include to compute only a subset.";
+             + "(disconnected), near-duplicate cell pairs by embedding cosine similarity, and predicates with "
+             + "more than one distinct active subject (potential_conflicts), ranked by pg_trgm subject "
+             + "similarity to surface fragmentation candidates. "
+             + "Sections default to all four; pass include to compute only a subset.";
     }
 
     @Override
     public Map<String, Object> inputSchema() {
         return ToolInputSchema.object()
                 .optionalEnumStringList("include", "Sections to compute (default: all)",
-                        new String[]{"unclassified", "disconnected", "duplicate_clusters"})
+                        new String[]{"unclassified", "disconnected", "duplicate_clusters", "potential_conflicts"})
                 .optionalNumber("threshold", "Cosine similarity threshold for duplicate_clusters (default 0.90, range 0.5-1.0)")
                 .optionalInteger("limit", "Max duplicate pairs (default 50, max 200)")
+                .optionalNumber("subject_similarity", "Trigram similarity threshold for potential_conflicts subject pairs (default 0.3, range 0.0-1.0)")
                 .build();
     }
 
@@ -57,12 +62,13 @@ public class DataQualityReportToolHandler implements ToolHandler {
         List<String> include = parseInclude(arguments);
         double threshold = parseThreshold(arguments);
         int limit = parseLimit(arguments);
-        return readToolService.dataQualityReport(include, threshold, limit);
+        double subjectSimilarity = parseSubjectSimilarity(arguments);
+        return readToolService.dataQualityReport(include, threshold, limit, subjectSimilarity);
     }
 
     private static List<String> parseInclude(JsonNode arguments) {
         if (arguments == null || !arguments.hasNonNull("include")) {
-            return List.of("unclassified", "disconnected", "duplicate_clusters");
+            return List.of("unclassified", "disconnected", "duplicate_clusters", "potential_conflicts");
         }
         JsonNode node = arguments.get("include");
         if (!node.isArray()) {
@@ -108,6 +114,21 @@ public class DataQualityReportToolHandler implements ToolHandler {
         int value = node.asInt();
         if (value < MIN_LIMIT || value > MAX_LIMIT) {
             throw new IllegalArgumentException("limit must be between " + MIN_LIMIT + " and " + MAX_LIMIT);
+        }
+        return value;
+    }
+
+    private static double parseSubjectSimilarity(JsonNode arguments) {
+        if (arguments == null || !arguments.hasNonNull("subject_similarity")) {
+            return DEFAULT_SUBJECT_SIMILARITY;
+        }
+        JsonNode node = arguments.get("subject_similarity");
+        if (!node.isNumber()) {
+            throw new IllegalArgumentException("subject_similarity must be a number");
+        }
+        double value = node.asDouble();
+        if (!Double.isFinite(value) || value < 0.0 || value > 1.0) {
+            throw new IllegalArgumentException("subject_similarity must be between 0.0 and 1.0");
         }
         return value;
     }

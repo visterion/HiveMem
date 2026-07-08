@@ -123,6 +123,48 @@ public class DataQualityRepository {
         return results;
     }
 
+    /**
+     * Predicates with more than one distinct active subject (fragmentation candidates), each with
+     * its subject set and any subject pairs whose pg_trgm similarity meets the threshold.
+     */
+    public List<Map<String, Object>> potentialConflicts(double similarityThreshold, int limit) {
+        List<Map<String, Object>> results = new ArrayList<>();
+        for (Record predRow : dslContext.fetch("""
+                SELECT predicate, array_agg(DISTINCT subject ORDER BY subject) AS subjects
+                FROM active_facts
+                GROUP BY predicate
+                HAVING count(DISTINCT subject) > 1
+                ORDER BY count(DISTINCT subject) DESC, predicate
+                LIMIT ?
+                """, limit)) {
+            String predicate = predRow.get("predicate", String.class);
+            String[] subjects = predRow.get("subjects", String[].class);
+
+            List<Map<String, Object>> pairs = new ArrayList<>();
+            for (Record pairRow : dslContext.fetch("""
+                    SELECT a.subject AS s_a, b.subject AS s_b, similarity(a.subject, b.subject) AS sim
+                    FROM (SELECT DISTINCT subject FROM active_facts WHERE predicate = ?) a
+                    JOIN (SELECT DISTINCT subject FROM active_facts WHERE predicate = ?) b
+                      ON a.subject < b.subject
+                    WHERE similarity(a.subject, b.subject) >= ?
+                    ORDER BY sim DESC
+                    """, predicate, predicate, similarityThreshold)) {
+                Map<String, Object> pair = new LinkedHashMap<>();
+                pair.put("a", pairRow.get("s_a", String.class));
+                pair.put("b", pairRow.get("s_b", String.class));
+                pair.put("similarity", pairRow.get("sim", Float.class));
+                pairs.add(pair);
+            }
+
+            Map<String, Object> entry = new LinkedHashMap<>();
+            entry.put("predicate", predicate);
+            entry.put("subjects", List.of(subjects));
+            entry.put("similar_pairs", pairs);
+            results.add(entry);
+        }
+        return results;
+    }
+
     private static Map<String, Object> cellRow(Record row) {
         Map<String, Object> cell = new LinkedHashMap<>();
         cell.put("id", row.get("id", UUID.class).toString());

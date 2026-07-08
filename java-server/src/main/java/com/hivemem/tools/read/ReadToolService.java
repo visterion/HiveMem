@@ -107,7 +107,8 @@ public class ReadToolService {
         return cellReadRepository.blueprintsMissing();
     }
 
-    public Map<String, Object> dataQualityReport(List<String> include, double threshold, int limit) {
+    public Map<String, Object> dataQualityReport(
+            List<String> include, double threshold, int limit, double subjectSimilarity) {
         Map<String, Object> result = new LinkedHashMap<>();
         if (include.contains("unclassified")) {
             Map<String, Object> unclassified = new LinkedHashMap<>();
@@ -128,6 +129,9 @@ public class ReadToolService {
             } else {
                 result.put("duplicate_clusters", dataQualityRepository.duplicatePairs(dimension, threshold, limit));
             }
+        }
+        if (include.contains("potential_conflicts")) {
+            result.put("potential_conflicts", dataQualityRepository.potentialConflicts(subjectSimilarity, limit));
         }
         return result;
     }
