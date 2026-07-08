@@ -31,7 +31,10 @@ public class KgAliasToolHandler implements ToolHandler {
     public String description() {
         return "Register alias subjects for a canonical entity and retro-migrate existing active facts "
                 + "onto the canonical subject (invalidate+re-add, valid_from preserved). Future kg_add "
-                + "calls resolve these aliases automatically. Returns {registered, migrated, resulting_conflicts}. "
+                + "calls resolve these aliases automatically. Returns {registered, migrated, resulting_conflicts} "
+                + "where resulting_conflicts is the count of active (subject,predicate) conflicts remaining on "
+                + "the canonical after migration that still need supersede — including any pre-existing conflicts, "
+                + "not only those caused by this operation. "
                 + "Requires confirm: true above 200 matched facts; hard cap 1000.";
     }
 

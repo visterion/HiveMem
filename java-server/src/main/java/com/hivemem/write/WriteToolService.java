@@ -299,6 +299,17 @@ public class WriteToolService {
      * aliases automatically via {@link com.hivemem.kg.KgEntityRepository#resolve}. Emits one
      * kg_invalidate + one kg_add op per migrated fact, so OpReplayer replays it identically to a
      * manual invalidate+add.
+     *
+     * <p>Migrates ALL active facts matching the aliases regardless of status: pending facts are
+     * folded onto the canonical too, each keeping its own status (the same cross-status semantics
+     * as {@link #kgRenamePredicate}).
+     *
+     * <p>The returned {@code resulting_conflicts} is the count of active (subject,predicate) groups
+     * on the canonical that have more than one active fact AFTER migration. This includes any
+     * pre-existing conflicts already on the canonical before this call — it is not limited to
+     * conflicts introduced by this operation. In other words it reports how many (subject,predicate)
+     * groups now need human resolution (e.g. a follow-up kg_add with on_conflict=supersede), not
+     * merely those this call created.
      */
     @Transactional
     public Map<String, Object> kgAlias(AuthPrincipal principal, String canonical,
