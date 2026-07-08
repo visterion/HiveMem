@@ -15,6 +15,7 @@ import com.hivemem.search.MediaListRepository;
 import com.hivemem.write.AdminToolRepository;
 import com.hivemem.write.AdminToolService;
 import com.hivemem.write.WriteToolRepository;
+import com.hivemem.kg.KgEntityRepository;
 import com.hivemem.write.WriteToolService;
 import com.hivemem.sync.InstanceConfig;
 import com.hivemem.sync.OpLogWriter;
@@ -154,6 +155,7 @@ class CellSearchRepositoryReferencesTest {
     @EnableAutoConfiguration
     @Import({
             WriteToolService.class,
+            KgEntityRepository.class,
             CellSelectorRepository.class,
             WriteToolRepository.class,
             ReadToolService.class,

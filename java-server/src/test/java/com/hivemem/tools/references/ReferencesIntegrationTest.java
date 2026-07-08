@@ -22,6 +22,7 @@ import com.hivemem.write.AdminToolService;
 import com.hivemem.sync.InstanceConfig;
 import com.hivemem.sync.OpLogWriter;
 import com.hivemem.sync.PushDispatcher;
+import com.hivemem.kg.KgEntityRepository;
 import com.hivemem.write.WriteToolService;
 import org.jooq.DSLContext;
 import org.jooq.Record;
@@ -241,6 +242,7 @@ class ReferencesIntegrationTest {
     @EnableAutoConfiguration
     @Import({
             WriteToolService.class,
+            KgEntityRepository.class,
             CellSelectorRepository.class,
             WriteToolRepository.class,
             ReadToolService.class,
