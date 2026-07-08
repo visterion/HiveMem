@@ -246,6 +246,12 @@ Configuration (`hivemem.consumption.dedup.*`):
 
 The `facts` table has a `REAL confidence` column (range `[0, 1]`). The `get_cell` tool exposes a `confidence` optional field (requested via `include=['confidence']`) that is computed as `AVG(confidence) FROM active_facts WHERE source_id = cell.id`. The same aggregate is available in `list_documents` rows. Both return `null` when a cell has no active facts.
 
+### Subject canonicalization (`kg_entity`)
+
+Free-text `subject` values on `facts` fragment easily ("Acme Inc." vs "Acme" vs "ACME"), which defeats supersede/contradiction detection since it only compares within a single `(subject, predicate)` group. The `kg_entity` table (`canonical_name TEXT PK`, `aliases TEXT[]`) is an alias registry populated via the `kg_alias` tool: it stores a canonical subject string plus its known alternate spellings, and retro-migrates any existing facts recorded under an alias onto the canonical subject (invalidate + re-add, preserving `valid_from`).
+
+Once an alias is registered, subject resolution runs on both sides of the KG API: on the write path, `kg_add` resolves its incoming `subject` through the registry before insert, so a fact written under a known alias lands on the canonical subject automatically; on the read path, `entity_overview` and `quick_facts` resolve a queried subject the same way, so looking up any alias surfaces the canonical entity's facts. The `pg_trgm` extension (added alongside `kg_entity` in migration V0038) powers `data_quality_report`'s `potential_conflicts` section, which flags predicates with multiple distinct active subjects and ranks candidate subject pairs by trigram similarity — the discovery half of the canonicalization workflow, paired with `kg_alias` as the fix.
+
 ## Security & Capability Matrix
 
 Every HiveMem tool is mapped to a specific role to ensure least privilege. Write operations (excluding agents) and admin functions are protected by RBAC.

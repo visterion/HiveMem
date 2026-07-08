@@ -76,7 +76,7 @@ Extended Mind, Forgetting Curve, Zettelkasten, PARA).
 [![Spring Boot](https://img.shields.io/badge/spring%20boot-4.1.0-6DB33F)](https://spring.io/projects/spring-boot)
 [![PostgreSQL](https://img.shields.io/badge/postgresql-17-336791)](https://postgresql.org)
 [![Tests](https://img.shields.io/badge/tests-JUnit%20%2B%20Testcontainers-brightgreen)](https://github.com/visterion/HiveMem/actions/workflows/ci.yml)
-[![MCP Tools](https://img.shields.io/badge/MCP%20tools-51-orange)](documentation/tools.md)
+[![MCP Tools](https://img.shields.io/badge/MCP%20tools-52-orange)](documentation/tools.md)
 [![License: Sustainable Use](https://img.shields.io/badge/license-Sustainable%20Use-blue)](https://github.com/visterion/HiveMem/blob/main/LICENSE)
 [![SafeSkill](https://safeskill.dev/api/badge/visterion-hivemem)](https://safeskill.dev/scan/visterion-hivemem)
 
@@ -85,7 +85,7 @@ Extended Mind, Forgetting Curve, Zettelkasten, PARA).
 ## Highlights
 
 - **[6-Signal Ranked Search](documentation/tools.md#search-signals)** — Semantic similarity, keyword, recency, importance, popularity, and graph proximity — combined into one ranked result.
-- **[Temporal Knowledge Graph](documentation/architecture.md#data-model)** — Facts with `valid_from`/`valid_until` and multi-hop graph traversal; query the graph as it stood at any point in time.
+- **[Temporal Knowledge Graph](documentation/architecture.md#data-model)** — Facts with `valid_from`/`valid_until` and multi-hop graph traversal; query the graph as it stood at any point in time. **Subject canonicalization** (`kg_alias`) collapses fragmented subject strings ("Acme Inc." vs "Acme") into one canonical entity, retro-migrates existing facts, and is used by `kg_add`/`entity_overview`/`quick_facts` to resolve subjects on both the write and read path.
 - **[Progressive Summarization](documentation/tools.md#progressive-summarization)** — Four layers per cell: content, summary, key points, and insight. Never lose nuance.
 - **[Document & Scan Pipeline](documentation/document-pipeline.md)** — the end-to-end picture of how any file becomes searchable knowledge: two entry points (watched folder + REST upload), one shared ingest core (hash → parse → dedup → store → cell), and four async enrichment paths (OCR · Vision · Kroki · Summarizer). The map that ties the doc features below together.
 - **[Long cells stay searchable](documentation/summarizer.md)** — auto-summarizer turns multi-page documents into curated summaries that are embedded for semantic search; cost-capped, opt-in.
@@ -138,7 +138,7 @@ for details on every 🟡 / 🔴 row.
 | [Getting Started](documentation/getting-started.md) | Prerequisites, embedding service, token creation, connect to Claude |
 | [The Structure](documentation/structure.md) | Realms, signals, topics, cells, tunnels — the knowledge hierarchy |
 | [Architecture](documentation/architecture.md) | System diagram, data model, security matrix |
-| [Tools](documentation/tools.md) | All 51 MCP tools, the parallel REST attachment API, search signals, progressive summarization |
+| [Tools](documentation/tools.md) | All 52 MCP tools, the parallel REST attachment API, search signals, progressive summarization |
 | [Authentication](documentation/auth.md) | Roles, token management, security details |
 | [OAuth + Custom Connector](documentation/oauth.md) | Add HiveMem as a Claude.ai/ChatGPT Custom Connector |
 | [Backup + Portability](documentation/backup.md) | Export and restore entire instances, disaster recovery, cloning |
