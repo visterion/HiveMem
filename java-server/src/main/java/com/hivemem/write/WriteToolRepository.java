@@ -591,7 +591,7 @@ public class WriteToolRepository {
                 SELECT id, subject, predicate, "object", confidence, source_id, status, created_by AS agent_id, valid_from
                 FROM facts
                 WHERE valid_until IS NULL
-                  AND lower(regexp_replace(btrim(subject), '\\s+', ' ', 'g')) = ANY(?)
+                  AND lower(btrim(regexp_replace(subject, '\\s+', ' ', 'g'))) = ANY(?)
                 LIMIT ?
                 """, arr, limit)) {
             Map<String, Object> fact = new LinkedHashMap<>();

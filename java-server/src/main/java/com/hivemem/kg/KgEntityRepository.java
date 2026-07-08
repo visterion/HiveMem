@@ -31,6 +31,7 @@ public class KgEntityRepository {
         Record row = dslContext.fetchOne("""
                 SELECT canonical_name FROM kg_entity
                 WHERE aliases @> ARRAY[?]::text[]
+                ORDER BY canonical_name
                 LIMIT 1
                 """, normalized);
         return row == null ? subject.trim() : row.get("canonical_name", String.class);

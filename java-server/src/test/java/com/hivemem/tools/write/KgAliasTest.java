@@ -89,6 +89,17 @@ class KgAliasTest {
     }
 
     @Test
+    void aliasMigratesSubjectWithEdgeTabsAndNewlines() {
+        dsl.execute("INSERT INTO facts (subject, predicate, \"object\", confidence, status, created_by) "
+                + "VALUES (E'\\tHiveMem 9.0.0\\n', 'kind', 'server', 1.0, 'committed', 'seed')");
+        Map<String, Object> res = svc.kgAlias(principal, "HiveMem", List.of("HiveMem 9.0.0"), false);
+        assertThat(res).containsEntry("migrated", 1);
+        long canonical = dsl.fetchOne(
+                "SELECT count(*) AS n FROM active_facts WHERE subject = ?", "HiveMem").get("n", Long.class);
+        assertThat(canonical).isEqualTo(1);
+    }
+
+    @Test
     void aliasReportsResultingConflicts() {
         dsl.execute("INSERT INTO facts (subject, predicate, \"object\", confidence, status, created_by) "
                 + "VALUES ('hivemem-mcp-server', 'tool_count', '49', 1.0, 'committed', 'seed')");

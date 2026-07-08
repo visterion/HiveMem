@@ -252,6 +252,8 @@ Free-text `subject` values on `facts` fragment easily ("Acme Inc." vs "Acme" vs 
 
 Once an alias is registered, subject resolution runs on both sides of the KG API: on the write path, `kg_add` resolves its incoming `subject` through the registry before insert, so a fact written under a known alias lands on the canonical subject automatically; on the read path, `entity_overview` and `quick_facts` resolve a queried subject the same way, so looking up any alias surfaces the canonical entity's facts. The `pg_trgm` extension (added alongside `kg_entity` in migration V0038) powers `data_quality_report`'s `potential_conflicts` section, which flags predicates with multiple distinct active subjects and ranks candidate subject pairs by trigram similarity — the discovery half of the canonicalization workflow, paired with `kg_alias` as the fix.
 
+**Limitation:** the `kg_entity` alias registry itself is not propagated via the op-log/sync stream — only the resulting fact invalidate/add ops from `kg_alias`'s retro-migration are synced. On a multi-instance deployment, a peer whose registry hasn't been separately synced would not canonicalize its own new writes through that alias. Current production is single-instance, so this is a known follow-up rather than an active bug.
+
 ## Security & Capability Matrix
 
 Every HiveMem tool is mapped to a specific role to ensure least privilege. Write operations (excluding agents) and admin functions are protected by RBAC.
