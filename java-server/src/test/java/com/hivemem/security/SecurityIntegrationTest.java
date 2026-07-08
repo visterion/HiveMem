@@ -165,7 +165,7 @@ class SecurityIntegrationTest {
         }
 
         @Test
-        void writerSees47Tools() throws Exception {
+        void writerSees48Tools() throws Exception {
             insertToken("writer-user", "writer-token", "writer");
 
             mockMvc.perform(post("/mcp")
@@ -173,11 +173,11 @@ class SecurityIntegrationTest {
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(TOOLS_LIST_REQUEST))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.result.tools", hasSize(47)));
+                    .andExpect(jsonPath("$.result.tools", hasSize(48)));
         }
 
         @Test
-        void agentSees47Tools() throws Exception {
+        void agentSees48Tools() throws Exception {
             insertToken("agent-user", "agent-token", "agent");
 
             mockMvc.perform(post("/mcp")
@@ -185,11 +185,11 @@ class SecurityIntegrationTest {
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(TOOLS_LIST_REQUEST))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.result.tools", hasSize(47)));
+                    .andExpect(jsonPath("$.result.tools", hasSize(48)));
         }
 
         @Test
-        void adminSees51Tools() throws Exception {
+        void adminSees52Tools() throws Exception {
             insertToken("admin-user", "admin-token", "admin");
 
             mockMvc.perform(post("/mcp")
@@ -197,7 +197,7 @@ class SecurityIntegrationTest {
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(TOOLS_LIST_REQUEST))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.result.tools", hasSize(51)));
+                    .andExpect(jsonPath("$.result.tools", hasSize(52)));
         }
     }
 
