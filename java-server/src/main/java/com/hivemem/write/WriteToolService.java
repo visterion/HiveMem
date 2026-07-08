@@ -291,6 +291,84 @@ public class WriteToolService {
         return Map.of("renamed", facts.size(), "matched", facts.size());
     }
 
+    /**
+     * Register (or extend) a canonical entity's alias set and retro-migrate every currently active
+     * fact whose subject normalizes to one of the aliases onto the canonical subject: invalidates
+     * each such fact and re-adds it under the canonical subject, preserving predicate, object,
+     * confidence, source, status and the ORIGINAL valid_from. Future kg_add calls resolve the
+     * aliases automatically via {@link com.hivemem.kg.KgEntityRepository#resolve}. Emits one
+     * kg_invalidate + one kg_add op per migrated fact, so OpReplayer replays it identically to a
+     * manual invalidate+add.
+     */
+    @Transactional
+    public Map<String, Object> kgAlias(AuthPrincipal principal, String canonical,
+                                       List<String> aliases, boolean confirm) {
+        if (aliases == null || aliases.isEmpty()) {
+            throw new IllegalArgumentException("aliases must not be empty");
+        }
+        List<String> normalized = aliases.stream()
+                .map(com.hivemem.kg.KgEntityNormalizer::normalize)
+                .distinct()
+                .toList();
+
+        List<Map<String, Object>> facts =
+                writeToolRepository.findActiveFactsByNormalizedSubjects(normalized, BULK_SELECTOR_CAP + 1);
+        if (facts.size() > BULK_SELECTOR_CAP) {
+            throw new IllegalArgumentException(
+                    "kg_alias matches more than " + BULK_SELECTOR_CAP + " facts; narrow the aliases");
+        }
+        if (facts.size() > BULK_CONFIRM_THRESHOLD && !confirm) {
+            throw new IllegalArgumentException(
+                    "kg_alias would migrate " + facts.size() + " facts; pass confirm: true");
+        }
+
+        kgEntityRepository.upsert(canonical, aliases, principal.name());
+
+        for (Map<String, Object> fact : facts) {
+            UUID factId = (UUID) fact.get("id");
+            writeToolRepository.invalidateFact(factId);
+            Map<String, Object> invalidatePayload = new java.util.LinkedHashMap<>();
+            invalidatePayload.put("fact_id", factId.toString());
+            pushDispatcher.dispatch(opLogWriter.append("kg_invalidate", invalidatePayload));
+
+            String predicate = (String) fact.get("predicate");
+            String object = (String) fact.get("object");
+            List<Float> embedding = null;
+            try {
+                embedding = embeddingClient.encodeDocument(canonical + " " + predicate + " " + object);
+            } catch (RuntimeException e) {
+                log.warn("Fact embedding unavailable during alias migration, storing without embedding", e);
+            }
+            Map<String, Object> inserted = writeToolRepository.addFact(
+                    canonical, predicate, object,
+                    ((Number) fact.get("confidence")).doubleValue(),
+                    (UUID) fact.get("source_id"),
+                    (String) fact.get("status"),
+                    (String) fact.get("agent_id"),
+                    (OffsetDateTime) fact.get("valid_from"),
+                    embedding);
+            Map<String, Object> addPayload = new java.util.LinkedHashMap<>();
+            addPayload.put("fact_id", inserted.get("id"));
+            addPayload.put("subject", canonical);
+            addPayload.put("predicate", predicate);
+            addPayload.put("object", object);
+            addPayload.put("confidence", fact.get("confidence"));
+            addPayload.put("source_id", fact.get("source_id") == null ? null : fact.get("source_id").toString());
+            addPayload.put("status", fact.get("status"));
+            addPayload.put("agent_id", fact.get("agent_id"));
+            addPayload.put("valid_from", fact.get("valid_from") == null ? null : fact.get("valid_from").toString());
+            pushDispatcher.dispatch(opLogWriter.append("kg_add", addPayload));
+        }
+
+        int resultingConflicts = writeToolRepository.countCanonicalConflicts(canonical);
+
+        Map<String, Object> result = new java.util.LinkedHashMap<>();
+        result.put("registered", true);
+        result.put("migrated", facts.size());
+        result.put("resulting_conflicts", resultingConflicts);
+        return result;
+    }
+
     @Transactional
     public Map<String, Object> kgInvalidate(UUID factId) {
         int updated = writeToolRepository.invalidateFact(factId);

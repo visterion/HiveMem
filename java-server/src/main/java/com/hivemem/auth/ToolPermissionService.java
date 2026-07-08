@@ -53,6 +53,7 @@ public class ToolPermissionService {
             "kg_add",
             "kg_invalidate",
             "kg_rename_predicate",
+            "kg_alias",
             "update_identity",
             "add_reference",
             "link_reference",

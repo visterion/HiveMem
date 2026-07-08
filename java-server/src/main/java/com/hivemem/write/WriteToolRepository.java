@@ -580,6 +580,48 @@ public class WriteToolRepository {
         return results;
     }
 
+    /**
+     * Active facts whose subject normalizes (trim+lower+ws-collapse) to any of the given normalized
+     * subjects. Rows carry raw typed values (UUID/OffsetDateTime/Number) for direct re-add.
+     */
+    public List<Map<String, Object>> findActiveFactsByNormalizedSubjects(List<String> normalizedSubjects, int limit) {
+        List<Map<String, Object>> results = new ArrayList<>();
+        String[] arr = normalizedSubjects.toArray(String[]::new);
+        for (Record row : dslContext.fetch("""
+                SELECT id, subject, predicate, "object", confidence, source_id, status, created_by AS agent_id, valid_from
+                FROM facts
+                WHERE valid_until IS NULL
+                  AND lower(regexp_replace(btrim(subject), '\\s+', ' ', 'g')) = ANY(?)
+                LIMIT ?
+                """, arr, limit)) {
+            Map<String, Object> fact = new LinkedHashMap<>();
+            fact.put("id", row.get("id", UUID.class));
+            fact.put("subject", row.get("subject", String.class));
+            fact.put("predicate", row.get("predicate", String.class));
+            fact.put("object", row.get("object", String.class));
+            fact.put("confidence", row.get("confidence", Float.class));
+            fact.put("source_id", row.get("source_id", UUID.class));
+            fact.put("status", row.get("status", String.class));
+            fact.put("agent_id", row.get("agent_id", String.class));
+            fact.put("valid_from", row.get("valid_from", OffsetDateTime.class));
+            results.add(fact);
+        }
+        return results;
+    }
+
+    /** Count (subject,predicate) groups for the canonical subject that have >1 active fact. */
+    public int countCanonicalConflicts(String canonical) {
+        Record row = dslContext.fetchOne("""
+                SELECT count(*) AS n FROM (
+                    SELECT predicate FROM active_facts
+                    WHERE subject = ?
+                    GROUP BY predicate
+                    HAVING count(*) > 1
+                ) g
+                """, canonical);
+        return row == null ? 0 : row.get("n", Long.class).intValue();
+    }
+
     public int approvePending(List<UUID> ids, String decision) {
         UUID[] idArray = ids.toArray(UUID[]::new);
         return dslContext.transactionResult(configuration -> {
