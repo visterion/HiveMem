@@ -7,6 +7,7 @@ import com.hivemem.embedding.EmbeddingClient;
 import com.hivemem.embedding.EmbeddingStateRepository;
 import com.hivemem.embedding.FixedEmbeddingClient;
 import com.hivemem.attachment.AttachmentRepository;
+import com.hivemem.search.DataQualityRepository;
 import com.hivemem.search.FacetRepository;
 import com.hivemem.tools.read.ReadToolService;
 import com.hivemem.search.DocumentListRepository;
@@ -159,6 +160,7 @@ class CellSearchRepositoryReferencesTest {
             DocumentListRepository.class,
             MediaListRepository.class,
             FacetRepository.class,
+            DataQualityRepository.class,
             AttachmentRepository.class,
             SearchWeightsProperties.class,
             ConfidenceThresholds.class,

@@ -183,6 +183,44 @@ class FacetCountWhereContractTest {
                 .andExpect(jsonPath("$.error.message").value(org.hamcrest.Matchers.containsString("where")));
     }
 
+    @Test
+    void whereDefaultsStatusToCommittedUnlikeFlatParams() throws Exception {
+        insertCellWithStatus(UUID.fromString("00000000-0000-0000-0000-000000002031"), "doc content", "statusdefault", "facts", "t", "pending");
+        insertCellWithStatus(UUID.fromString("00000000-0000-0000-0000-000000002032"), "doc content", "statusdefault", "facts", "t", "committed");
+
+        JsonNode flatResult = callTool("writer-token", "facet_count", Map.of(
+                "realm", "statusdefault",
+                "fields", List.of("status")
+        ));
+        int flatCount = 0;
+        for (JsonNode entry : flatResult.path("status")) {
+            flatCount += entry.path("count").asInt();
+        }
+        assertThat(flatCount).isEqualTo(2);
+
+        JsonNode whereResult = callTool("writer-token", "facet_count", Map.of(
+                "where", Map.of("realm", "statusdefault"),
+                "fields", List.of("status")
+        ));
+        int whereCount = 0;
+        for (JsonNode entry : whereResult.path("status")) {
+            whereCount += entry.path("count").asInt();
+        }
+        assertThat(whereCount).isEqualTo(1);
+        assertThat(whereResult.path("status").get(0).path("value").asText()).isEqualTo("committed");
+
+        JsonNode wherePendingResult = callTool("writer-token", "facet_count", Map.of(
+                "where", Map.of("realm", "statusdefault", "status", "pending"),
+                "fields", List.of("status")
+        ));
+        int wherePendingCount = 0;
+        for (JsonNode entry : wherePendingResult.path("status")) {
+            wherePendingCount += entry.path("count").asInt();
+        }
+        assertThat(wherePendingCount).isEqualTo(1);
+        assertThat(wherePendingResult.path("status").get(0).path("value").asText()).isEqualTo("pending");
+    }
+
     private JsonNode callTool(String token, String toolName, Map<String, Object> arguments) throws Exception {
         MvcResult result = mockMvc.perform(post("/mcp")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
@@ -208,14 +246,18 @@ class FacetCountWhereContractTest {
     }
 
     private void insertCellWithContent(UUID id, String content, String realm, String signal, String topic) {
+        insertCellWithStatus(id, content, realm, signal, topic, "committed");
+    }
+
+    private void insertCellWithStatus(UUID id, String content, String realm, String signal, String topic, String status) {
         OffsetDateTime createdAt = OffsetDateTime.parse("2026-04-03T10:00:00Z");
         dslContext.execute(
                 """
                 INSERT INTO cells (
                     id, content, realm, signal, topic, importance, summary, status, created_by, created_at, valid_from
-                ) VALUES (?, ?, ?, ?, ?, 3, ?, 'committed', 'writer-1', ?::timestamptz, ?::timestamptz)
+                ) VALUES (?, ?, ?, ?, ?, 3, ?, ?, 'writer-1', ?::timestamptz, ?::timestamptz)
                 """,
-                id, content, realm, signal, topic, content, createdAt, createdAt
+                id, content, realm, signal, topic, content, status, createdAt, createdAt
         );
     }
 

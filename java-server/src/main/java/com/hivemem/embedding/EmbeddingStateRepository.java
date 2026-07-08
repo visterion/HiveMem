@@ -2,6 +2,7 @@ package com.hivemem.embedding;
 
 import org.jooq.DSLContext;
 import org.jooq.Record;
+import org.jooq.impl.DSL;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -125,18 +126,24 @@ public class EmbeddingStateRepository {
         // overload rather than replacing the existing function signature, which would
         // make the old positional-arg call sites ambiguous. Drop all existing
         // overloads first so only the freshly rendered signature remains.
-        dslContext.execute("""
+        String dropSql = """
                 DO $do$
                 DECLARE r RECORD;
                 BEGIN
-                    FOR r IN SELECT oid::regprocedure AS sig FROM pg_proc WHERE proname = 'ranked_search' LOOP
+                    FOR r IN SELECT oid::regprocedure AS sig FROM pg_proc
+                             WHERE proname = 'ranked_search' AND pronamespace = 'public'::regnamespace LOOP
                         EXECUTE 'DROP FUNCTION ' || r.sig;
                     END LOOP;
                 END
                 $do$
-                """);
-        String sql = RankedSearchTemplate.render(dimension);
-        dslContext.execute(sql);
+                """;
+        String createSql = RankedSearchTemplate.render(dimension);
+        // Drop and create must be atomic: a crash between the two statements would
+        // otherwise leave the database without ranked_search until the next boot.
+        dslContext.transaction(cfg -> {
+            DSL.using(cfg).execute(dropSql);
+            DSL.using(cfg).execute(createSql);
+        });
     }
 
     public boolean tryAdvisoryLock(long lockId) {

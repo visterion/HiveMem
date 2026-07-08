@@ -11,6 +11,7 @@ import com.hivemem.search.CellSearchRepository;
 import com.hivemem.search.CellSelectorRepository;
 import com.hivemem.search.ConfidenceThresholds;
 import com.hivemem.search.DocumentListRepository;
+import com.hivemem.search.DataQualityRepository;
 import com.hivemem.search.FacetRepository;
 import com.hivemem.search.KgSearchRepository;
 import com.hivemem.search.MediaListRepository;
@@ -207,6 +208,7 @@ class RankedSearchRealmInTest {
             DocumentListRepository.class,
             MediaListRepository.class,
             FacetRepository.class,
+            DataQualityRepository.class,
             AttachmentRepository.class,
             SearchWeightsProperties.class,
             ConfidenceThresholds.class,

@@ -86,7 +86,10 @@ public class FacetCountToolHandler implements ToolHandler {
             signal = sel.signal();
             topic = sel.topic();
             tags = sel.tags() == null ? null : new ArrayList<>(sel.tags());
-            status = sel.status();
+            // Match the default applied by every other where-consumer (list_cell_ids,
+            // bulk ops, search): an omitted where.status defaults to committed. Flat
+            // param behavior below (no where) is unaffected and stays unfiltered.
+            status = sel.status() != null ? sel.status() : "committed";
             query = sel.query();
         }
 
