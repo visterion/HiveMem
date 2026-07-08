@@ -57,6 +57,12 @@ class KgEntityRepositoryTest {
     }
 
     @Test
+    void canonicalSelfMatchViaStoredNormalizedCanonical() {
+        repo.upsert("HiveMem", List.of("alias-a"), "tester");
+        assertThat(repo.resolve("HIVEMEM")).isEqualTo("HiveMem");
+    }
+
+    @Test
     void upsertUnionsAliasesOnConflict() {
         repo.upsert("HiveMem", List.of("alias-a"), "tester");
         repo.upsert("HiveMem", List.of("alias-b"), "tester");

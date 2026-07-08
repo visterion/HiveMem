@@ -1,5 +1,6 @@
 -- Curated entity alias registry for subject canonicalization (backlog #1).
 -- aliases holds normalized (trim+lower+ws-collapse) forms for lookup; canonical_name keeps exact spelling.
+-- pg_trgm is used by the later data_quality_report potential_conflicts detection (subject-similarity).
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
 CREATE TABLE kg_entity (

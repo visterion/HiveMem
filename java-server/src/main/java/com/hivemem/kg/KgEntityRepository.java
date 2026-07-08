@@ -1,6 +1,7 @@
 package com.hivemem.kg;
 
 import java.util.List;
+import java.util.stream.Stream;
 import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.springframework.stereotype.Repository;
@@ -17,8 +18,10 @@ public class KgEntityRepository {
 
     /**
      * Resolve a subject to its canonical name via the registry. Returns the canonical name if the
-     * normalized subject matches any stored (normalized) alias or the normalized canonical name;
-     * otherwise returns the trimmed original subject (unknown subjects are their own canonical).
+     * normalized subject matches any stored (normalized) alias entry (the normalized canonical name
+     * is itself stored as an alias); otherwise returns the trimmed original subject (unknown
+     * subjects are their own canonical). The single array-contains lookup is served by the GIN
+     * index on aliases.
      */
     public String resolve(String subject) {
         if (subject == null) {
@@ -27,19 +30,20 @@ public class KgEntityRepository {
         String normalized = KgEntityNormalizer.normalize(subject);
         Record row = dslContext.fetchOne("""
                 SELECT canonical_name FROM kg_entity
-                WHERE ? = ANY(aliases)
-                   OR lower(regexp_replace(btrim(canonical_name), '\\s+', ' ', 'g')) = ?
+                WHERE aliases @> ARRAY[?]::text[]
                 LIMIT 1
-                """, normalized, normalized);
+                """, normalized);
         return row == null ? subject.trim() : row.get("canonical_name", String.class);
     }
 
     /**
-     * Register (or extend) a canonical entity. Aliases are stored normalized; on conflict the new
-     * normalized aliases are unioned into the existing array.
+     * Register (or extend) a canonical entity. The normalized canonical name is stored as an alias
+     * entry alongside the normalized incoming aliases (so a lookup of the canonical name resolves to
+     * itself); on conflict the new normalized aliases are unioned into the existing array.
      */
     public void upsert(String canonical, List<String> aliases, String createdBy) {
-        String[] normalized = aliases.stream()
+        List<String> safeAliases = aliases == null ? List.of() : aliases;
+        String[] normalized = Stream.concat(Stream.of(canonical), safeAliases.stream())
                 .map(KgEntityNormalizer::normalize)
                 .distinct()
                 .toArray(String[]::new);
