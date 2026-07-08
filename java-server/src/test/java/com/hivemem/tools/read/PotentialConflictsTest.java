@@ -74,4 +74,25 @@ class PotentialConflictsTest {
         List<Map<String, Object>> pairs = (List<Map<String, Object>>) conflicts.get(0).get("similar_pairs");
         assertThat(pairs).isNotEmpty();
     }
+
+    @Test
+    void skipsPairwiseSimilarityWhenSubjectsExceedCap() {
+        for (int i = 0; i <= 50; i++) {
+            String subject = String.format("subj-%02d", i);
+            dsl.execute("INSERT INTO facts (subject, predicate, \"object\", confidence, status, created_by) VALUES (?,'many',?,1.0,'committed','s')",
+                    subject, "obj-" + i);
+        }
+
+        List<Map<String, Object>> conflicts = repo.potentialConflicts(0.3, 50);
+
+        assertThat(conflicts).hasSize(1);
+        assertThat(conflicts.get(0)).containsEntry("subject_count", 51);
+        assertThat(conflicts.get(0)).containsEntry("subjects_truncated", true);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> pairs = (List<Map<String, Object>>) conflicts.get(0).get("similar_pairs");
+        assertThat(pairs).isEmpty();
+        @SuppressWarnings("unchecked")
+        List<String> subjects = (List<String>) conflicts.get(0).get("subjects");
+        assertThat(subjects).hasSize(50);
+    }
 }

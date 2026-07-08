@@ -19,6 +19,7 @@ import java.util.UUID;
 public class DataQualityRepository {
 
     private static final int SAMPLE_LIMIT = 10;
+    private static final int MAX_SUBJECTS_FOR_PAIRS = 50;
 
     private final DSLContext dslContext;
 
@@ -130,7 +131,8 @@ public class DataQualityRepository {
     public List<Map<String, Object>> potentialConflicts(double similarityThreshold, int limit) {
         List<Map<String, Object>> results = new ArrayList<>();
         for (Record predRow : dslContext.fetch("""
-                SELECT predicate, array_agg(DISTINCT subject ORDER BY subject) AS subjects
+                SELECT predicate, count(DISTINCT subject) AS subject_count,
+                       array_agg(DISTINCT subject ORDER BY subject) AS subjects
                 FROM active_facts
                 GROUP BY predicate
                 HAVING count(DISTINCT subject) > 1
@@ -138,7 +140,22 @@ public class DataQualityRepository {
                 LIMIT ?
                 """, limit)) {
             String predicate = predRow.get("predicate", String.class);
+            int subjectCount = predRow.get("subject_count", Integer.class);
             String[] subjects = predRow.get("subjects", String[].class);
+
+            Map<String, Object> entry = new LinkedHashMap<>();
+            entry.put("predicate", predicate);
+            entry.put("subject_count", subjectCount);
+
+            if (subjectCount > MAX_SUBJECTS_FOR_PAIRS) {
+                // Skip the O(k^2) pairwise similarity self-join for very fragmented predicates.
+                List<String> truncated = List.of(subjects).subList(0, MAX_SUBJECTS_FOR_PAIRS);
+                entry.put("subjects", List.copyOf(truncated));
+                entry.put("subjects_truncated", true);
+                entry.put("similar_pairs", List.of());
+                results.add(entry);
+                continue;
+            }
 
             List<Map<String, Object>> pairs = new ArrayList<>();
             for (Record pairRow : dslContext.fetch("""
@@ -156,9 +173,8 @@ public class DataQualityRepository {
                 pairs.add(pair);
             }
 
-            Map<String, Object> entry = new LinkedHashMap<>();
-            entry.put("predicate", predicate);
             entry.put("subjects", List.of(subjects));
+            entry.put("subjects_truncated", false);
             entry.put("similar_pairs", pairs);
             results.add(entry);
         }

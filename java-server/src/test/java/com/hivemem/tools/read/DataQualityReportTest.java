@@ -273,6 +273,23 @@ class DataQualityReportTest {
                 .andExpect(status().isBadRequest());
     }
 
+    @Test
+    void subjectSimilarityOutOfRangeIsRejected() throws Exception {
+        mockMvc.perform(post("/mcp")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer writer-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "jsonrpc", "2.0",
+                                "id", 1,
+                                "method", "tools/call",
+                                "params", Map.of(
+                                        "name", "data_quality_report",
+                                        "arguments", Map.of("subject_similarity", 1.5)
+                                )
+                        ))))
+                .andExpect(status().isBadRequest());
+    }
+
     @TestConfiguration(proxyBeanMethods = false)
     static class TestConfig {
         @Bean

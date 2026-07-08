@@ -52,7 +52,7 @@ public class DataQualityReportToolHandler implements ToolHandler {
                 .optionalEnumStringList("include", "Sections to compute (default: all)",
                         new String[]{"unclassified", "disconnected", "duplicate_clusters", "potential_conflicts"})
                 .optionalNumber("threshold", "Cosine similarity threshold for duplicate_clusters (default 0.90, range 0.5-1.0)")
-                .optionalInteger("limit", "Max duplicate pairs (default 50, max 200)")
+                .optionalInteger("limit", "Max duplicate pairs (duplicate_clusters) and max predicates (potential_conflicts) (default 50, max 200)")
                 .optionalNumber("subject_similarity", "Trigram similarity threshold for potential_conflicts subject pairs (default 0.3, range 0.0-1.0)")
                 .build();
     }
