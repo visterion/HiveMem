@@ -3,6 +3,7 @@ package com.hivemem.write;
 import com.hivemem.auth.AuthPrincipal;
 import com.hivemem.auth.AuthRole;
 import com.hivemem.embedding.EmbeddingClient;
+import com.hivemem.kg.KgEntityRepository;
 import com.hivemem.search.CellSelector;
 import com.hivemem.search.CellSelectorRepository;
 import com.hivemem.summarize.CellNeedsSummaryEvent;
@@ -37,6 +38,7 @@ public class WriteToolService {
     private final PushDispatcher pushDispatcher;
     private final ApplicationEventPublisher eventPublisher;
     private final CellSelectorRepository cellSelectorRepository;
+    private final KgEntityRepository kgEntityRepository;
 
     public WriteToolService(
             WriteToolRepository writeToolRepository,
@@ -44,7 +46,8 @@ public class WriteToolService {
             OpLogWriter opLogWriter,
             PushDispatcher pushDispatcher,
             ApplicationEventPublisher eventPublisher,
-            CellSelectorRepository cellSelectorRepository
+            CellSelectorRepository cellSelectorRepository,
+            KgEntityRepository kgEntityRepository
     ) {
         this.writeToolRepository = writeToolRepository;
         this.embeddingClient = embeddingClient;
@@ -52,6 +55,7 @@ public class WriteToolService {
         this.pushDispatcher = pushDispatcher;
         this.eventPublisher = eventPublisher;
         this.cellSelectorRepository = cellSelectorRepository;
+        this.kgEntityRepository = kgEntityRepository;
     }
 
     @Transactional
@@ -154,6 +158,7 @@ public class WriteToolService {
             String onConflict
     ) {
         String status = effectiveStatus(principal.role(), requestedStatus);
+        subject = kgEntityRepository.resolve(subject);
 
         String conflictMode = onConflict == null ? "insert" : onConflict;
         if (!conflictMode.equals("insert")

@@ -204,6 +204,7 @@ class AttachmentEnrichmentServiceIT {
         PushDispatcher pushDispatcher = new PushDispatcher(peerRepo, syncOpsRepo, peerClient, instanceConfig);
         ApplicationEventPublisher noop = e -> {};
         return new WriteToolService(writeRepo, new FixedEmbeddingClient(),
-                opLogWriter, pushDispatcher, noop, new CellSelectorRepository(dsl));
+                opLogWriter, pushDispatcher, noop, new CellSelectorRepository(dsl),
+                new com.hivemem.kg.KgEntityRepository(dsl));
     }
 }

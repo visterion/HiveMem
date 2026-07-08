@@ -107,7 +107,7 @@ class ExtractionIntegrationIT {
         ApplicationEventPublisher noopPublisher = e -> {};
         WriteToolService writeService = new WriteToolService(
                 writeRepo, new FixedEmbeddingClient(), opLogWriter, pushDispatcher, noopPublisher,
-                new CellSelectorRepository(dsl));
+                new CellSelectorRepository(dsl), new com.hivemem.kg.KgEntityRepository(dsl));
 
         SummarizerProperties props = new SummarizerProperties();
         props.setEnabled(true);

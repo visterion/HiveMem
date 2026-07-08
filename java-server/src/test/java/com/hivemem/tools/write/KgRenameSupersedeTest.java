@@ -8,6 +8,7 @@ import com.hivemem.write.WriteToolService;
 import com.hivemem.auth.AuthPrincipal;
 import com.hivemem.auth.AuthRole;
 import com.hivemem.embedding.FixedEmbeddingClient;
+import com.hivemem.kg.KgEntityRepository;
 import com.hivemem.sync.OpLogWriter;
 import com.hivemem.sync.PushDispatcher;
 import com.hivemem.sync.InstanceConfig;
@@ -64,7 +65,8 @@ class KgRenameSupersedeTest {
         PushDispatcher push = new MockPushDispatcher();
         ApplicationEventPublisher events = new MockApplicationEventPublisher();
 
-        writeToolService = new WriteToolService(repo, embedding, opLog, push, events, null);
+        writeToolService = new WriteToolService(repo, embedding, opLog, push, events, null,
+                new KgEntityRepository(dsl));
     }
 
     // ============ on_conflict = supersede ============

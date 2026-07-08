@@ -157,7 +157,8 @@ class OcrServiceIT {
         ApplicationEventPublisher noopPublisher = e -> {};
 
         WriteToolService writeService = new WriteToolService(
-                writeRepo, embedding, opLogWriter, pushDispatcher, noopPublisher, new CellSelectorRepository(dsl));
+                writeRepo, embedding, opLogWriter, pushDispatcher, noopPublisher, new CellSelectorRepository(dsl),
+                new com.hivemem.kg.KgEntityRepository(dsl));
 
         OcrService service = new OcrService(
                 ocrProps, ocrRepo, seaweed, writeService,

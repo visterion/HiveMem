@@ -1,17 +1,18 @@
 package com.hivemem.tools.write;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assertions.*;
 
-import com.hivemem.write.WriteToolRepository;
-import com.hivemem.write.WriteToolService;
 import com.hivemem.auth.AuthPrincipal;
 import com.hivemem.auth.AuthRole;
 import com.hivemem.embedding.FixedEmbeddingClient;
+import com.hivemem.kg.KgEntityRepository;
+import com.hivemem.sync.InstanceConfig;
 import com.hivemem.sync.OpLogWriter;
 import com.hivemem.sync.PushDispatcher;
-import com.hivemem.sync.InstanceConfig;
-import java.time.OffsetDateTime;
+import com.hivemem.write.WriteToolRepository;
+import com.hivemem.write.WriteToolService;
+import java.lang.reflect.Field;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import javax.sql.DataSource;
@@ -26,10 +27,9 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import tools.jackson.databind.ObjectMapper;
-import java.lang.reflect.Field;
 
 @Testcontainers
-class KgInvalidateRowCountTest {
+class KgAddCanonicalizeTest {
 
     @Container
     static final PostgreSQLContainer<?> DB = new PostgreSQLContainer<>("pgvector/pgvector:pg17")
@@ -39,7 +39,8 @@ class KgInvalidateRowCountTest {
                             : cmd.getHostConfig()).withSecurityOpts(java.util.List.of("apparmor=unconfined"))));
 
     private DSLContext dsl;
-    private WriteToolService writeToolService;
+    private WriteToolService svc;
+    private final AuthPrincipal principal = new AuthPrincipal("test-writer", AuthRole.WRITER);
 
     @BeforeEach
     void setUp() {
@@ -51,8 +52,8 @@ class KgInvalidateRowCountTest {
         dsl.execute("DELETE FROM ops_log");
         dsl.execute("DELETE FROM facts");
         dsl.execute("DELETE FROM cells");
+        dsl.execute("DELETE FROM kg_entity");
 
-        // Initialize instance identity for OpLogWriter
         dsl.execute("DELETE FROM instance_identity");
         dsl.execute("INSERT INTO instance_identity (id, instance_id) VALUES (1, '00000000-0000-0000-0000-000000000001')");
 
@@ -62,58 +63,36 @@ class KgInvalidateRowCountTest {
         OpLogWriter opLog = new OpLogWriter(dsl, config, new ObjectMapper());
         PushDispatcher push = new MockPushDispatcher();
         ApplicationEventPublisher events = new MockApplicationEventPublisher();
+        KgEntityRepository entities = new KgEntityRepository(dsl);
+        entities.upsert("HiveMem", List.of("hivemem-mcp-server"), "tester");
 
-        writeToolService = new WriteToolService(
-                repo, embedding, opLog, push, events, null, new com.hivemem.kg.KgEntityRepository(dsl));
+        svc = new WriteToolService(repo, embedding, opLog, push, events, null, entities);
     }
 
     @Test
-    void invalidateNonexistentFactReturnsFalse() {
-        Map<String, Object> result = writeToolService.kgInvalidate(UUID.randomUUID());
-        assertThat(result).containsEntry("invalidated", false);
+    void kgAddStoresCanonicalSubjectForAlias() {
+        // registry seeded in setUp: HiveMem <- hivemem-mcp-server
+        svc.kgAdd(principal, "hivemem-mcp-server", "tool_count", "49", 1.0, null, null, null, "insert");
+        long canonical = dsl.fetchOne(
+                "SELECT count(*) AS n FROM active_facts WHERE subject = ? AND predicate = ?",
+                "HiveMem", "tool_count").get("n", Long.class);
+        assertThat(canonical).isEqualTo(1);
+        long rawAlias = dsl.fetchOne(
+                "SELECT count(*) AS n FROM active_facts WHERE subject = ?",
+                "hivemem-mcp-server").get("n", Long.class);
+        assertThat(rawAlias).isZero();
     }
 
     @Test
-    void invalidateActiveFactReturnsTrueThenFalseOnRepeat() {
-        UUID factId = addFact();
-
-        Map<String, Object> first = writeToolService.kgInvalidate(factId);
-        assertThat(first).containsEntry("invalidated", true);
-
-        Map<String, Object> second = writeToolService.kgInvalidate(factId);
-        assertThat(second).containsEntry("invalidated", false);
+    void supersedeAcrossAliasCollapsesToOneActiveFact() {
+        svc.kgAdd(principal, "HiveMem", "tool_count", "49", 1.0, null, null, null, "insert");
+        Map<String, Object> res = svc.kgAdd(principal, "hivemem-mcp-server", "tool_count", "50", 1.0, null, null, null, "supersede");
+        assertThat(res).containsEntry("superseded", 1);
+        long active = dsl.fetchOne(
+                "SELECT count(*) AS n FROM active_facts WHERE predicate = ?", "tool_count").get("n", Long.class);
+        assertThat(active).isEqualTo(1);
     }
 
-    @Test
-    void noOpInvalidationEmitsNoSyncOp() {
-        long before = countSyncOps("kg_invalidate");
-        writeToolService.kgInvalidate(UUID.randomUUID());
-        long after = countSyncOps("kg_invalidate");
-        assertEquals(before, after, "no-op invalidation should not emit sync op");
-    }
-
-    private UUID addFact() {
-        AuthPrincipal principal = new AuthPrincipal("test-agent", AuthRole.AGENT);
-        Map<String, Object> result = writeToolService.kgAdd(
-                principal,
-                "subject",
-                "predicate",
-                "object",
-                0.95,
-                null,
-                "pending",
-                OffsetDateTime.now(),
-                "insert"
-        );
-        return UUID.fromString(result.get("id").toString());
-    }
-
-    private long countSyncOps(String opType) {
-        return dsl.fetchOne("SELECT count(*) AS n FROM ops_log WHERE op_type = ?", opType)
-                .get("n", Long.class);
-    }
-
-    // Mock implementations for Spring dependencies
     static class MockInstanceConfig extends InstanceConfig {
         MockInstanceConfig() {
             super(null);
