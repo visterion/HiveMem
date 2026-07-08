@@ -3,6 +3,7 @@ package com.hivemem.tools.read;
 import com.hivemem.attachment.AttachmentRepository;
 import com.hivemem.cells.CellReadRepository;
 import com.hivemem.embedding.EmbeddingClient;
+import com.hivemem.kg.KgEntityRepository;
 import com.hivemem.search.CellSearchRepository;
 import com.hivemem.search.CellSelectorRepository;
 import com.hivemem.search.ConfidenceThresholds;
@@ -33,7 +34,8 @@ final class ReadToolServiceTestFactory {
                 repo,
                 mock(MediaListRepository.class),
                 mock(CellSelectorRepository.class),
-                mock(DataQualityRepository.class)
+                mock(DataQualityRepository.class),
+                mock(KgEntityRepository.class)
         );
     }
 }

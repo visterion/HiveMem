@@ -4,6 +4,7 @@ import com.hivemem.attachment.AttachmentRepository;
 import com.hivemem.auth.AuthPrincipal;
 import com.hivemem.cells.CellReadRepository;
 import com.hivemem.embedding.EmbeddingClient;
+import com.hivemem.kg.KgEntityRepository;
 import com.hivemem.search.CellSearchRepository;
 import com.hivemem.search.CellSelector;
 import com.hivemem.search.CellSelectorRepository;
@@ -51,6 +52,7 @@ public class ReadToolService {
     private final MediaListRepository mediaListRepository;
     private final CellSelectorRepository cellSelectorRepository;
     private final DataQualityRepository dataQualityRepository;
+    private final KgEntityRepository kgEntityRepository;
 
     public ReadToolService(
             CellReadRepository cellReadRepository,
@@ -65,7 +67,8 @@ public class ReadToolService {
             DocumentListRepository documentListRepository,
             MediaListRepository mediaListRepository,
             CellSelectorRepository cellSelectorRepository,
-            DataQualityRepository dataQualityRepository
+            DataQualityRepository dataQualityRepository,
+            KgEntityRepository kgEntityRepository
     ) {
         this.cellReadRepository = cellReadRepository;
         this.kgSearchRepository = kgSearchRepository;
@@ -80,6 +83,7 @@ public class ReadToolService {
         this.mediaListRepository = mediaListRepository;
         this.cellSelectorRepository = cellSelectorRepository;
         this.dataQualityRepository = dataQualityRepository;
+        this.kgEntityRepository = kgEntityRepository;
     }
 
     public Map<String, Object> listCellIds(CellSelector selector, int limit, int offset) {
@@ -255,10 +259,12 @@ public class ReadToolService {
     }
 
     public List<Map<String, Object>> quickFacts(String entity) {
+        entity = kgEntityRepository.resolve(entity);
         return cellReadRepository.quickFacts(entity);
     }
 
     public Map<String, Object> entityOverview(String subject, int limit) {
+        subject = kgEntityRepository.resolve(subject);
         List<Map<String, Object>> cells = search(subject, limit, null, null, null,
                 CellFieldSelection.forSearch(null),
                 0.30d, 0.15d, 0.15d, 0.15d, 0.15d, 0.10d, null, null, null);
