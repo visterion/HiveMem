@@ -111,6 +111,29 @@ class KgAliasTest {
         assertThat(canonical).isEqualTo(1);
     }
 
+    @Test
+    void backlogAcceptance_threeFragmentedToolCountFactsCollapseToOne() {
+        // Three fragmented subjects, same predicate, different objects (the real prod situation).
+        dsl.execute("INSERT INTO facts (subject, predicate, \"object\", confidence, status, created_by) VALUES ('hivemem-mcp-server','tool_count','49',1.0,'committed','s')");
+        dsl.execute("INSERT INTO facts (subject, predicate, \"object\", confidence, status, created_by) VALUES ('HiveMem 9.0.0','tool_count','34',1.0,'committed','s')");
+        dsl.execute("INSERT INTO facts (subject, predicate, \"object\", confidence, status, created_by) VALUES ('HiveMem MCP tool count','tool_count','45',1.0,'committed','s')");
+
+        Map<String, Object> alias = svc.kgAlias(principal, "HiveMem",
+                List.of("hivemem-mcp-server", "HiveMem 9.0.0", "HiveMem MCP tool count"), false);
+        assertThat(alias).containsEntry("migrated", 3);
+
+        Map<String, Object> add = svc.kgAdd(principal, "HiveMem", "tool_count", "52",
+                1.0, null, null, null, "supersede");
+        assertThat(((Number) add.get("superseded")).intValue()).isGreaterThanOrEqualTo(1);
+
+        long active = dsl.fetchOne(
+                "SELECT count(*) AS n FROM active_facts WHERE predicate = ?", "tool_count").get("n", Long.class);
+        assertThat(active).isEqualTo(1);
+        String obj = dsl.fetchOne(
+                "SELECT \"object\" AS o FROM active_facts WHERE predicate = ?", "tool_count").get("o", String.class);
+        assertThat(obj).isEqualTo("52");
+    }
+
     static class MockInstanceConfig extends InstanceConfig {
         MockInstanceConfig() {
             super(null);
