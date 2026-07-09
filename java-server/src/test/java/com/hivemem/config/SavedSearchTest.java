@@ -5,6 +5,9 @@ import com.hivemem.auth.AuthRole;
 import com.hivemem.embedding.EmbeddingClient;
 import com.hivemem.embedding.FixedEmbeddingClient;
 import com.hivemem.savedsearch.SavedSearchRepository;
+import com.hivemem.tools.write.SavedSearchesToolHandler;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 import org.jooq.DSLContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -26,6 +29,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Integration tests for the saved_searches table and SavedSearchRepository.
@@ -203,5 +207,81 @@ class SavedSearchTest {
         assertThat(returned).contains("documents");
         assertThat(returned).contains("invoice");
         assertThat(returned).contains("committed");
+    }
+
+    // ─── saved_searches tool (action multiplexing, owner-scoped) ──────────────
+
+    private final ObjectMapper mapper = new ObjectMapper();
+
+    private SavedSearchesToolHandler handler() {
+        return new SavedSearchesToolHandler(savedSearchRepository, mapper);
+    }
+
+    private JsonNode args(Map<String, Object> arguments) {
+        return mapper.valueToTree(arguments);
+    }
+
+    private AuthPrincipal alice() {
+        return new AuthPrincipal("alice", AuthRole.WRITER);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void toolSaveListDeleteRoundTrip() {
+        SavedSearchesToolHandler handler = handler();
+        AuthPrincipal alice = alice();
+
+        // save → returns the new row, owner-scoped
+        Object saved = handler.call(alice, args(Map.of(
+                "action", "save",
+                "name", "Tool Search",
+                "filter", "{\"realm\":\"documents\"}")));
+        assertThat(saved).isInstanceOf(Map.class);
+        Map<String, Object> savedRow = (Map<String, Object>) saved;
+        assertThat(savedRow.get("name")).isEqualTo("Tool Search");
+        assertThat(savedRow.get("filter").toString()).contains("documents");
+        UUID id = UUID.fromString(savedRow.get("id").toString());
+
+        // list → shows it
+        Object listed = handler.call(alice, args(Map.of("action", "list")));
+        assertThat(listed).isInstanceOf(List.class);
+        List<Map<String, Object>> list = (List<Map<String, Object>>) listed;
+        assertThat(list).hasSize(1);
+        assertThat(list.get(0).get("name")).isEqualTo("Tool Search");
+
+        // a different owner does not see alice's saved search
+        Object bobList = handler.call(new AuthPrincipal("bob", AuthRole.WRITER),
+                args(Map.of("action", "list")));
+        assertThat((List<Map<String, Object>>) bobList).isEmpty();
+
+        // delete → {deleted:true}
+        Object deleted = handler.call(alice, args(Map.of(
+                "action", "delete", "id", id.toString())));
+        assertThat(deleted).isInstanceOf(Map.class);
+        Map<String, Object> deletedResult = (Map<String, Object>) deleted;
+        assertThat(deletedResult.get("deleted")).isEqualTo(true);
+        assertThat(deletedResult.get("id")).isEqualTo(id.toString());
+
+        // list → no longer shows it
+        Object afterDelete = handler.call(alice, args(Map.of("action", "list")));
+        assertThat((List<Map<String, Object>>) afterDelete).isEmpty();
+    }
+
+    @Test
+    void toolSaveWithoutNameThrows() {
+        assertThatThrownBy(() -> handler().call(alice(), args(Map.of("action", "save"))))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void toolDeleteWithoutIdThrows() {
+        assertThatThrownBy(() -> handler().call(alice(), args(Map.of("action", "delete"))))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void toolUnknownActionThrows() {
+        assertThatThrownBy(() -> handler().call(alice(), args(Map.of("action", "bogus"))))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 }

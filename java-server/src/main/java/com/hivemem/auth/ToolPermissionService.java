@@ -40,7 +40,6 @@ public class ToolPermissionService {
             "facet_count",
             "list_documents",
             "list_media",
-            "list_saved_searches",
             "list_cell_ids",
             "entity_overview",
             "blueprints_missing",
@@ -65,8 +64,7 @@ public class ToolPermissionService {
             "diary_write",
             "update_blueprint",
             "upload_attachment",
-            "save_search",
-            "delete_saved_search",
+            "saved_searches",
             "manage_tags"
     );
 
