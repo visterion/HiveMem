@@ -22,7 +22,7 @@ HiveMem exposes **52 MCP tools** across search, knowledge graph, progressive sum
 **Read (25):**
 
 1. `status`: System overview and counts.
-2. `search`: Semantic similarity + keyword search; returns metadata plus `score_total` and `confidence_level` by default and supports `include` for optional fields (including `realm`, `content`, and `scores`). By default each hit carries only `score_total` and `confidence_level`; pass `include=['scores']` to also get the five per-signal sub-scores (`score_semantic`, `score_keyword`, `score_recency`, `score_importance`, `score_popularity`). Use `profile` to pick a weight preset (`balanced`|`semantic`|`recent`|`important`|`keyword`). Filter with `where` (selector object: `realm` — pass `"none"` to restrict to cells with no realm assigned — `realm_in` — array, may include `"none"` — `signal`, `topic`, `tags` — match-ANY overlap — `status` — `committed`|`pending`|`rejected`, default `committed`); `query` is not allowed inside `where` — the top-level `query` param remains the search text. The flat `realm`/`signal`/`topic`/`tags`/`status` params are soft-deprecated (no longer advertised in the tool schema) but still honored for backward compatibility; they remain mutually exclusive with `where`.
+2. `search`: Semantic similarity + keyword search; returns metadata plus `score_total` and `confidence_level` by default and supports `include` for optional fields (including `realm`, `content`, and `scores`). By default each hit carries only `score_total` and `confidence_level`; pass `include=['scores']` to also get the five per-signal sub-scores (`score_semantic`, `score_keyword`, `score_recency`, `score_importance`, `score_popularity`). Use `profile` to pick a fixed 6-signal weight preset (`balanced` (default, equals the historical weights)|`semantic`|`recent`|`important`|`keyword`); the individual `weight_*` params are soft-deprecated (no longer advertised, still accepted as an escape hatch, and override the corresponding profile weight when passed). Filter with `where` (selector object: `realm` — pass `"none"` to restrict to cells with no realm assigned — `realm_in` — array, may include `"none"` — `signal`, `topic`, `tags` — match-ANY overlap — `status` — `committed`|`pending`|`rejected`, default `committed`); `query` is not allowed inside `where` — the top-level `query` param remains the search text. The flat `realm`/`signal`/`topic`/`tags`/`status` params are soft-deprecated (no longer advertised in the tool schema) but still honored for backward compatibility; they remain mutually exclusive with `where`.
 3. `search_kg`: Knowledge graph triple lookup. Optional param `query` runs semantic search over `facts.embedding` (cosine similarity, returns a `score` field, ordered by score) instead of the default ILIKE filters on `subject`/`predicate`/`object_`; falls back to the ILIKE path if the embedding service is unavailable. Unlike `entity_overview` and `quick_facts`, `search_kg` does **not** resolve its query through the `kg_entity` alias registry (it's free-text/semantic matching on the raw subject) — for canonical facts on a fragmented entity, use `entity_overview`/`quick_facts` or search on the canonical name directly.
 4. `get_cell`: Read a single knowledge item (logs access automatically); supports `include` for optional fields including `content` and `confidence` (per-document average confidence of active facts, nullable `real`; pass `include=['confidence']` to request it).
 5. `list`: Navigate the Realm→Signal→Topic→Cell hierarchy (omit all params for realms; add `realm` for signals; add `realm`+`signal` for topics; add `realm`+`signal`+`topic` for cells).
@@ -113,21 +113,31 @@ The `search` tool combines 6 signals with configurable weights:
 | Popularity | 0.15 | Access frequency (materialized view) |
 | Graph proximity | 0.10 | Boost for cells reachable from the top semantic candidates via tunnels (depth ≤ 2). Per-relation weights default to `builds_on=1.0`, `refines=0.8`, `related_to=0.6`, `contradicts=0.4`. |
 
-Weights are configurable via `hivemem.search.weights` in `application.yml` and per-call via the MCP `search` arguments (`weight_semantic`, `weight_keyword`, `weight_recency`, `weight_importance`, `weight_popularity`, `weight_graph_proximity`).
+Baseline weights are configurable via `hivemem.search.weights` in `application.yml`. Per call, choose a **`profile`** preset instead of tuning individual weights:
+
+| Profile | Emphasis |
+|---|---|
+| `balanced` (default) | The historical defaults above (semantic 0.30, keyword 0.15, recency 0.15, importance 0.15, popularity 0.15, graph_proximity 0.10). |
+| `semantic` | Leans on vector similarity. |
+| `recent` | Leans on recency. |
+| `important` | Leans on user/agent importance. |
+| `keyword` | Leans on full-text keyword matching. |
+
+The six `weight_*` arguments (`weight_semantic`, `weight_keyword`, `weight_recency`, `weight_importance`, `weight_popularity`, `weight_graph_proximity`) are **soft-deprecated**: no longer advertised in the tool schema, but still accepted as an escape hatch. An explicit `weight_*` overrides the corresponding weight from the selected profile.
 
 #### Confidence Level
 
-Each search result includes a `confidence_level` field indicating how strongly the result is supported by the query:
+Each search result includes a `confidence_level` field. It is **relative to the returned result-set** (not an absolute threshold): the mean and population standard deviation (`sigma`) of the `score_total` values across the returned hits are computed once per result-set, and each hit is classified against those bands:
 
-| Level | score_total | Meaning |
-|-------|-------------|---------|
-| `HIGH` | ≥ 0.80 | Strong evidence — safe to use as primary context |
-| `MEDIUM` | ≥ 0.65 | Reasonable match — use with normal attribution |
-| `LOW` | ≥ 0.55 | Weak match — use cautiously, consider caveating |
-| `NONE` | < 0.55 | Below minimum threshold — treat as background noise |
+| Level | Condition |
+|-------|-----------|
+| `NONE` | `score_total < floor`, **or** the result-set has fewer than 2 elements |
+| `HIGH` | `score_total >= mean + sigma` |
+| `LOW` | `score_total < mean` |
+| `MEDIUM` | otherwise (also when `sigma == 0` for all above-floor hits) |
 
-Thresholds are configurable via `hivemem.search.confidence.high/medium/low` in `application.yml`.
-`score_total` (the raw numeric value) is always present alongside `confidence_level`.
+The absolute `floor` is configurable via `hivemem.search.confidence.floor` in `application.yml` (default `0.20`); anything below it is `NONE` regardless of the relative bands. There are no longer any `high`/`medium`/`low` threshold properties.
+`score_total` (the raw numeric value) and `confidence_level` are always present on every hit.
 
 `search` defaults to `summary`, `tags`, `importance`, and `created_at` plus required identity fields (`id`, `realm`, `signal`, `topic`). `get_cell` defaults to `summary`, `key_points`, `insight`, `tags`, `importance`, `source`, `actionability`, `status`, `created_at`, and `attachments` plus the same required identity fields. Pass `include` to request a specific subset of optional fields, including `content`.
 

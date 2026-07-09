@@ -291,6 +291,12 @@ Every HiveMem tool is mapped to a specific role to ensure least privilege. Write
 
 The `ranked_search` stored function powers the `search` tool. It is **not** managed by Flyway; instead it is recreated on every startup by `EmbeddingMigrationService` from an in-code template. This is intentional — the function signature must stay in sync with the embedding vector dimension, which can change between deployments. As of SP-C1 the function accepts the optional parameters `p_tags TEXT[]` (match-ANY array overlap filter) and `p_status TEXT` (filter by cell status, default `committed`).
 
+### Search weights, profiles, and confidence
+
+`search` combines six signals (semantic, keyword, recency, importance, popularity, graph_proximity) into a `score_total`. The weight vector is chosen by the `profile` param — a fixed preset (`balanced` (default) | `semantic` | `recent` | `important` | `keyword`), where `balanced` equals the baseline `hivemem.search.weights` defaults. The legacy per-call `weight_*` params are soft-deprecated but still override individual weights when present.
+
+`confidence_level` is computed **relative to the returned result-set**, not against absolute cutoffs. For each query, the mean and population standard deviation (`sigma`) of the returned hits' `score_total` values are computed once, then each hit is classified: `NONE` if `score_total` is below the absolute floor `hivemem.search.confidence.floor` (default `0.20`) or the result-set has fewer than 2 elements; `HIGH` if `score_total >= mean + sigma`; `LOW` if `score_total < mean`; `MEDIUM` otherwise (including when `sigma == 0` across the above-floor hits). The former absolute `hivemem.search.confidence.high`/`medium`/`low` properties have been removed. Both `score_total` and `confidence_level` are always returned; the five per-signal sub-scores are returned only when the caller passes `include=['scores']`.
+
 ### Facts embedding & semantic `search_kg`
 
 `facts` carries a nullable `embedding vector` column (V0037), mirroring the cells lifecycle: `EmbeddingStateRepository.createFactsEmbeddingIndex`/`dropFactsEmbeddingIndex` manage an `idx_facts_embedding` HNSW index (cosine ops) whose dimension is (re)bound at startup by `EmbeddingMigrationService`, and a model/dimension change triggers a full facts re-encode alongside the existing cells re-encode. `active_facts` is a `SELECT *` view, so V0037 dropped and recreated it to carry the new column through.
