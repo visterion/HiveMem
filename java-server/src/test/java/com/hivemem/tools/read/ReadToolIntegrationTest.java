@@ -112,17 +112,16 @@ class ReadToolIntegrationTest {
                 .andExpect(jsonPath("$.result.tools[3].name").value("get_cell"))
                 .andExpect(jsonPath("$.result.tools[4].name").value("list"))
                 .andExpect(jsonPath("$.result.tools[5].name").value("traverse"))
-                .andExpect(jsonPath("$.result.tools[6].name").value("quick_facts"))
-                .andExpect(jsonPath("$.result.tools[7].name").value("time_machine"))
-                .andExpect(jsonPath("$.result.tools[8].name").value("history"))
-                .andExpect(jsonPath("$.result.tools[9].name").value("facet_count"))
-                .andExpect(jsonPath("$.result.tools[10].name").value("pending_approvals"))
-                .andExpect(jsonPath("$.result.tools[11].name").value("reading_list"))
-                .andExpect(jsonPath("$.result.tools[12].name").value("list_agents"))
-                .andExpect(jsonPath("$.result.tools[13].name").value("diary_read"))
-                .andExpect(jsonPath("$.result.tools[14].name").value("get_blueprint"))
-                .andExpect(jsonPath("$.result.tools[15].name").value("list_documents"))
-                .andExpect(jsonPath("$.result.tools[16].name").value("wake_up"));
+                .andExpect(jsonPath("$.result.tools[6].name").value("time_machine"))
+                .andExpect(jsonPath("$.result.tools[7].name").value("history"))
+                .andExpect(jsonPath("$.result.tools[8].name").value("facet_count"))
+                .andExpect(jsonPath("$.result.tools[9].name").value("pending_approvals"))
+                .andExpect(jsonPath("$.result.tools[10].name").value("reading_list"))
+                .andExpect(jsonPath("$.result.tools[11].name").value("list_agents"))
+                .andExpect(jsonPath("$.result.tools[12].name").value("diary_read"))
+                .andExpect(jsonPath("$.result.tools[13].name").value("get_blueprint"))
+                .andExpect(jsonPath("$.result.tools[14].name").value("list_documents"))
+                .andExpect(jsonPath("$.result.tools[15].name").value("wake_up"));
     }
 
     @Test
@@ -886,7 +885,7 @@ class ReadToolIntegrationTest {
     }
 
     @Test
-    void quickFactsToolReturnsSubjectAndObjectMatches() throws Exception {
+    void entityOverviewQuickDepthReturnsSubjectAndObjectMatches() throws Exception {
         seedStatusRows();
         insertFact(
                 UUID.fromString("00000000-0000-0000-0000-000000000104"),
@@ -903,12 +902,17 @@ class ReadToolIntegrationTest {
                 null
         );
 
-        JsonNode content = callToolContent("quick_facts", Map.of("entity", "HiveMem"));
-        assertThat(content).hasSize(3);
-        assertThat(content.get(0).path("subject").asText()).isEqualTo("Viktor");
-        assertThat(content.get(0).path("object").asText()).isEqualTo("HiveMem");
-        assertThat(content.get(1).path("object").asText()).isEqualTo("PostgreSQL");
-        assertThat(content.get(2).path("object").asText()).isEqualTo("Java");
+        JsonNode content = callToolContent("entity_overview",
+                Map.of("subject", "HiveMem", "depth", "quick"));
+        JsonNode facts = content.path("facts");
+        assertThat(facts).hasSize(3);
+        assertThat(facts.get(0).path("subject").asText()).isEqualTo("Viktor");
+        assertThat(facts.get(0).path("object").asText()).isEqualTo("HiveMem");
+        assertThat(facts.get(1).path("object").asText()).isEqualTo("PostgreSQL");
+        assertThat(facts.get(2).path("object").asText()).isEqualTo("Java");
+        // quick depth = facts only; cells and tunnels are empty
+        assertThat(content.path("cells")).isEmpty();
+        assertThat(content.path("tunnels")).isEmpty();
     }
 
     @Test
@@ -993,6 +997,13 @@ class ReadToolIntegrationTest {
         }
         assertThat(hasExactFact).isTrue();
         assertThat(content.path("tunnels")).isNotEmpty();
+
+        // Same fixture with depth=quick: facts populated, but cells/tunnels suppressed
+        JsonNode quick = callToolContent("entity_overview",
+                Map.of("subject", "hivemem-server", "depth", "quick"));
+        assertThat(quick.path("facts")).isNotEmpty();
+        assertThat(quick.path("cells")).isEmpty();
+        assertThat(quick.path("tunnels")).isEmpty();
     }
 
     @Test

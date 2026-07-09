@@ -225,8 +225,8 @@ Wake_up is a snapshot, not a subscription. Search actively on these signals:
   hedge if the search returns nothing.
 - **Topic drift.** Conversation shifts to a new area not in wake_up → quick
   `search` before engaging.
-- **Entity-specific.** User asks about a specific entity → `quick_facts`
-  for facts, `search_kg` for relationships.
+- **Entity-specific.** User asks about a specific entity → `entity_overview`
+  (add `depth=quick` for a fast facts-only lookup), `search_kg` for relationships.
 
 **Anti-patterns — do NOT:**
 - Hedge instead of searching ("I think we discussed...")

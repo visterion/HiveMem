@@ -268,7 +268,18 @@ public class ReadToolService {
     }
 
     public Map<String, Object> entityOverview(String subject, int limit) {
+        return entityOverview(subject, limit, false);
+    }
+
+    public Map<String, Object> entityOverview(String subject, int limit, boolean quick) {
         subject = kgEntityRepository.resolve(subject);
+        if (quick) {
+            Map<String, Object> quickResult = new LinkedHashMap<>();
+            quickResult.put("cells", List.of());
+            quickResult.put("facts", cellReadRepository.quickFacts(subject));
+            quickResult.put("tunnels", List.of());
+            return quickResult;
+        }
         List<Map<String, Object>> cells = search(subject, limit, null, null, null,
                 CellFieldSelection.forSearch(null),
                 0.30d, 0.15d, 0.15d, 0.15d, 0.15d, 0.10d, null, null, null, false);

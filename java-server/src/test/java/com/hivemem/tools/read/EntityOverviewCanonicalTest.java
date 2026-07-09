@@ -81,13 +81,17 @@ class EntityOverviewCanonicalTest {
     }
 
     @Test
-    void quickFactsResolvesAliasToCanonical() {
+    void entityOverviewQuickDepthResolvesAliasToCanonical() {
         new KgEntityRepository(dsl).upsert("HiveMem", List.of("hivemem-mcp-server"), "t");
         dsl.execute("INSERT INTO facts (subject, predicate, \"object\", confidence, status, created_by) VALUES ('HiveMem','tool_count','50',1.0,'committed','s')");
 
-        List<Map<String, Object>> facts = readToolService.quickFacts("hivemem-mcp-server");
+        Map<String, Object> overview = readToolService.entityOverview("hivemem-mcp-server", 5, true);
 
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> facts = (List<Map<String, Object>>) overview.get("facts");
         assertThat(facts).anySatisfy(f -> assertThat(f).containsEntry("predicate", "tool_count"));
+        assertThat((List<?>) overview.get("cells")).isEmpty();
+        assertThat((List<?>) overview.get("tunnels")).isEmpty();
     }
 
     @TestConfiguration(proxyBeanMethods = false)

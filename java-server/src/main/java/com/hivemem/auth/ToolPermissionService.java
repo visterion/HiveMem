@@ -26,7 +26,6 @@ public class ToolPermissionService {
             "get_cell",
             "list",
             "traverse",
-            "quick_facts",
             "time_machine",
             "wake_up",
             "history",

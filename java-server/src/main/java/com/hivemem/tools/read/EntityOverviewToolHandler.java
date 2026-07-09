@@ -29,7 +29,8 @@ public class EntityOverviewToolHandler implements ToolHandler {
     public String description() {
         return "Everything about an entity in one call: top-ranked cells, active facts (exact + "
                 + "substring), and depth-1 tunnels of the best cell match. Replaces the search + "
-                + "quick_facts/search_kg + traverse triple.";
+                + "quick_facts/search_kg + traverse triple."
+                + " Pass depth=quick for a fast facts-only lookup (replaces the former quick_facts tool).";
     }
 
     @Override
@@ -37,6 +38,7 @@ public class EntityOverviewToolHandler implements ToolHandler {
         return ToolInputSchema.object()
                 .requiredString("subject", "Entity name to build a 360-degree overview for")
                 .optionalIntegerInRange("limit", "Per-section limit (default 5)", 1, 20)
+                .optionalEnumString("depth", "quick = facts only (fast); full = cells + facts + tunnels (default)", "quick", "full")
                 .build();
     }
 
@@ -44,6 +46,7 @@ public class EntityOverviewToolHandler implements ToolHandler {
     public Object call(AuthPrincipal principal, JsonNode arguments) {
         String subject = WriteArgumentParser.requiredText(arguments, "subject");
         Integer limit = WriteArgumentParser.optionalInteger(arguments, "limit");
-        return readToolService.entityOverview(subject, limit == null ? 5 : limit);
+        boolean quick = "quick".equals(WriteArgumentParser.optionalText(arguments, "depth"));
+        return readToolService.entityOverview(subject, limit == null ? 5 : limit, quick);
     }
 }
