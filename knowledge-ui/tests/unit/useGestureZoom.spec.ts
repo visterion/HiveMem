@@ -39,4 +39,26 @@ describe('useGestureZoom', () => {
     z.panBy(5, 5); z.panBy(5, -2)
     expect(z.tx.value).toBe(10); expect(z.ty.value).toBe(3)
   })
+
+  it('opens at initialScale (fit) while allowing zoom-out down to minScale', () => {
+    const z = useGestureZoom({ minScale: 0.25, initialScale: 1, maxScale: 6 })
+    expect(z.scale.value).toBe(1)            // fit, not minScale
+    z.zoomBy(0.8); expect(z.scale.value).toBeCloseTo(0.8) // below 100%
+    z.zoomBy(0.1); expect(z.scale.value).toBe(0.25)       // clamped to minScale
+  })
+
+  it('reset and toggleZoom return to initialScale, not minScale', () => {
+    const z = useGestureZoom({ minScale: 0.25, initialScale: 1, maxScale: 6, doubleTapScale: 2.5 })
+    z.setScale(3)
+    z.reset(); expect(z.scale.value).toBe(1)
+    z.toggleZoom(); expect(z.scale.value).toBe(2.5)
+    z.toggleZoom(); expect(z.scale.value).toBe(1)
+  })
+
+  it('does not pan while at or below initialScale', () => {
+    const z = useGestureZoom({ minScale: 0.25, initialScale: 1 })
+    z.setScale(0.5)
+    z.panBy(10, 10)
+    expect(z.tx.value).toBe(0); expect(z.ty.value).toBe(0)
+  })
 })
