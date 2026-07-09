@@ -75,4 +75,14 @@ class PageOrienterTest {
         assertEquals(Color.BLACK.getRGB(), img.getRGB(17, 26));
         assertEquals(Color.WHITE.getRGB(), img.getRGB(2, 3));
     }
+
+    @Test
+    void corruptPngFallsBackToRotation0WithoutThrowing() {
+        VisionMultiClient vm = mock(VisionMultiClient.class);
+        PageOrienter.PageOrientation o =
+                new PageOrienter(vm).orient("documents", 7, new byte[] {1, 2, 3});
+        assertEquals(0, o.rotation());
+        assertFalse(o.blank());
+        verifyNoInteractions(vm);
+    }
 }

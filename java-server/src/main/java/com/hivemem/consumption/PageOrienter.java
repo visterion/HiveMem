@@ -40,11 +40,11 @@ public class PageOrienter {
     /** Decide orientation of one rasterized page. Never throws: after one retry it falls back to
      *  rotation 0 / not blank / confidence 0.0 so a single bad page cannot sink the batch. */
     public PageOrientation orient(String realm, int page, byte[] png) {
-        List<VisionMultiClient.Image> images = List.of(
-                new VisionMultiClient.Image("image/png", Base64.getEncoder().encodeToString(png)),
-                new VisionMultiClient.Image("image/png", Base64.getEncoder().encodeToString(rotate180Png(png))));
         for (int attempt = 1; attempt <= 2; attempt++) {
             try {
+                List<VisionMultiClient.Image> images = List.of(
+                        new VisionMultiClient.Image("image/png", Base64.getEncoder().encodeToString(png)),
+                        new VisionMultiClient.Image("image/png", Base64.getEncoder().encodeToString(rotate180Png(png))));
                 JsonNode n = LlmJson.parseObject(vision.group(realm, PROMPT, images));
                 int rotation = "B".equalsIgnoreCase(n.path("upright").asString("A")) ? 180 : 0;
                 return new PageOrientation(page, rotation, n.path("blank").asBoolean(false),
@@ -60,6 +60,7 @@ public class PageOrienter {
     static byte[] rotate180Png(byte[] png) {
         try {
             BufferedImage src = ImageIO.read(new ByteArrayInputStream(png));
+            if (src == null) throw new UncheckedIOException(new IOException("unreadable PNG"));
             BufferedImage dst = new BufferedImage(src.getWidth(), src.getHeight(), BufferedImage.TYPE_INT_RGB);
             Graphics2D g = dst.createGraphics();
             g.rotate(Math.PI, src.getWidth() / 2.0, src.getHeight() / 2.0);
