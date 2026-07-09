@@ -48,6 +48,15 @@ describe('DocumentViewer (image)', () => {
     expect(w.find('[data-test="vt-zoom"]').text()).not.toContain('100%')
   })
 
+  it('zoom-out button decreases the scale percent below 100%', async () => {
+    const w = mountViewer({})
+    expect(w.find('[data-test="vt-zoom"]').text()).toContain('100%')
+    await w.find('[data-test="vt-zoom-out"]').trigger('click')
+    const txt = w.find('[data-test="vt-zoom"]').text()
+    expect(txt).not.toContain('100%')
+    expect(txt).toContain('80%') // zoomOut emits zoomBy(0.8) → 80%
+  })
+
   it('shows an error tile with a download link when the image fails to load', async () => {
     const w = mountViewer({})
     await w.find('img[data-test="dv-image"]').trigger('error')

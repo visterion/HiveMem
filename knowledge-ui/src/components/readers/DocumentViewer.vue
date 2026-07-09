@@ -5,7 +5,7 @@ import ViewerToolbar from './ViewerToolbar.vue'
 
 const props = defineProps<{ url: string; kind: 'pdf' | 'image'; filename?: string }>()
 
-const z = useGestureZoom({ minScale: 1, maxScale: 6, doubleTapScale: 2.5 })
+const z = useGestureZoom({ minScale: 0.25, initialScale: 1, maxScale: 6, doubleTapScale: 2.5 })
 const scalePct = computed(() => Math.round(z.scale.value * 100))
 
 const error = ref(false)
