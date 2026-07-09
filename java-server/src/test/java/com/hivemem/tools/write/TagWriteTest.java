@@ -327,7 +327,7 @@ class TagWriteTest {
         UUID cell1 = seedCell("reclassify cell 1", "old-realm");
         UUID cell2 = seedCell("reclassify cell 2", "old-realm");
 
-        JsonNode result = callToolContent("writer-token", "bulk_reclassify", Map.of(
+        JsonNode result = callToolContent("writer-token", "reclassify", Map.of(
                 "cell_ids", List.of(cell1.toString(), cell2.toString()),
                 "realm", "new-realm",
                 "signal", "events",
@@ -377,7 +377,7 @@ class TagWriteTest {
         UUID cell3 = seedCell("merge-src cell 3", "merge-src");
         seedCell("other realm cell", "other");
 
-        JsonNode result = callToolContent("writer-token", "bulk_reclassify", Map.of(
+        JsonNode result = callToolContent("writer-token", "reclassify", Map.of(
                 "where", Map.of("realm", "merge-src"),
                 "realm", "merge-dst"
         ));
@@ -439,7 +439,7 @@ class TagWriteTest {
         UUID cell1 = seedCell("explicit ids cell 1", "old-realm");
         UUID cell2 = seedCell("explicit ids cell 2", "old-realm");
 
-        JsonNode result = callToolContent("writer-token", "bulk_reclassify", Map.of(
+        JsonNode result = callToolContent("writer-token", "reclassify", Map.of(
                 "cell_ids", List.of(cell1.toString(), cell2.toString()),
                 "realm", "new-realm"
         ));

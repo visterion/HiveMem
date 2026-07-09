@@ -1052,16 +1052,14 @@ class WriteToolsIntegrationTest {
                 OffsetDateTime.parse("2026-04-10T09:00:00Z"),
                 null);
 
-        JsonNode content = callToolContent("writer-token", "reclassify_cell", Map.of(
-                "cell_id", cellId.toString(),
+        JsonNode content = callToolContent("writer-token", "reclassify", Map.of(
+                "cell_ids", List.of(cellId.toString()),
                 "realm", "New Realm",
                 "topic", "New Topic",
                 "signal", "discoveries"
         ));
-        assertThat(content.path("id").asText()).isEqualTo(cellId.toString());
-        assertThat(content.path("realm").asText()).isEqualTo("new-realm");
-        assertThat(content.path("topic").asText()).isEqualTo("new-topic");
-        assertThat(content.path("signal").asText()).isEqualTo("discoveries");
+        assertThat(content.path("updated").asInt()).isEqualTo(1);
+        assertThat(content.path("matched").asInt()).isEqualTo(1);
 
         Record row = dslContext.fetchOne("""
                 SELECT realm, topic, signal, content, summary, valid_until, parent_id, status,
@@ -1091,13 +1089,49 @@ class WriteToolsIntegrationTest {
                 OffsetDateTime.parse("2026-04-10T10:00:00Z"),
                 null);
 
-        JsonNode content = callToolContent("writer-token", "reclassify_cell", Map.of(
-                "cell_id", cellId.toString(),
+        JsonNode content = callToolContent("writer-token", "reclassify", Map.of(
+                "cell_ids", List.of(cellId.toString()),
                 "realm", "moved-realm"
         ));
-        assertThat(content.path("realm").asText()).isEqualTo("moved-realm");
-        assertThat(content.path("topic").asText()).isEqualTo("orig-topic");
-        assertThat(content.path("signal").asText()).isEqualTo("facts");
+        assertThat(content.path("updated").asInt()).isEqualTo(1);
+        assertThat(content.path("matched").asInt()).isEqualTo(1);
+
+        Record row = dslContext.fetchOne(
+                "SELECT realm, topic, signal FROM cells WHERE id = ?", cellId);
+        org.junit.jupiter.api.Assertions.assertEquals("moved-realm", row.get("realm", String.class));
+        org.junit.jupiter.api.Assertions.assertEquals("orig-topic", row.get("topic", String.class));
+        org.junit.jupiter.api.Assertions.assertEquals("facts", row.get("signal", String.class));
+    }
+
+    @Test
+    void reclassifySignalOnlyLeavesTopicUnchangedAndViceVersa() throws Exception {
+        // Regression: guards a signal/topic arg-order swap in the reclassify → bulkReclassify
+        // → reclassifyCell service call chain (bulkReclassify(realm, signal, topic) vs
+        // reclassifyCell(realm, topic, signal)).
+        UUID cellId = UUID.fromString("00000000-0000-0000-0000-000000000820");
+        insertDrawer(cellId, null, "SigTopic", "r", "facts", "orig-topic", "system", 1,
+                "s", null, null, "committed", "writer-1",
+                OffsetDateTime.parse("2026-04-10T17:00:00Z"),
+                OffsetDateTime.parse("2026-04-10T17:00:00Z"),
+                null);
+
+        callToolContent("writer-token", "reclassify", Map.of(
+                "cell_ids", List.of(cellId.toString()),
+                "signal", "events"
+        ));
+        Record afterSignal = dslContext.fetchOne(
+                "SELECT signal, topic FROM cells WHERE id = ?", cellId);
+        org.junit.jupiter.api.Assertions.assertEquals("events", afterSignal.get("signal", String.class));
+        org.junit.jupiter.api.Assertions.assertEquals("orig-topic", afterSignal.get("topic", String.class));
+
+        callToolContent("writer-token", "reclassify", Map.of(
+                "cell_ids", List.of(cellId.toString()),
+                "topic", "some-topic"
+        ));
+        Record afterTopic = dslContext.fetchOne(
+                "SELECT signal, topic FROM cells WHERE id = ?", cellId);
+        org.junit.jupiter.api.Assertions.assertEquals("some-topic", afterTopic.get("topic", String.class));
+        org.junit.jupiter.api.Assertions.assertEquals("events", afterTopic.get("signal", String.class));
     }
 
     @Test
@@ -1109,9 +1143,9 @@ class WriteToolsIntegrationTest {
                                 {
                                   "jsonrpc":"2.0","id":40,"method":"tools/call",
                                   "params":{
-                                    "name":"reclassify_cell",
+                                    "name":"reclassify",
                                     "arguments":{
-                                      "cell_id":"00000000-0000-0000-0000-000000000899",
+                                      "cell_ids":["00000000-0000-0000-0000-000000000899"],
                                       "realm":"x"
                                     }
                                   }
@@ -1138,9 +1172,9 @@ class WriteToolsIntegrationTest {
                                 {
                                   "jsonrpc":"2.0","id":41,"method":"tools/call",
                                   "params":{
-                                    "name":"reclassify_cell",
+                                    "name":"reclassify",
                                     "arguments":{
-                                      "cell_id":"00000000-0000-0000-0000-000000000802",
+                                      "cell_ids":["00000000-0000-0000-0000-000000000802"],
                                       "realm":"x"
                                     }
                                   }
@@ -1168,9 +1202,9 @@ class WriteToolsIntegrationTest {
                                 {
                                   "jsonrpc":"2.0","id":42,"method":"tools/call",
                                   "params":{
-                                    "name":"reclassify_cell",
+                                    "name":"reclassify",
                                     "arguments":{
-                                      "cell_id":"00000000-0000-0000-0000-000000000803",
+                                      "cell_ids":["00000000-0000-0000-0000-000000000803"],
                                       "realm":"x"
                                     }
                                   }
@@ -1197,9 +1231,9 @@ class WriteToolsIntegrationTest {
                                 {
                                   "jsonrpc":"2.0","id":43,"method":"tools/call",
                                   "params":{
-                                    "name":"reclassify_cell",
+                                    "name":"reclassify",
                                     "arguments":{
-                                      "cell_id":"00000000-0000-0000-0000-000000000804"
+                                      "cell_ids":["00000000-0000-0000-0000-000000000804"]
                                     }
                                   }
                                 }
@@ -1207,7 +1241,7 @@ class WriteToolsIntegrationTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error.code").value(-32602))
                 .andExpect(jsonPath("$.error.message").value(
-                        "at least one of realm/topic/signal required"));
+                        "at least one of realm/signal/topic required"));
     }
 
     @Test
@@ -1226,9 +1260,9 @@ class WriteToolsIntegrationTest {
                                 {
                                   "jsonrpc":"2.0","id":44,"method":"tools/call",
                                   "params":{
-                                    "name":"reclassify_cell",
+                                    "name":"reclassify",
                                     "arguments":{
-                                      "cell_id":"00000000-0000-0000-0000-000000000805",
+                                      "cell_ids":["00000000-0000-0000-0000-000000000805"],
                                       "signal":"nonsense"
                                     }
                                   }
@@ -1271,8 +1305,8 @@ class WriteToolsIntegrationTest {
                 "SELECT embedding::text AS e FROM cells WHERE id = ?", cellId)
                 .get("e", String.class);
 
-        callToolContent("writer-token", "reclassify_cell", Map.of(
-                "cell_id", cellId.toString(),
+        callToolContent("writer-token", "reclassify", Map.of(
+                "cell_ids", List.of(cellId.toString()),
                 "realm", "new-r"
         ));
 

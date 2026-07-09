@@ -16,8 +16,8 @@ import java.util.Map;
 import java.util.UUID;
 
 @Component
-@Order(44)
-public class BulkReclassifyToolHandler implements ToolHandler {
+@Order(37)
+public class ReclassifyToolHandler implements ToolHandler {
 
     private static final String[] SIGNAL_VALUES = {
             "facts", "events", "discoveries", "preferences", "advice"
@@ -25,19 +25,19 @@ public class BulkReclassifyToolHandler implements ToolHandler {
 
     private final WriteToolService writeToolService;
 
-    public BulkReclassifyToolHandler(WriteToolService writeToolService) {
+    public ReclassifyToolHandler(WriteToolService writeToolService) {
         this.writeToolService = writeToolService;
     }
 
     @Override
     public String name() {
-        return "bulk_reclassify";
+        return "reclassify";
     }
 
     @Override
     public String description() {
-        return "Reclassify multiple cells in-place (realm/signal/topic) in a single transaction. "
-                + "Exactly one of cell_ids or where must be provided. "
+        return "Reclassify one or more cells in-place (realm/signal/topic) without creating a new revision. "
+                + "Exactly one of cell_ids or where must be provided (single cell = cell_ids:[id]). "
                 + "At least one of realm/signal/topic must be provided. "
                 + "where matches are capped at 1000 cells; matches over 200 require confirm: true. "
                 + "A where selector with status: \"rejected\" is not reclassifiable (rolls back the batch). "

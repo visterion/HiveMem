@@ -5,7 +5,7 @@ import com.hivemem.mcp.ToolInputSchema;
 /**
  * Shared nested input-schema builder for the {@code where} selector used by
  * {@code list_cell_ids} (read) and the selector-based variants of
- * {@code bulk_tag}/{@code bulk_reclassify} (write). Kept in {@code com.hivemem.search}
+ * {@code manage_tags}/{@code reclassify} (write). Kept in {@code com.hivemem.search}
  * alongside {@link CellSelector} so both {@code tools.read} and {@code tools.write}
  * handlers can depend on it without a package-visibility hack.
  */

@@ -59,7 +59,7 @@ public class ToolPermissionService {
             "link_reference",
             "remove_tunnel",
             "revise_cell",
-            "reclassify_cell",
+            "reclassify",
             "revise_fact",
             "register_agent",
             "diary_write",
@@ -67,8 +67,7 @@ public class ToolPermissionService {
             "upload_attachment",
             "save_search",
             "delete_saved_search",
-            "manage_tags",
-            "bulk_reclassify"
+            "manage_tags"
     );
 
     private static final Set<String> ADMIN_TOOLS = tools(

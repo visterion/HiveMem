@@ -76,7 +76,7 @@ Extended Mind, Forgetting Curve, Zettelkasten, PARA).
 [![Spring Boot](https://img.shields.io/badge/spring%20boot-4.1.0-6DB33F)](https://spring.io/projects/spring-boot)
 [![PostgreSQL](https://img.shields.io/badge/postgresql-17-336791)](https://postgresql.org)
 [![Tests](https://img.shields.io/badge/tests-JUnit%20%2B%20Testcontainers-brightgreen)](https://github.com/visterion/HiveMem/actions/workflows/ci.yml)
-[![MCP Tools](https://img.shields.io/badge/MCP%20tools-50-orange)](documentation/tools.md)
+[![MCP Tools](https://img.shields.io/badge/MCP%20tools-49-orange)](documentation/tools.md)
 [![License: Sustainable Use](https://img.shields.io/badge/license-Sustainable%20Use-blue)](https://github.com/visterion/HiveMem/blob/main/LICENSE)
 [![SafeSkill](https://safeskill.dev/api/badge/visterion-hivemem)](https://safeskill.dev/scan/visterion-hivemem)
 
@@ -138,7 +138,7 @@ for details on every 🟡 / 🔴 row.
 | [Getting Started](documentation/getting-started.md) | Prerequisites, embedding service, token creation, connect to Claude |
 | [The Structure](documentation/structure.md) | Realms, signals, topics, cells, tunnels — the knowledge hierarchy |
 | [Architecture](documentation/architecture.md) | System diagram, data model, security matrix |
-| [Tools](documentation/tools.md) | All 50 MCP tools, the parallel REST attachment API, search signals, progressive summarization |
+| [Tools](documentation/tools.md) | All 49 MCP tools, the parallel REST attachment API, search signals, progressive summarization |
 | [Authentication](documentation/auth.md) | Roles, token management, security details |
 | [OAuth + Custom Connector](documentation/oauth.md) | Add HiveMem as a Claude.ai/ChatGPT Custom Connector |
 | [Backup + Portability](documentation/backup.md) | Export and restore entire instances, disaster recovery, cloning |

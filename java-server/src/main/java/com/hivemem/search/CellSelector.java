@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Filter selector shared by list_cell_ids and the where-variants of bulk_reclassify/bulk_tag.
+ * Filter selector shared by list_cell_ids and the where-variants of reclassify/manage_tags.
  * Realm semantics: realm == null and realmIn == null -> no realm filter;
  * "none" -> matches cells whose realm IS NULL; otherwise exact match.
  */
