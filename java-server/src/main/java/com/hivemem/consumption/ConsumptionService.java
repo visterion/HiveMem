@@ -3,7 +3,6 @@ package com.hivemem.consumption;
 import com.hivemem.attachment.AttachmentService;
 import com.hivemem.attachment.SeaweedFsClient;
 import com.hivemem.ocr.OcrProperties;
-import com.hivemem.ocr.PageOsd;
 import com.hivemem.ocr.PdfPageRasterizer;
 import com.hivemem.ocr.TesseractRunner;
 import java.io.ByteArrayInputStream;
@@ -53,6 +52,7 @@ public class ConsumptionService implements SeparationApplier {
                               SeparationJobRepository jobs,
                               ObjectProvider<VistierieSeparationClient> separationClientProvider,
                               ObjectProvider<VisionMultiClient> visionMultiProvider,
+                              ObjectProvider<CompleteClient> completeProvider,
                               ObjectProvider<ConsumptionFileRepository> fileRepoProvider) {
         this.props = props;
         this.attachments = attachments;
@@ -66,10 +66,13 @@ public class ConsumptionService implements SeparationApplier {
         this.splitter = new BatchSplitter();
         this.separationClient = separationClientProvider.getIfAvailable();
         VisionMultiClient visionMultiClient = visionMultiProvider.getIfAvailable();
-        this.reassembly = (visionMultiClient != null)
-                ? new ReassemblyOrchestrator(props, rasterizer, new PageGrouper(visionMultiClient, props),
-                        new PageReassembler(props), splitter, attachments, mover,
-                        new PageOsd(ocrProps.getTesseractPath()))
+        CompleteClient completeClient = completeProvider.getIfAvailable();
+        this.reassembly = (visionMultiClient != null && completeClient != null)
+                ? new ReassemblyOrchestrator(props, rasterizer,
+                        new PageOrienter(visionMultiClient),
+                        new PageMetadataExtractor(visionMultiClient),
+                        new MailingAssembler(completeClient),
+                        new PageReassembler(props), splitter, attachments, mover)
                 : null;
         this.fileRepo = fileRepoProvider.getIfAvailable();
     }

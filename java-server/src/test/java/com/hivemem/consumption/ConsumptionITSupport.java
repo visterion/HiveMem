@@ -168,6 +168,14 @@ abstract class ConsumptionITSupport {
             @Override public ConsumptionFileRepository getIfUnique() { return fileRepo; }
             @Override public Stream<ConsumptionFileRepository> stream() { return fileRepo != null ? Stream.of(fileRepo) : Stream.empty(); }
         };
-        return new ConsumptionService(cp, attachments, ocrProps, seaweed, jobRepo, nullProvider, nullVisionProvider, fileRepoProvider);
+        ObjectProvider<CompleteClient> nullCompleteProvider = new ObjectProvider<>() {
+            @Override public CompleteClient getObject(Object... args) { return null; }
+            @Override public CompleteClient getObject() { return null; }
+            @Override public CompleteClient getIfAvailable() { return null; }
+            @Override public CompleteClient getIfUnique() { return null; }
+            @Override public Stream<CompleteClient> stream() { return Stream.empty(); }
+        };
+        return new ConsumptionService(cp, attachments, ocrProps, seaweed, jobRepo, nullProvider, nullVisionProvider,
+                nullCompleteProvider, fileRepoProvider);
     }
 }

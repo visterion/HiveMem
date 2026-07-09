@@ -2,12 +2,10 @@ package com.hivemem.consumption;
 
 import com.hivemem.attachment.AttachmentService;
 import com.hivemem.ocr.BlankPageDetector;
-import com.hivemem.ocr.PageOsd;
 import com.hivemem.ocr.PdfPageRasterizer;
 import java.io.ByteArrayInputStream;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -16,8 +14,8 @@ import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/** Orchestrates content-based page reassembly for one staged multi-page batch: rasterize → walk in
- *  blocks calling the vision model with carry-over state → reorder into documents → split → ingest.
+/** Orchestrates content-based page reassembly for one staged multi-page batch: rasterize → orient
+ *  (A/B) → extract per-page metadata → assemble mailings (text) → split with rotations → ingest.
  *  Degrade-safe: NEVER throws to the caller. On any error the whole batch becomes one pending document
  *  (nothing is lost). */
 public class ReassemblyOrchestrator {
@@ -26,25 +24,28 @@ public class ReassemblyOrchestrator {
 
     private final ConsumptionProperties props;
     private final PdfPageRasterizer rasterizer;
-    private final PageGrouper grouper;
+    private final PageOrienter orienter;
+    private final PageMetadataExtractor extractor;
+    private final MailingAssembler assembler;
     private final PageReassembler reassembler;
     private final BatchSplitter splitter;
     private final AttachmentService attachments;
     private final ConsumptionFileMover mover;
-    private final PageOsd osd;
 
     public ReassemblyOrchestrator(ConsumptionProperties props, PdfPageRasterizer rasterizer,
-                                  PageGrouper grouper, PageReassembler reassembler,
+                                  PageOrienter orienter, PageMetadataExtractor extractor,
+                                  MailingAssembler assembler, PageReassembler reassembler,
                                   BatchSplitter splitter, AttachmentService attachments,
-                                  ConsumptionFileMover mover, PageOsd osd) {
+                                  ConsumptionFileMover mover) {
         this.props = props;
         this.rasterizer = rasterizer;
-        this.grouper = grouper;
+        this.orienter = orienter;
+        this.extractor = extractor;
+        this.assembler = assembler;
         this.reassembler = reassembler;
         this.splitter = splitter;
         this.attachments = attachments;
         this.mover = mover;
-        this.osd = osd;
     }
 
     /** Reassemble one staged batch. Never throws: on any failure it degrades to one pending document. */
@@ -73,40 +74,41 @@ public class ReassemblyOrchestrator {
         try {
             List<byte[]> pages = rasterizer.rasterize(pdfBytes, props.getReassemblyRenderDpi(), props.getMaxPages());
 
-            List<PageGrouper.BlockImage> all = new ArrayList<>();
+            // Pass 1 — per-page orientation + blankness (forced-choice A/B; validated 15/15).
+            Map<Integer, Integer> rotations = new HashMap<>();
+            Set<Integer> blank = new HashSet<>();
+            List<byte[]> upright = new ArrayList<>(pages);
             for (int i = 0; i < pages.size(); i++) {
-                String b64 = Base64.getEncoder().encodeToString(pages.get(i));
-                all.add(new PageGrouper.BlockImage(i + 1, new VisionMultiClient.Image("image/png", b64)));
+                int pageNo = i + 1;
+                PageOrienter.PageOrientation o = orienter.orient(props.getRealm(), pageNo, pages.get(i));
+                if (o.rotation() != 0) {
+                    rotations.put(pageNo, o.rotation());
+                    upright.set(i, PageOrienter.rotate180Png(pages.get(i)));
+                }
+                if (o.blank()) blank.add(pageNo);
             }
 
-            int blockSize = Math.max(1, props.getBlockSize());
-            List<DocGroup> groups = new ArrayList<>();
-            for (int start = 0; start < all.size(); start += blockSize) {
-                List<PageGrouper.BlockImage> block = all.subList(start, Math.min(start + blockSize, all.size()));
-                grouper.groupBlock(props.getRealm(), groups, block);
+            // Pass 2 — per-page metadata from the upright renders.
+            List<PageMetadataExtractor.PageMetadata> meta = new ArrayList<>();
+            for (int i = 0; i < upright.size(); i++) {
+                PageMetadataExtractor.PageMetadata m =
+                        extractor.extract(props.getRealm(), i + 1, upright.get(i));
+                if (m.blank()) blank.add(m.page());
+                meta.add(m);
             }
+
+            // Pass 3 — text-only mailing assembly (throws on garbage → degrade path).
+            List<DocGroup> groups = assembler.assemble(props.getRealm(), meta);
 
             List<PageReassembler.ResultDoc> docs = reassembler.toDocuments(groups, pages.size());
 
-            // Blank-page filtering (image signal): drop near-white pages from every document; drop
-            // documents that become entirely blank so they never become a cell.
-            Set<Integer> blank = new HashSet<>();
+            // Blank-page filtering: union of the LLM signals (passes 1+2, already in `blank`)
+            // and the pixel signal; drop entirely-blank documents so they never become a cell.
             if (props.isBlankFilterEnabled()) {
                 for (int i = 0; i < pages.size(); i++) {
                     if (BlankPageDetector.isNearWhite(pages.get(i), props.getBlankWhiteFraction())) {
-                        blank.add(i + 1); // 1-based page number
+                        blank.add(i + 1);
                     }
-                }
-            }
-
-            // Orientation (OSD): detect rotation for the pages we will keep.
-            Map<Integer, Integer> rotations = new HashMap<>();
-            if (props.isOrientationCorrectionEnabled()) {
-                for (int i = 0; i < pages.size(); i++) {
-                    int pageNo = i + 1;
-                    if (blank.contains(pageNo)) continue;
-                    int rot = osd.detectRotation(pages.get(i), props.getOsdTimeoutSeconds());
-                    if (rot != 0) rotations.put(pageNo, rot);
                 }
             }
 

@@ -2,6 +2,7 @@ package com.hivemem.consumption;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -11,7 +12,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.hivemem.attachment.AttachmentService;
-import com.hivemem.ocr.PageOsd;
 import com.hivemem.ocr.PdfPageRasterizer;
 import java.awt.Color;
 import java.awt.Graphics2D;
@@ -51,23 +51,37 @@ class ReassemblyBlankOrientationTest {
         }
     }
 
+    private static DocGroup group(String id, double confidence, int... pages) {
+        DocGroup g = new DocGroup(id, null);
+        g.minConfidence = confidence;
+        for (int p : pages) g.pages.add(p);
+        return g;
+    }
+
     @Test
     void blankPageIsDroppedFromDocument() throws Exception {
         ConsumptionProperties props = new ConsumptionProperties();
         PdfPageRasterizer rasterizer = mock(PdfPageRasterizer.class);
-        PageGrouper grouper = mock(PageGrouper.class);
+        PageOrienter orienter = mock(PageOrienter.class);
+        PageMetadataExtractor extractor = mock(PageMetadataExtractor.class);
+        MailingAssembler assembler = mock(MailingAssembler.class);
         PageReassembler reassembler = mock(PageReassembler.class);
         AttachmentService attachments = mock(AttachmentService.class);
         ConsumptionFileMover mover = mock(ConsumptionFileMover.class);
-        PageOsd osd = mock(PageOsd.class);
-        when(osd.detectRotation(any(), anyInt())).thenReturn(0);
+
+        when(orienter.orient(anyString(), anyInt(), any()))
+                .thenAnswer(inv -> new PageOrienter.PageOrientation(inv.getArgument(1), 0, false, 0.9));
+        when(extractor.extract(anyString(), anyInt(), any()))
+                .thenAnswer(inv -> new PageMetadataExtractor.PageMetadata(inv.getArgument(1),
+                        "S", null, null, "letter", null, "p", false));
+        when(assembler.assemble(anyString(), anyList())).thenReturn(List.of(group("d", 0.9, 1, 2)));
 
         when(rasterizer.rasterize(any(), anyInt(), anyInt())).thenReturn(List.of(png(true), png(false)));
         when(reassembler.toDocuments(any(), eq(2)))
                 .thenReturn(List.of(new PageReassembler.ResultDoc(List.of(1, 2), "committed")));
 
-        ReassemblyOrchestrator orch = new ReassemblyOrchestrator(
-                props, rasterizer, grouper, reassembler, new BatchSplitter(), attachments, mover, osd);
+        ReassemblyOrchestrator orch = new ReassemblyOrchestrator(props, rasterizer, orienter, extractor,
+                assembler, reassembler, new BatchSplitter(), attachments, mover);
         orch.reassemble(Path.of("Scan_x.pdf"), nPagePdf(2), 2);
 
         ArgumentCaptor<InputStream> pdf = ArgumentCaptor.forClass(InputStream.class);
@@ -84,19 +98,26 @@ class ReassemblyBlankOrientationTest {
     void allBlankDocumentIsNotIngested() throws Exception {
         ConsumptionProperties props = new ConsumptionProperties();
         PdfPageRasterizer rasterizer = mock(PdfPageRasterizer.class);
-        PageGrouper grouper = mock(PageGrouper.class);
+        PageOrienter orienter = mock(PageOrienter.class);
+        PageMetadataExtractor extractor = mock(PageMetadataExtractor.class);
+        MailingAssembler assembler = mock(MailingAssembler.class);
         PageReassembler reassembler = mock(PageReassembler.class);
         AttachmentService attachments = mock(AttachmentService.class);
         ConsumptionFileMover mover = mock(ConsumptionFileMover.class);
-        PageOsd osd = mock(PageOsd.class);
-        when(osd.detectRotation(any(), anyInt())).thenReturn(0);
+
+        when(orienter.orient(anyString(), anyInt(), any()))
+                .thenAnswer(inv -> new PageOrienter.PageOrientation(inv.getArgument(1), 0, false, 0.9));
+        when(extractor.extract(anyString(), anyInt(), any()))
+                .thenAnswer(inv -> new PageMetadataExtractor.PageMetadata(inv.getArgument(1),
+                        "S", null, null, "letter", null, "p", false));
+        when(assembler.assemble(anyString(), anyList())).thenReturn(List.of(group("d", 0.9, 1)));
 
         when(rasterizer.rasterize(any(), anyInt(), anyInt())).thenReturn(List.of(png(false)));
         when(reassembler.toDocuments(any(), eq(1)))
                 .thenReturn(List.of(new PageReassembler.ResultDoc(List.of(1), "pending")));
 
-        ReassemblyOrchestrator orch = new ReassemblyOrchestrator(
-                props, rasterizer, grouper, reassembler, new BatchSplitter(), attachments, mover, osd);
+        ReassemblyOrchestrator orch = new ReassemblyOrchestrator(props, rasterizer, orienter, extractor,
+                assembler, reassembler, new BatchSplitter(), attachments, mover);
         orch.reassemble(Path.of("Scan_blank.pdf"), nPagePdf(1), 1);
 
         verify(attachments, never()).ingest(any(), anyString(), any(), any(),
@@ -105,23 +126,30 @@ class ReassemblyBlankOrientationTest {
     }
 
     @Test
-    void osdRotationFlowsThroughToIngestedPdf() throws Exception {
+    void llmRotationFlowsThroughToIngestedPdf() throws Exception {
         ConsumptionProperties props = new ConsumptionProperties();
         PdfPageRasterizer rasterizer = mock(PdfPageRasterizer.class);
-        PageGrouper grouper = mock(PageGrouper.class);
+        PageOrienter orienter = mock(PageOrienter.class);
+        PageMetadataExtractor extractor = mock(PageMetadataExtractor.class);
+        MailingAssembler assembler = mock(MailingAssembler.class);
         PageReassembler reassembler = mock(PageReassembler.class);
         AttachmentService attachments = mock(AttachmentService.class);
         ConsumptionFileMover mover = mock(ConsumptionFileMover.class);
-        PageOsd osd = mock(PageOsd.class);
+
         // The (single, non-blank) page is detected upside-down → must be rotated 180° in the stored PDF.
-        when(osd.detectRotation(any(), anyInt())).thenReturn(180);
+        when(orienter.orient(anyString(), anyInt(), any()))
+                .thenReturn(new PageOrienter.PageOrientation(1, 180, false, 0.99));
+        when(extractor.extract(anyString(), anyInt(), any()))
+                .thenAnswer(inv -> new PageMetadataExtractor.PageMetadata(inv.getArgument(1),
+                        "S", null, null, "letter", null, "p", false));
+        when(assembler.assemble(anyString(), anyList())).thenReturn(List.of(group("d", 0.9, 1)));
 
         when(rasterizer.rasterize(any(), anyInt(), anyInt())).thenReturn(List.of(png(true)));
         when(reassembler.toDocuments(any(), eq(1)))
                 .thenReturn(List.of(new PageReassembler.ResultDoc(List.of(1), "committed")));
 
-        ReassemblyOrchestrator orch = new ReassemblyOrchestrator(
-                props, rasterizer, grouper, reassembler, new BatchSplitter(), attachments, mover, osd);
+        ReassemblyOrchestrator orch = new ReassemblyOrchestrator(props, rasterizer, orienter, extractor,
+                assembler, reassembler, new BatchSplitter(), attachments, mover);
         orch.reassemble(Path.of("Scan_rot.pdf"), nPagePdf(1), 1);
 
         ArgumentCaptor<InputStream> pdf = ArgumentCaptor.forClass(InputStream.class);
@@ -129,7 +157,46 @@ class ReassemblyBlankOrientationTest {
                 any(), any(), any(), any(), eq("consumption"), anyString(), eq("consumption:"));
         try (PDDocument ingested = Loader.loadPDF(pdf.getValue().readAllBytes())) {
             Assertions.assertEquals(180, ingested.getPage(0).getRotation(),
-                    "OSD-detected rotation must be applied to the stored PDF page");
+                    "LLM-detected rotation must be applied to the stored PDF page");
         }
+    }
+
+    @Test
+    void llmBlankFromPass1IsDroppedEvenWhenPixelsHaveInk() throws Exception {
+        ConsumptionProperties props = new ConsumptionProperties();
+        PdfPageRasterizer rasterizer = mock(PdfPageRasterizer.class);
+        PageOrienter orienter = mock(PageOrienter.class);
+        PageMetadataExtractor extractor = mock(PageMetadataExtractor.class);
+        MailingAssembler assembler = mock(MailingAssembler.class);
+        PageReassembler reassembler = mock(PageReassembler.class);
+        AttachmentService attachments = mock(AttachmentService.class);
+        ConsumptionFileMover mover = mock(ConsumptionFileMover.class);
+
+        // Page 2 has ink pixels but pass-1 orientation marks it blank — the LLM verdict must win.
+        when(orienter.orient(anyString(), anyInt(), any())).thenAnswer(inv -> {
+            int page = inv.getArgument(1);
+            return new PageOrienter.PageOrientation(page, 0, page == 2, 0.9);
+        });
+        when(extractor.extract(anyString(), anyInt(), any()))
+                .thenAnswer(inv -> new PageMetadataExtractor.PageMetadata(inv.getArgument(1),
+                        "S", null, null, "letter", null, "p", false));
+        when(assembler.assemble(anyString(), anyList())).thenReturn(List.of(group("d", 0.9, 1, 2)));
+
+        when(rasterizer.rasterize(any(), anyInt(), anyInt())).thenReturn(List.of(png(true), png(true)));
+        when(reassembler.toDocuments(any(), eq(2)))
+                .thenReturn(List.of(new PageReassembler.ResultDoc(List.of(1, 2), "committed")));
+
+        ReassemblyOrchestrator orch = new ReassemblyOrchestrator(props, rasterizer, orienter, extractor,
+                assembler, reassembler, new BatchSplitter(), attachments, mover);
+        orch.reassemble(Path.of("Scan_llm_blank.pdf"), nPagePdf(2), 2);
+
+        ArgumentCaptor<InputStream> pdf = ArgumentCaptor.forClass(InputStream.class);
+        verify(attachments, times(1)).ingest(pdf.capture(), anyString(), eq("application/pdf"),
+                any(), any(), any(), any(), eq("consumption"), anyString(), eq("consumption:"));
+        try (PDDocument ingested = Loader.loadPDF(pdf.getValue().readAllBytes())) {
+            Assertions.assertEquals(1, ingested.getNumberOfPages(),
+                    "LLM blank verdict from pass 1 must drop the page even though the pixel signal has ink");
+        }
+        verify(mover).moveToProcessed(any());
     }
 }
