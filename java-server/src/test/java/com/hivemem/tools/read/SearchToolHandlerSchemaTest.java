@@ -36,7 +36,17 @@ class SearchToolHandlerSchemaTest {
     }
 
     @Test
+    void doesNotAdvertiseFlatFilterParams() {
+        assertThat(properties()).doesNotContainKeys(
+                "realm",
+                "signal",
+                "topic",
+                "tags",
+                "status");
+    }
+
+    @Test
     void retainsCoreParams() {
-        assertThat(properties()).containsKeys("query", "where");
+        assertThat(properties()).containsKeys("query", "limit", "include", "profile", "where");
     }
 }

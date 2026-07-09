@@ -155,6 +155,76 @@ class SearchParityIntegrationTest {
     }
 
     @Test
+    void softDeprecatedFlatRealmParamIsStillHonored() throws Exception {
+        // backlog #10: the flat realm/signal/topic/tags/status params were removed
+        // from the advertised inputSchema() but are still parsed in call(). This
+        // guards that an existing caller passing the unadvertised flat 'realm'
+        // param keeps getting realm-restricted results.
+        insertDrawer(
+                UUID.fromString("00000000-0000-0000-0000-000000000851"),
+                "Soft deprecated engineering note",
+                "eng",
+                "facts",
+                "planning",
+                3,
+                "Engineering note",
+                "committed",
+                OffsetDateTime.parse("2026-04-03T11:30:00Z")
+        );
+        insertDrawer(
+                UUID.fromString("00000000-0000-0000-0000-000000000852"),
+                "Soft deprecated personal note",
+                "personal",
+                "facts",
+                "planning",
+                3,
+                "Personal note",
+                "committed",
+                OffsetDateTime.parse("2026-04-03T11:30:00Z")
+        );
+
+        JsonNode results = callTool("writer-token", "search", Map.of(
+                "query", "note",
+                "realm", "eng"
+        ));
+
+        assertThat(results).hasSize(1);
+        assertThat(textValues(results, "realm")).containsExactly("eng");
+    }
+
+    @Test
+    void flatFilterParamCombinedWithWhereIsRejected() throws Exception {
+        // backlog #10: mutual-exclusivity between the (soft-deprecated) flat filter
+        // params and the 'where' object is still enforced in call(). The thrown
+        // IllegalArgumentException surfaces as a JSON-RPC invalidParams error
+        // (HTTP 400) via McpController.
+        MvcResult result = mockMvc.perform(post("/mcp")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer writer-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "jsonrpc", "2.0",
+                                "id", 1,
+                                "method", "tools/call",
+                                "params", Map.of(
+                                        "name", "search",
+                                        "arguments", Map.of(
+                                                "query", "note",
+                                                "realm", "eng",
+                                                "where", Map.of("signal", "facts")
+                                        )
+                                )
+                        ))))
+                .andExpect(status().isBadRequest())
+                .andReturn();
+
+        JsonNode body = objectMapper.readTree(result.getResponse().getContentAsString());
+        assertThat(body.path("result").isMissingNode() || body.path("result").isNull()).isTrue();
+        assertThat(body.path("error").path("code").asInt()).isEqualTo(-32602);
+        assertThat(body.path("error").path("message").asText())
+                .isEqualTo("where is mutually exclusive with flat filter params");
+    }
+
+    @Test
     void rankedSearchHonorsHallFilter() throws Exception {
         insertDrawer(
                 UUID.fromString("00000000-0000-0000-0000-000000000821"),

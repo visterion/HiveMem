@@ -37,10 +37,11 @@ public class SearchToolHandler implements ToolHandler {
 
     @Override
     public String description() {
-        return "6-signal ranked search over committed cells with metadata by default; use include to request extra fields such as content. "
+        return "6-signal ranked search over committed cells; returns metadata by default. "
+                + "Use include to request extra fields such as content. "
                 + "Use profile to pick a weight preset (balanced|semantic|recent|important|keyword). "
-                + "Pass realm=\"none\" to restrict to cells with no realm assigned. "
-                + "Alternatively, pass a where object (realm | realm_in | signal | topic | tags | status) instead of the flat filter params.";
+                + "Use a where object (realm | realm_in | signal | topic | tags | status) to filter; "
+                + "pass where.realm=\"none\" to match cells with no realm assigned.";
     }
 
     @Override
@@ -48,15 +49,10 @@ public class SearchToolHandler implements ToolHandler {
         return ToolInputSchema.object()
                 .requiredString("query", "Full-text search query")
                 .optionalInteger("limit", "Maximum number of results (default 10, max 100)")
-                .optionalString("realm", "Restrict search to this realm; pass \"none\" to match cells with no realm assigned")
-                .optionalString("signal", "Restrict search to this signal")
-                .optionalString("topic", "Restrict search to this topic")
                 .optionalEnumStringList("include", "Optional fields to return. Defaults to summary, tags, importance, created_at.", INCLUDE_FIELDS)
                 .optionalString("profile", "Weight preset: balanced (default) | semantic | recent | important | keyword")
-                .optionalStringList("tags", "Filter to cells that have ANY of the given tags (array overlap)")
-                .optionalString("status", "Restrict to a status: committed | pending | rejected (default committed)")
-                .optionalObject("where", "Alternative filter object: realm | realm_in | signal | topic | tags | status. "
-                        + "Mutually exclusive with the flat realm/signal/topic/tags/status params. 'query' is not allowed here.",
+                .optionalObject("where", "Filter object: realm | realm_in | signal | topic | tags | status. "
+                        + "'query' is not allowed here.",
                         CellSelectorSchemas.where())
                 .build();
     }
@@ -65,6 +61,10 @@ public class SearchToolHandler implements ToolHandler {
     public Object call(AuthPrincipal principal, JsonNode arguments) {
         String query = WriteArgumentParser.requiredText(arguments, "query");
         int limit = boundedLimit(arguments, "limit", DEFAULT_LIMIT, MAX_LIMIT);
+        // Soft-deprecated params: 'realm/signal/topic/tags/status' (use 'where' instead) and the
+        // 'weight_*' knobs (use 'profile' instead) are no longer advertised in inputSchema(), but are
+        // still parsed here so existing callers keep working. McpController does not validate args
+        // against the schema, so hidden params are honored.
         String realm = WriteArgumentParser.optionalText(arguments, "realm");
         String signal = WriteArgumentParser.optionalText(arguments, "signal");
         String topic = WriteArgumentParser.optionalText(arguments, "topic");
