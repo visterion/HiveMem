@@ -79,7 +79,7 @@ describe('scans store', () => {
   // ── Saved views via server tools (localStorage replaced) ────────────────────
   it('saveView + loadSavedViews round-trips via server (not localStorage)', async () => {
     const s = useScansStore()
-    // saveView calls save_search (1 round-trip) then loadSavedViews/list_saved_searches (1 round-trip) — advance enough
+    // saveView calls saved_searches{save} (1 round-trip) then loadSavedViews/saved_searches{list} (1 round-trip) — advance enough
     const p1 = s.saveView('Steuer 2025', { tag: ['contract'] })
     await vi.advanceTimersByTimeAsync(600); await p1
 
@@ -113,7 +113,7 @@ describe('scans store', () => {
 
   it('loadSavedViews loads from server and populates savedViews', async () => {
     const s = useScansStore()
-    // First save (save_search + list_saved_searches)
+    // First save (saved_searches{save} + saved_searches{list})
     const p1 = s.saveView('Contracts', { tag: ['contract'] })
     await vi.advanceTimersByTimeAsync(600); await p1
 
@@ -130,12 +130,12 @@ describe('scans store', () => {
     expect(s.savedViews.some(v => v.name === 'ToDelete')).toBe(true)
 
     const toDelete = s.savedViews.find(v => v.name === 'ToDelete')!
-    // deleteView calls delete_saved_search then loadSavedViews — need 2 round-trips
+    // deleteView calls saved_searches{delete} then loadSavedViews — need 2 round-trips
     const p2 = s.deleteView(toDelete.id); await vi.advanceTimersByTimeAsync(600); await p2
     expect(s.savedViews.some(v => v.name === 'ToDelete')).toBe(false)
   })
 
-  it('editTags calls add_tags/remove_tags then reloads', async () => {
+  it('editTags calls manage_tags then reloads', async () => {
     const s = useScansStore()
     // Pre-load results
     const p0 = s.load(); await vi.advanceTimersByTimeAsync(300); await p0
@@ -147,7 +147,7 @@ describe('scans store', () => {
     expect(updated?.tags).toContain('reviewed')
   })
 
-  it('bulkTag calls bulk_tag then reloads', async () => {
+  it('bulkTag calls manage_tags then reloads', async () => {
     const s = useScansStore()
     const p0 = s.load(); await vi.advanceTimersByTimeAsync(300); await p0
 
@@ -200,7 +200,7 @@ describe('scans store', () => {
     expect(include).toEqual(expect.arrayContaining(['summary', 'key_points', 'insight', 'content', 'attachments']))
   })
 
-  it('bulkReclassify calls bulk_reclassify then clears selection + reloads', async () => {
+  it('bulkReclassify calls reclassify then clears selection + reloads', async () => {
     const s = useScansStore()
     const p0 = s.load(); await vi.advanceTimersByTimeAsync(300); await p0
 

@@ -53,40 +53,40 @@ describe('mock scans endpoints', () => {
     expect(Array.isArray(rows)).toBe(true)
   })
 
-  it('save_search + list_saved_searches + delete_saved_search round-trip', async () => {
+  it('saved_searches save + list + delete round-trip', async () => {
     const c = new MockApiClient()
 
     // list starts empty
-    const empty = await c.call<any[]>('list_saved_searches')
+    const empty = await c.call<any[]>('saved_searches', { action: 'list' })
     expect(empty).toEqual([])
 
     // save a search — mock returns filter as JSON string (mirrors real backend filter::text)
-    const saved = await c.call<any>('save_search', { name: 'Invoices 2025', filter: { tag: ['invoice'] } })
+    const saved = await c.call<any>('saved_searches', { action: 'save', name: 'Invoices 2025', filter: { tag: ['invoice'] } })
     expect(saved).toHaveProperty('id')
     expect(saved.name).toBe('Invoices 2025')
     expect(saved.filter).toBe(JSON.stringify({ tag: ['invoice'] }))
 
     // list shows it
-    const list = await c.call<any[]>('list_saved_searches')
+    const list = await c.call<any[]>('saved_searches', { action: 'list' })
     expect(list.length).toBe(1)
     expect(list[0].name).toBe('Invoices 2025')
 
     // upsert by same name
-    await c.call('save_search', { name: 'Invoices 2025', filter: { tag: ['invoice', 'paid'] } })
-    const list2 = await c.call<any[]>('list_saved_searches')
+    await c.call('saved_searches', { action: 'save', name: 'Invoices 2025', filter: { tag: ['invoice', 'paid'] } })
+    const list2 = await c.call<any[]>('saved_searches', { action: 'list' })
     expect(list2.length).toBe(1)
     expect(list2[0].filter).toBe(JSON.stringify({ tag: ['invoice', 'paid'] }))
 
     // delete
-    const del = await c.call<any>('delete_saved_search', { id: list2[0].id })
+    const del = await c.call<any>('saved_searches', { action: 'delete', id: list2[0].id })
     expect(del.deleted).toBe(true)
-    const list3 = await c.call<any[]>('list_saved_searches')
+    const list3 = await c.call<any[]>('saved_searches', { action: 'list' })
     expect(list3).toEqual([])
   })
 
-  it('add_tags / remove_tags mutate mock cell', async () => {
+  it('manage_tags add / remove mutate mock cell', async () => {
     const c = new MockApiClient()
-    const res1 = await c.call<any>('add_tags', { cell_id: 'doc-contract-001', tags: ['important'] })
+    const res1 = await c.call<any>('manage_tags', { cell_ids: ['doc-contract-001'], add: ['important'] })
     expect(res1.updated).toBe(1)
 
     // Confirm tag is now present via list_documents
@@ -95,23 +95,23 @@ describe('mock scans endpoints', () => {
     expect(doc?.tags).toContain('important')
 
     // Remove it
-    const res2 = await c.call<any>('remove_tags', { cell_id: 'doc-contract-001', tags: ['important'] })
+    const res2 = await c.call<any>('manage_tags', { cell_ids: ['doc-contract-001'], remove: ['important'] })
     expect(res2.updated).toBe(1)
   })
 
-  it('bulk_tag mutates multiple cells', async () => {
+  it('manage_tags mutates multiple cells', async () => {
     const c = new MockApiClient()
-    const res = await c.call<any>('bulk_tag', {
+    const res = await c.call<any>('manage_tags', {
       cell_ids: ['doc-invoice-001', 'doc-invoice-002'],
-      add_tags: ['reviewed'],
-      remove_tags: ['paid'],
+      add: ['reviewed'],
+      remove: ['paid'],
     })
     expect(res.updated).toBe(2)
   })
 
-  it('bulk_reclassify changes realm on multiple cells', async () => {
+  it('reclassify changes realm on multiple cells', async () => {
     const c = new MockApiClient()
-    const res = await c.call<any>('bulk_reclassify', {
+    const res = await c.call<any>('reclassify', {
       cell_ids: ['doc-photo-001'],
       signal: 'archive',
     })

@@ -12,7 +12,10 @@ type CellEntry = { cell: Cell; facts: Fact[]; tunnels: Tunnel[] }
 async function fetchFacts(cell: Cell): Promise<Fact[]> {
   const subject = cell.summary?.trim() || cell.topic?.trim()
   if (!subject) return []
-  return useApi().call<Fact[]>('quick_facts', { subject }).catch(() => [])
+  return useApi()
+    .call<{ cells: unknown[]; facts: Fact[]; tunnels: unknown[] }>('entity_overview', { subject, depth: 'quick' })
+    .then(r => r.facts ?? [])
+    .catch(() => [])
 }
 
 export const useCellStore = defineStore('cell', {
@@ -140,11 +143,11 @@ export const useCellStore = defineStore('cell', {
       }
       return res
     },
-    // Inline tag editing via add_tags/remove_tags. The cached cell's tags are updated
+    // Inline tag editing via manage_tags. The cached cell's tags are updated
     // optimistically (union / minus) so the reader reflects the change without a re-fetch.
     async addTags(id: string, tags: string[]): Promise<void> {
       if (!tags.length) return
-      await useApi().call('add_tags', { cell_id: id, tags })
+      await useApi().call('manage_tags', { cell_ids: [id], add: tags })
       const entry = this.cache.get(id)
       if (entry) {
         const merged = new Set([...(entry.cell.tags ?? []), ...tags])
@@ -153,7 +156,7 @@ export const useCellStore = defineStore('cell', {
     },
     async removeTags(id: string, tags: string[]): Promise<void> {
       if (!tags.length) return
-      await useApi().call('remove_tags', { cell_id: id, tags })
+      await useApi().call('manage_tags', { cell_ids: [id], remove: tags })
       const entry = this.cache.get(id)
       if (entry) {
         const drop = new Set(tags)

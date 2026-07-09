@@ -132,7 +132,7 @@ export const useScansStore = defineStore('scans', {
     // ── Saved views via server tools (replaces localStorage) ────────────────
     async loadSavedViews() {
       const api = useApi()
-      const rows = await api.call<SavedSearch[]>('list_saved_searches')
+      const rows = await api.call<SavedSearch[]>('saved_searches', { action: 'list' })
       this.savedViews = rows.map(r => {
         let filter: Partial<Record<FacetKey, string[]>>
         if (typeof r.filter === 'string') {
@@ -145,20 +145,20 @@ export const useScansStore = defineStore('scans', {
     },
     async saveView(name: string, filter: Partial<Record<FacetKey, string[]>>) {
       const api = useApi()
-      await api.call('save_search', { name, filter })
+      await api.call('saved_searches', { action: 'save', name, filter })
       await this.loadSavedViews()
     },
     async deleteView(id: string) {
       const api = useApi()
-      await api.call('delete_saved_search', { id })
+      await api.call('saved_searches', { action: 'delete', id })
       await this.loadSavedViews()
     },
 
     // ── Tag editing ──────────────────────────────────────────────────────────
     async editTags(cellId: string, add: string[], remove: string[]) {
       const api = useApi()
-      if (add.length) await api.call('add_tags', { cell_id: cellId, tags: add })
-      if (remove.length) await api.call('remove_tags', { cell_id: cellId, tags: remove })
+      if (add.length) await api.call('manage_tags', { cell_ids: [cellId], add })
+      if (remove.length) await api.call('manage_tags', { cell_ids: [cellId], remove })
       await this.reload()
     },
 
@@ -167,16 +167,16 @@ export const useScansStore = defineStore('scans', {
       const api = useApi()
       const cell_ids = [...this.selection]
       if (!cell_ids.length) return
-      const add_tags = addTags?.length ? addTags : undefined
-      const remove_tags = removeTags?.length ? removeTags : undefined
-      await api.call('bulk_tag', { cell_ids, add_tags, remove_tags })
+      const add = addTags?.length ? addTags : undefined
+      const remove = removeTags?.length ? removeTags : undefined
+      await api.call('manage_tags', { cell_ids, add, remove })
       await this.reload()
     },
     async bulkReclassify(realm?: string, signal?: string, topic?: string) {
       const api = useApi()
       const cell_ids = [...this.selection]
       if (!cell_ids.length) return
-      await api.call('bulk_reclassify', { cell_ids, realm, signal, topic })
+      await api.call('reclassify', { cell_ids, realm, signal, topic })
       this.clearSelection()
       await this.reload()
     },

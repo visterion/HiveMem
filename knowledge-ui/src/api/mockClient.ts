@@ -45,7 +45,9 @@ export class MockApiClient implements ApiClient {
       list: (args: { realm?: string }) => this.listRealms(args),
       search: (args: { query?: string; limit?: number }) => this.search(args),
       get_cell: (args: { cell_id: string }) => this.getCell(args),
-      quick_facts: (args: { subject: string }) => this.quickFacts(args),
+      // entity_overview returns { cells, facts, tunnels }; the mock only needs to keep the
+      // UI functional, so a facts-only shape (via quickFacts) is fine for all depths.
+      entity_overview: (a: any) => ({ cells: [], facts: this.quickFacts(a), tunnels: [] }),
       traverse: (args: { cell_id: string; depth?: number; max_depth?: number }) => this.traverse(args),
       hivemem_list_tunnels: () => mockPalace.tunnels,
       hivemem_stream_next: (args: { since?: string; timeout_ms?: number }) => this.streamNext(args),
@@ -62,16 +64,12 @@ export class MockApiClient implements ApiClient {
       history: () => [],
       list_documents: (a: any) => this.listDocuments(a),
       facet_count: (a: any) => this.facetCount(a),
-      save_search: (a: any) => this.saveSearch(a),
-      list_saved_searches: () => this.listSavedSearches(),
-      delete_saved_search: (a: any) => this.deleteSavedSearch(a),
+      saved_searches: (a: any) => a.action === 'save' ? this.saveSearch(a) : a.action === 'delete' ? this.deleteSavedSearch(a) : this.listSavedSearches(),
       add_cell: (a: any) => this.addCell(a),
       add_tunnel: (a: any) => this.addTunnel(a),
       revise_cell: (a: any) => this.reviseCell(a),
-      add_tags: (a: any) => this.addTags(a),
-      remove_tags: (a: any) => this.removeTags(a),
-      bulk_tag: (a: any) => this.bulkTag(a),
-      bulk_reclassify: (a: any) => this.bulkReclassify(a),
+      manage_tags: (a: any) => this.manageTags(a),
+      reclassify: (a: any) => this.bulkReclassify(a),
       list_media: (a: any) => this.listMedia(a),
     }
   }
@@ -291,31 +289,15 @@ export class MockApiClient implements ApiClient {
     return { id: args.id, deleted: this.savedSearches.length < before }
   }
 
-  private addTags(args: { cell_id: string; tags: string[] }): { updated: number } {
-    const c = mockPalace.cells.find(x => x.id === args.cell_id)
-    if (!c) return { updated: 0 }
-    const current = new Set(c.tags ?? [])
-    for (const t of args.tags) current.add(t)
-    c.tags = [...current]
-    return { updated: 1 }
-  }
-
-  private removeTags(args: { cell_id: string; tags: string[] }): { updated: number } {
-    const c = mockPalace.cells.find(x => x.id === args.cell_id)
-    if (!c) return { updated: 0 }
-    const remove = new Set(args.tags)
-    c.tags = (c.tags ?? []).filter(t => !remove.has(t))
-    return { updated: 1 }
-  }
-
-  private bulkTag(args: { cell_ids: string[]; add_tags?: string[]; remove_tags?: string[] }): { updated: number } {
+  // manage_tags: unified add/remove over one or more cells (cell_ids single- or multi-element).
+  private manageTags(args: { cell_ids: string[]; add?: string[]; remove?: string[] }): { updated: number } {
     let updated = 0
-    for (const id of args.cell_ids) {
+    for (const id of args.cell_ids ?? []) {
       const c = mockPalace.cells.find(x => x.id === id)
       if (!c) continue
       const current = new Set(c.tags ?? [])
-      for (const t of args.add_tags ?? []) current.add(t)
-      const remove = new Set(args.remove_tags ?? [])
+      for (const t of args.add ?? []) current.add(t)
+      const remove = new Set(args.remove ?? [])
       c.tags = [...current].filter(t => !remove.has(t))
       updated++
     }
