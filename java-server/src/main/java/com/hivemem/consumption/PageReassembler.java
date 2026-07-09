@@ -3,7 +3,8 @@ package com.hivemem.consumption;
 import java.util.*;
 
 /** Deterministic: turns accumulated DocGroups into ordered, status-tagged result docs.
- *  Any batch page not present in any group becomes its own 1-page pending document. */
+ *  Any batch page not present in any group becomes its own 1-page pending document.
+ *  Pages preserve each group's reading order (first occurrence of duplicates wins). */
 public class PageReassembler {
 
     public record ResultDoc(List<Integer> pages, String status) {}
@@ -16,7 +17,7 @@ public class PageReassembler {
         List<ResultDoc> out = new ArrayList<>();
         Set<Integer> assigned = new HashSet<>();
         for (DocGroup g : groups) {
-            List<Integer> pages = new ArrayList<>(new TreeSet<>(g.pages)); // dedupe + ascending order
+            List<Integer> pages = new ArrayList<>(new LinkedHashSet<>(g.pages)); // dedupe, KEEP reading order
             if (pages.isEmpty()) continue;
             assigned.addAll(pages);
             out.add(new ResultDoc(pages, g.minConfidence >= threshold ? "committed" : "pending"));
