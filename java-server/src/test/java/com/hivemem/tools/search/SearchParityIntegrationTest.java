@@ -482,6 +482,65 @@ class SearchParityIntegrationTest {
     }
 
     @Test
+    void confidenceLevelIsRelativeToResultSetNotAlwaysNone() throws Exception {
+        // Regression guard for backlog #2: real score_total values cluster low
+        // (~0.4), so the OLD absolute-threshold classifier (HIGH>=0.80 /
+        // MEDIUM>=0.65 / LOW>=0.55) labeled EVERY result NONE — the label was
+        // useless. The relative-to-result-set classifier must instead band
+        // results against their own distribution above an absolute floor (0.20).
+        //
+        // Seed several semantically-matching cells with a DETERMINISTIC spread of
+        // score_total: identical content/embedding/recency, only importance
+        // varies -> only score_importance varies -> distinct score_total. The
+        // FixedEmbeddingClient maps any content containing "semantic" to the same
+        // vector as the query, so the semantic component is a constant 0.30
+        // baseline (well above the 0.20 floor) regardless of the wall clock —
+        // this keeps the top hit's "not NONE" guarantee time-independent.
+        FixedEmbeddingClient client = new FixedEmbeddingClient();
+        String content = "semantic probe spread relative confidence cell";
+        List<Float> embedding = client.encodeDocument(content);
+        OffsetDateTime ts = OffsetDateTime.parse("2026-04-03T10:00:00Z");
+        int[] importances = {1, 2, 4, 5};
+        for (int i = 0; i < importances.length; i++) {
+            UUID id = UUID.fromString(String.format("00000000-0000-0000-0000-%012d", 990000 + i));
+            dslContext.execute(
+                    """
+                    INSERT INTO cells (
+                        id, content, embedding, realm, signal, topic, importance,
+                        summary, status, created_by, created_at, valid_from
+                    ) VALUES (?, ?, ?::vector, 'eng', 'facts', 'conf', ?, ?, 'committed', 'writer-1',
+                             ?::timestamptz, ?::timestamptz)
+                    """,
+                    id, content, embedding.toArray(Float[]::new), importances[i],
+                    "confidence spread " + i, ts, ts);
+        }
+
+        // Default weights (no weight/profile overrides) — exactly how a normal
+        // search runs in production.
+        JsonNode results = callTool("writer-token", "search", Map.of(
+                "query", "semantic probe spread relative confidence",
+                "limit", 10
+        ));
+
+        assertThat(results).hasSizeGreaterThanOrEqualTo(2);
+
+        // Core regression guard: the top hit must NOT be NONE. Under the old
+        // absolute-cutoff code a ~0.5 top score_total classified as NONE; the
+        // relative classifier bands it above NONE. This assertion would FAIL
+        // against the pre-fix code.
+        assertThat(results.get(0).path("confidence_level").asText())
+                .as("top hit confidence_level")
+                .isNotEqualTo("NONE");
+
+        // Distinct score_total values must produce more than one confidence band,
+        // proving relative banding rather than uniform labeling.
+        List<String> levels = textValues(results, "confidence_level");
+        assertThat(levels.stream().distinct().count())
+                .as("distinct confidence levels across result-set: %s", levels)
+                .isGreaterThanOrEqualTo(2L);
+    }
+
+    @Test
     void validUntilIsExposedWhenIncluded() throws Exception {
         insertDrawer(
                 UUID.fromString("00000000-0000-0000-0000-000000000bb1"),
