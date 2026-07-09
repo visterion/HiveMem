@@ -179,7 +179,8 @@ class ReadToolIntegrationTest {
                 null
         );
 
-        JsonNode results = callToolContent("search", Map.of("query", "semantic oracle", "limit", 10));
+        JsonNode results = callToolContent("search", Map.of(
+                "query", "semantic oracle", "limit", 10, "include", List.of("scores")));
         assertThat(results.get(0).path("id").asText()).isEqualTo("00000000-0000-0000-0000-000000000501");
         assertThat(results.get(0).path("score_total").isNumber()).isTrue();
         assertThat(results.get(0).path("score_semantic").isNumber()).isTrue();
@@ -253,7 +254,8 @@ class ReadToolIntegrationTest {
                 null
         );
 
-        JsonNode results = callToolContent("search", Map.of("query", "alpha bravo charlie", "limit", 10));
+        JsonNode results = callToolContent("search", Map.of(
+                "query", "alpha bravo charlie", "limit", 10, "include", List.of("scores")));
         assertThat(results).hasSize(2);
 
         Map<String, Double> scoresById = new java.util.HashMap<>();

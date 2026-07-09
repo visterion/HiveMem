@@ -107,7 +107,8 @@ class SearchParityIntegrationTest {
 
         JsonNode results = callTool("writer-token", "search", Map.of(
                 "query", "vector search",
-                "limit", 10
+                "limit", 10,
+                "include", List.of("scores")
         ));
 
         JsonNode first = results.get(0);
@@ -118,6 +119,86 @@ class SearchParityIntegrationTest {
         assertThat(first.path("score_popularity").isNumber()).isTrue();
         assertThat(first.path("score_total").isNumber()).isTrue();
         assertThat(first.path("score_total").asDouble()).isGreaterThan(0.0d);
+    }
+
+    @Test
+    void defaultSearchOmitsPerSignalScoresButKeepsTotalAndConfidence() throws Exception {
+        // backlog #12: by default the response no longer carries the five per-signal
+        // sub-scores; score_total and confidence_level must still always be present.
+        insertDrawer(
+                UUID.fromString("00000000-0000-0000-0000-000000000d01"),
+                "PostgreSQL vector search with pgvector",
+                "eng", "facts", "db", 2, "pgvector search", "committed",
+                OffsetDateTime.parse("2026-04-03T10:00:00Z")
+        );
+
+        JsonNode results = callTool("writer-token", "search", Map.of(
+                "query", "vector search",
+                "limit", 10
+        ));
+
+        JsonNode first = results.get(0);
+        assertThat(first.has("score_total")).isTrue();
+        assertThat(first.path("score_total").isNumber()).isTrue();
+        assertThat(first.has("confidence_level")).isTrue();
+        assertThat(first.has("score_semantic")).isFalse();
+        assertThat(first.has("score_keyword")).isFalse();
+        assertThat(first.has("score_recency")).isFalse();
+        assertThat(first.has("score_importance")).isFalse();
+        assertThat(first.has("score_popularity")).isFalse();
+    }
+
+    @Test
+    void includeScoresRestoresPerSignalScores() throws Exception {
+        // backlog #12: include:["scores"] re-adds the five per-signal sub-scores
+        // while score_total + confidence_level remain present.
+        insertDrawer(
+                UUID.fromString("00000000-0000-0000-0000-000000000d02"),
+                "PostgreSQL vector search with pgvector",
+                "eng", "facts", "db", 2, "pgvector search", "committed",
+                OffsetDateTime.parse("2026-04-03T10:00:00Z")
+        );
+
+        JsonNode results = callTool("writer-token", "search", Map.of(
+                "query", "vector search",
+                "limit", 10,
+                "include", List.of("scores")
+        ));
+
+        JsonNode first = results.get(0);
+        assertThat(first.path("score_semantic").isNumber()).isTrue();
+        assertThat(first.path("score_keyword").isNumber()).isTrue();
+        assertThat(first.path("score_recency").isNumber()).isTrue();
+        assertThat(first.path("score_importance").isNumber()).isTrue();
+        assertThat(first.path("score_popularity").isNumber()).isTrue();
+        assertThat(first.path("score_total").isNumber()).isTrue();
+        assertThat(first.has("confidence_level")).isTrue();
+    }
+
+    @Test
+    void includeScoresWithContentYieldsBoth() throws Exception {
+        // backlog #12: "scores" is a pseudo-token that must not be forwarded to
+        // CellFieldSelection.forSearch; mixed with a real cell field like content
+        // it yields both the content field and the per-signal score keys.
+        insertDrawer(
+                UUID.fromString("00000000-0000-0000-0000-000000000d03"),
+                "PostgreSQL vector search with pgvector",
+                "eng", "facts", "db", 2, "pgvector search", "committed",
+                OffsetDateTime.parse("2026-04-03T10:00:00Z")
+        );
+
+        JsonNode results = callTool("writer-token", "search", Map.of(
+                "query", "vector search",
+                "limit", 10,
+                "include", List.of("scores", "content")
+        ));
+
+        JsonNode first = results.get(0);
+        assertThat(first.has("content")).isTrue();
+        assertThat(first.path("content").asText()).contains("PostgreSQL vector search");
+        assertThat(first.path("score_semantic").isNumber()).isTrue();
+        assertThat(first.path("score_total").isNumber()).isTrue();
+        assertThat(first.has("confidence_level")).isTrue();
     }
 
     @Test
@@ -297,7 +378,8 @@ class SearchParityIntegrationTest {
                 "weight_keyword", 0.0d,
                 "weight_recency", 0.0d,
                 "weight_importance", 0.0d,
-                "weight_popularity", 1.0d
+                "weight_popularity", 1.0d,
+                "include", List.of("scores")
         ));
 
         assertThat(results).hasSize(2);

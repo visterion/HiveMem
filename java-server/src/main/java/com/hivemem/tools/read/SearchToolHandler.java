@@ -21,8 +21,13 @@ public class SearchToolHandler implements ToolHandler {
 
     private static final int DEFAULT_LIMIT = 10;
     private static final int MAX_LIMIT = 100;
-    private static final String[] INCLUDE_FIELDS =
-            CellFieldSelection.searchIncludeFields().toArray(new String[0]);
+    private static final String[] INCLUDE_FIELDS = includeFieldsWithScores();
+
+    private static String[] includeFieldsWithScores() {
+        List<String> fields = new ArrayList<>(CellFieldSelection.searchIncludeFields());
+        fields.add("scores");
+        return fields.toArray(new String[0]);
+    }
 
     private final ReadToolService readToolService;
 
@@ -37,8 +42,8 @@ public class SearchToolHandler implements ToolHandler {
 
     @Override
     public String description() {
-        return "6-signal ranked search over committed cells; returns metadata by default. "
-                + "Use include to request extra fields such as content. "
+        return "6-signal ranked search over committed cells; returns metadata plus score_total and confidence_level by default. "
+                + "Use include to request extra fields such as content, or include \"scores\" for the five per-signal sub-scores. "
                 + "Use profile to pick a weight preset (balanced|semantic|recent|important|keyword). "
                 + "Use a where object (realm | realm_in | signal | topic | tags | status) to filter; "
                 + "pass where.realm=\"none\" to match cells with no realm assigned.";
@@ -68,7 +73,11 @@ public class SearchToolHandler implements ToolHandler {
         String realm = WriteArgumentParser.optionalText(arguments, "realm");
         String signal = WriteArgumentParser.optionalText(arguments, "signal");
         String topic = WriteArgumentParser.optionalText(arguments, "topic");
-        CellFieldSelection selection = CellFieldSelection.forSearch(CellFieldSelection.parseInclude(arguments));
+        List<String> rawInclude = CellFieldSelection.parseInclude(arguments); // may be null
+        boolean includeScores = rawInclude != null && rawInclude.contains("scores");
+        List<String> cellInclude = rawInclude == null ? null
+                : rawInclude.stream().filter(f -> !"scores".equals(f)).toList();
+        CellFieldSelection selection = CellFieldSelection.forSearch(cellInclude);
         List<String> realmIn = null;
         SearchProfile profile = SearchProfile.fromString(WriteArgumentParser.optionalText(arguments, "profile"));
         double weightSemantic = optionalWeight(arguments, "weight_semantic", profile.semantic);
@@ -116,7 +125,8 @@ public class SearchToolHandler implements ToolHandler {
                 weightGraphProximity,
                 tags,
                 status,
-                realmIn
+                realmIn,
+                includeScores
         );
     }
 

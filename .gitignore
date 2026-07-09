@@ -26,3 +26,6 @@ models/
 java-server/target/
 java-server/src/main/resources/static/
 .codex
+todo.md
+# Added by code-review-graph
+.code-review-graph/

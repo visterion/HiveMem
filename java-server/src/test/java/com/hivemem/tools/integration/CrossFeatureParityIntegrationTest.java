@@ -168,7 +168,8 @@ class CrossFeatureParityIntegrationTest {
                 "weight_keyword", 0.0d,
                 "weight_recency", 0.0d,
                 "weight_importance", 0.0d,
-                "weight_popularity", 1.0d
+                "weight_popularity", 1.0d,
+                "include", List.of("scores")
         ));
 
         assertThat(results).hasSize(1);

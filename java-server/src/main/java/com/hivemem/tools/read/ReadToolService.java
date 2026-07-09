@@ -164,7 +164,8 @@ public class ReadToolService {
             double weightGraphProximity,
             List<String> tags,
             String status,
-            List<String> realmIn
+            List<String> realmIn,
+            boolean includeScores
     ) {
         List<Float> queryVector = embeddingClient.encodeQuery(query);
         List<CellSearchRepository.RankedRow> rows = cellSearchRepository.rankedSearch(
@@ -176,7 +177,7 @@ public class ReadToolService {
                 rows.stream().map(CellSearchRepository.RankedRow::scoreTotal).toList());
         return rows.stream()
                 .map(row -> projectRow(row, selection,
-                        ConfidenceLevel.classify(row.scoreTotal(), stats, confidenceThresholds)))
+                        ConfidenceLevel.classify(row.scoreTotal(), stats, confidenceThresholds), includeScores))
                 .toList();
     }
 
@@ -270,7 +271,7 @@ public class ReadToolService {
         subject = kgEntityRepository.resolve(subject);
         List<Map<String, Object>> cells = search(subject, limit, null, null, null,
                 CellFieldSelection.forSearch(null),
-                0.30d, 0.15d, 0.15d, 0.15d, 0.15d, 0.10d, null, null, null);
+                0.30d, 0.15d, 0.15d, 0.15d, 0.15d, 0.10d, null, null, null, false);
         List<Map<String, Object>> facts = new ArrayList<>(cellReadRepository.quickFacts(subject));
         if (facts.size() < limit) {
             Set<Object> seen = facts.stream().map(f -> f.get("id")).collect(java.util.stream.Collectors.toSet());
@@ -381,7 +382,8 @@ public class ReadToolService {
     private static Map<String, Object> projectRow(
             CellSearchRepository.RankedRow row,
             CellFieldSelection selection,
-            ConfidenceLevel confidenceLevel
+            ConfidenceLevel confidenceLevel,
+            boolean includeScores
     ) {
         Map<String, Object> values = new LinkedHashMap<>();
         values.put("id", row.id().toString());
@@ -396,11 +398,13 @@ public class ReadToolService {
         values.put("valid_from", row.validFrom() == null ? null : row.validFrom().toString());
         values.put("valid_until", row.validUntil() == null ? null : row.validUntil().toString());
         Map<String, Object> projected = new LinkedHashMap<>(selection.project(values));
-        projected.put("score_semantic", rounded(row.scoreSemantic()));
-        projected.put("score_keyword", rounded(row.scoreKeyword()));
-        projected.put("score_recency", rounded(row.scoreRecency()));
-        projected.put("score_importance", rounded(row.scoreImportance()));
-        projected.put("score_popularity", rounded(row.scorePopularity()));
+        if (includeScores) {
+            projected.put("score_semantic", rounded(row.scoreSemantic()));
+            projected.put("score_keyword", rounded(row.scoreKeyword()));
+            projected.put("score_recency", rounded(row.scoreRecency()));
+            projected.put("score_importance", rounded(row.scoreImportance()));
+            projected.put("score_popularity", rounded(row.scorePopularity()));
+        }
         projected.put("score_total", rounded(row.scoreTotal()));
         projected.put("confidence_level", confidenceLevel.name());
         return projected;
