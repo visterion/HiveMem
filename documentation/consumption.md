@@ -140,30 +140,38 @@ When off, behavior is exactly today's contiguous separation path. When on, and
 the file is a multi-page PDF with Queen enabled, reassembly takes precedence over
 the contiguous separation path.
 
-How it works (runs off the consumption executor, never throws to the caller):
+How it works — a **3-pass pipeline**, all calls routed via the `reassembly-purpose`
+(default `separator`) purpose, ~2·N+1 LLM calls per N-page batch (runs off the
+consumption executor, never throws to the caller):
 
-1. **Rasterize + downscale.** Every page is rendered at `reassembly-render-dpi`
-   (default 150 — lower than OCR DPI, to keep the vision payload small) and
-   base64-encoded.
-2. **Walk in blocks.** Pages are processed in blocks of ≤ `block-size`
-   (default 15, under Bedrock's 20-images-per-request limit). For each block,
-   HiveMem POSTs the block's page images **plus the running document descriptors**
-   (sequential carry-over) to Vistierie `POST /llm/vision-multi` (purpose
-   `reassembly-purpose`, default `separator`; `reassembly-max-tokens` cap). The
-   model returns, per page, which document it belongs to (an existing carried-over
-   id or a new one) with a confidence.
-3. **Reorder + status.** Accumulated assignments become ordered page groups. A
-   group is `committed` if its minimum assignment confidence ≥
+1. **Pass 1 — orientation, per page.** Every page is rendered at
+   `reassembly-render-dpi` (default 150 — lower than OCR DPI, to keep the vision
+   payload small). `PageOrienter` shows the model the page twice — original (A)
+   and rotated 180° (B) — and asks it to pick the upright one plus a blank
+   verdict. The winning rotation is baked into the page image via PDF `/Rotate`
+   so everything downstream (and the stored PDF) sees an upright page.
+2. **Pass 2 — per-page metadata, on upright images.** `PageMetadataExtractor`
+   reads each upright page alone (one image per call — no cross-page labeling
+   ambiguity) and extracts sender, date, printed page label, doc type, reference
+   and a one-line summary.
+3. **Pass 3 — assembly, text-only.** `MailingAssembler` sends all pages'
+   extracted metadata (no images) in a single call and asks the model to group
+   pages into mailings, in reading order within each mailing. Grouping is a
+   reasoning task over already-extracted facts, not a vision task.
+4. **Blank drop.** A page is dropped if either the pass-1 vision signal *or* the
+   pixel-based detector (`blank-filter-enabled` / `blank-white-fraction`) calls it
+   blank. A mailing whose pages are all blank never becomes a cell.
+5. **Status.** A mailing is `committed` if its minimum confidence ≥
    `reassembly-confidence-threshold` (default **0.5** — aggressive, so most
-   groups commit), otherwise `pending`. Any batch page never assigned becomes its
-   own single-page `pending` document (nothing is dropped).
-4. **Split + ingest.** `BatchSplitter.assemble` builds one PDF per group
-   (arbitrary page order supported), and each is ingested with `source =
-   "consumption:"`. The staged source moves to `processed/`.
+   mailings commit), otherwise `pending`.
+6. **Split + ingest.** `BatchSplitter.assemble` builds one PDF per mailing
+   (arbitrary page order supported, in the reading order pass 3 returned), and
+   each is ingested with `source = "consumption:"`. The staged source moves to
+   `processed/`.
 
-**Degrade-safe.** On any error (vision call fails, JSON unparseable, etc.) the
-whole batch is ingested as a single `pending` document and the source is moved to
-`processed/`. Nothing is lost.
+**Degrade-safe.** On any error (vision/completion call fails, JSON unparseable,
+etc.) the whole batch is ingested as a single `pending` document and the source
+is moved to `processed/`. Nothing is lost.
 
 ### File disposition
 
@@ -219,15 +227,12 @@ the initial dispatch and the sweep — the sweep degrades rather than retries.
 | `reconcile-interval-ms` | `HIVEMEM_CONSUMPTION_RECONCILE_MS` | `300000` | Interval in ms for the stale-job reconcile sweep (default 5 min). |
 | `worker-threads` | `HIVEMEM_CONSUMPTION_WORKER_THREADS` | `2` | Size of the bounded worker pool that runs ingest+OCR. The `@Scheduled` poll thread only detects a stable file, stages it to `processing/`, and submits it to this pool — so multi-page OCR never blocks the poll or other scans. Backpressure (`CallerRunsPolicy`) applies under a burst; nothing is dropped. |
 | `reassembly-enabled` | `HIVEMEM_CONSUMPTION_REASSEMBLY_ENABLED` | `false` | Master switch for **reassembly mode** (content-based regrouping of non-contiguous pages). When off, the contiguous separation path is used. When on (with Queen + multi-page PDF), it takes precedence. |
-| `block-size` | `HIVEMEM_CONSUMPTION_BLOCK_SIZE` | `15` | Pages sent per `/llm/vision-multi` call. Keep ≤ 20 (Bedrock's images-per-request limit). |
 | `reassembly-confidence-threshold` | `HIVEMEM_CONSUMPTION_REASSEMBLY_CONFIDENCE` | `0.5` | Minimum per-group confidence for a `committed` document; below it the group is `pending`. Aggressive default — most groups commit. |
 | `reassembly-render-dpi` | `HIVEMEM_CONSUMPTION_REASSEMBLY_DPI` | `150` | DPI used to rasterize pages into the vision payload (downscaled vs. OCR DPI to keep requests small). |
-| `reassembly-purpose` | `HIVEMEM_CONSUMPTION_REASSEMBLY_PURPOSE` | `separator` | Vistierie routing purpose for the `/llm/vision-multi` call. Needs a routing rule pointing at a vision-capable model (Haiku works; Sonnet for harder visual grouping). |
+| `reassembly-purpose` | `HIVEMEM_CONSUMPTION_REASSEMBLY_PURPOSE` | `separator` | Vistierie routing purpose for all 3-pass reassembly calls. Needs a routing rule pointing at a vision-capable model (Haiku works; Sonnet for harder visual grouping). |
 | `reassembly-max-tokens` | `HIVEMEM_CONSUMPTION_REASSEMBLY_MAX_TOKENS` | `4096` | Max output tokens for the grouping response. |
-| `blank-filter-enabled` | `HIVEMEM_CONSUMPTION_BLANK_FILTER_ENABLED` | `true` | Drop near-white pages from reassembled documents (image signal). A document whose pages are all blank is dropped entirely, so it never becomes a cell. |
+| `blank-filter-enabled` | `HIVEMEM_CONSUMPTION_BLANK_FILTER_ENABLED` | `true` | Drop near-white pages from reassembled documents (image signal, combined with the LLM's own blank verdict). A document whose pages are all blank is dropped entirely, so it never becomes a cell. |
 | `blank-white-fraction` | `HIVEMEM_CONSUMPTION_BLANK_WHITE_FRACTION` | `0.995` | Fraction of near-white pixels above which a page is treated as blank. Higher = more conservative (fewer pages dropped). |
-| `orientation-correction-enabled` | `HIVEMEM_CONSUMPTION_ORIENTATION_CORRECTION_ENABLED` | `true` | Run Tesseract OSD on each kept page and apply the detected rotation when assembling, so stored PDFs are upright. |
-| `osd-timeout-seconds` | `HIVEMEM_CONSUMPTION_OSD_TIMEOUT_SECONDS` | `15` | Per-page timeout for the OSD orientation probe. On failure the page is left unrotated. |
 
 ### New `hivemem.queen.*` keys added by this feature
 

@@ -3,7 +3,7 @@ package com.hivemem.consumption;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-/** Fence/prose-tolerant parsing of LLM JSON replies (moved out of the former PageGrouper).
+/** Fence/prose-tolerant parsing of LLM JSON replies (shared by the 3-pass reassembly components).
  *  Narrows to the substring between the outermost brackets/braces, so it survives ```json fences,
  *  single-line fences and stray prose around the payload. */
 final class LlmJson {

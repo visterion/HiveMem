@@ -105,7 +105,6 @@ hivemem:
     reconcile-interval-ms: ${HIVEMEM_CONSUMPTION_RECONCILE_MS:300000}
     worker-threads: ${HIVEMEM_CONSUMPTION_WORKER_THREADS:2}
     reassembly-enabled: ${HIVEMEM_CONSUMPTION_REASSEMBLY_ENABLED:false}
-    block-size: ${HIVEMEM_CONSUMPTION_BLOCK_SIZE:15}
     reassembly-confidence-threshold: ${HIVEMEM_CONSUMPTION_REASSEMBLY_CONFIDENCE:0.5}
     reassembly-render-dpi: ${HIVEMEM_CONSUMPTION_REASSEMBLY_DPI:150}
     reassembly-purpose: ${HIVEMEM_CONSUMPTION_REASSEMBLY_PURPOSE:separator}

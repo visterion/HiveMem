@@ -1,8 +1,6 @@
 package com.hivemem.consumption;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
@@ -46,31 +44,22 @@ class ReassemblyIT extends ConsumptionITSupport {
         cp.setReassemblyEnabled(true);
         cp.setBlankFilterEnabled(false); // blank A4 test pages would otherwise be dropped
 
-        // Task 6 note: this test predates the 3-pass rewrite (Task 5) and still exercised the old
-        // single-vision-model grouping flow. Minimally adapted here (forced by the compiler — the
-        // orchestrator constructor signature changed) by mocking the three new passes directly instead
-        // of driving a VisionMultiClient; full re-validation of this IT against the new pipeline is
-        // Task 6 work.
-        PageOrienter orienter = mock(PageOrienter.class);
-        when(orienter.orient(anyString(), anyInt(), any()))
-                .thenAnswer(inv -> new PageOrienter.PageOrientation(inv.getArgument(1), 0, false, 0.9));
-        PageMetadataExtractor extractor = mock(PageMetadataExtractor.class);
-        when(extractor.extract(anyString(), anyInt(), any()))
-                .thenAnswer(inv -> new PageMetadataExtractor.PageMetadata(inv.getArgument(1),
-                        "S", null, null, "letter", null, "p", false));
-        MailingAssembler assembler = mock(MailingAssembler.class);
-        DocGroup docA = new DocGroup("A", null);
-        docA.minConfidence = 0.9;
-        docA.pages.add(1);
-        docA.pages.add(3);
-        DocGroup docB = new DocGroup("B", null);
-        docB.minConfidence = 0.9;
-        docB.pages.add(2);
-        when(assembler.assemble(anyString(), anyList())).thenReturn(List.of(docA, docB));
-
-        ReassemblyOrchestrator orch = new ReassemblyOrchestrator(
-                cp, new PdfPageRasterizer(), orienter, extractor, assembler, new PageReassembler(cp),
-                new BatchSplitter(), attachments, new ConsumptionFileMover(root));
+        VisionMultiClient vm = mock(VisionMultiClient.class);
+        // Pass 1 (2 images per call) → upright A; Pass 2 (1 image per call) → minimal metadata.
+        when(vm.group(anyString(), anyString(), anyList())).thenAnswer(inv -> {
+            List<?> imgs = inv.getArgument(2);
+            return imgs.size() == 2
+                    ? "{\"upright\":\"A\",\"blank\":false,\"confidence\":0.9}"
+                    : "{\"sender\":\"S\",\"date\":null,\"page_label\":null,\"doc_type\":\"letter\","
+                            + "\"reference\":null,\"summary\":\"p\",\"blank\":false}";
+        });
+        CompleteClient cc = mock(CompleteClient.class);
+        when(cc.complete(anyString(), anyString())).thenReturn(
+                "[{\"mailing\":\"A\",\"description\":\"doc A\",\"confidence\":0.9,\"pages\":[1,3]},"
+                        + "{\"mailing\":\"B\",\"description\":\"doc B\",\"confidence\":0.9,\"pages\":[2]}]");
+        ReassemblyOrchestrator orch = new ReassemblyOrchestrator(cp, new PdfPageRasterizer(),
+                new PageOrienter(vm), new PageMetadataExtractor(vm), new MailingAssembler(cc),
+                new PageReassembler(cp), new BatchSplitter(), attachments, new ConsumptionFileMover(root));
 
         orch.reassemble(staged, pdf, 3);
 
@@ -100,13 +89,12 @@ class ReassemblyIT extends ConsumptionITSupport {
         cp.setReassemblyEnabled(true);
         cp.setMaxPages(2); // batch (3 pages) exceeds the cap
 
-        PageOrienter orienter = mock(PageOrienter.class);
-        PageMetadataExtractor extractor = mock(PageMetadataExtractor.class);
-        MailingAssembler assembler = mock(MailingAssembler.class);
+        VisionMultiClient vm = mock(VisionMultiClient.class);
+        CompleteClient cc = mock(CompleteClient.class);
 
-        ReassemblyOrchestrator orch = new ReassemblyOrchestrator(
-                cp, new PdfPageRasterizer(), orienter, extractor, assembler, new PageReassembler(cp),
-                new BatchSplitter(), attachments, new ConsumptionFileMover(root));
+        ReassemblyOrchestrator orch = new ReassemblyOrchestrator(cp, new PdfPageRasterizer(),
+                new PageOrienter(vm), new PageMetadataExtractor(vm), new MailingAssembler(cc),
+                new PageReassembler(cp), new BatchSplitter(), attachments, new ConsumptionFileMover(root));
 
         orch.reassemble(staged, pdf, 3);
 
@@ -115,7 +103,7 @@ class ReassemblyIT extends ConsumptionITSupport {
         assertEquals(0, cells, "an over-limit batch must not produce any consumption cells");
 
         // None of the three passes must run for an over-limit batch.
-        org.mockito.Mockito.verifyNoInteractions(orienter, extractor, assembler);
+        org.mockito.Mockito.verifyNoInteractions(vm, cc);
 
         assertFalse(Files.exists(staged), "staged file must be moved out of the root");
         try (var s = Files.list(root.resolve("failed"))) {
