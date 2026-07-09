@@ -12,6 +12,11 @@ final class LlmJson {
 
     private LlmJson() {}
 
+    /** Cap payload excerpts in exception messages so document content does not flood logs. */
+    private static String excerpt(String text) {
+        return text.length() <= 200 ? text : text.substring(0, 200) + "…[truncated]";
+    }
+
     /** Parse the first JSON object in {@code text}. @throws IllegalStateException on no/invalid JSON. */
     static JsonNode parseObject(String text) {
         return parse(text, '{', '}');
@@ -26,7 +31,7 @@ final class LlmJson {
         if (text == null) throw new IllegalStateException("LLM returned no text");
         int s = text.indexOf(open);
         int e = text.lastIndexOf(close);
-        if (s < 0 || e <= s) throw new IllegalStateException("no JSON payload in LLM output: " + text);
+        if (s < 0 || e <= s) throw new IllegalStateException("no JSON payload in LLM output: " + excerpt(text));
         try {
             return MAPPER.readTree(text.substring(s, e + 1));
         } catch (RuntimeException ex) {
