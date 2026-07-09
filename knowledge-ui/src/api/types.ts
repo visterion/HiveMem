@@ -31,12 +31,12 @@ export interface Cell {
 
 export interface SearchResult extends Cell {
   score_total: number
-  score_semantic: number
-  score_keyword: number
-  score_recency: number
-  score_importance: number
-  score_popularity: number
-  score_graph_proximity: number
+  score_semantic?: number
+  score_keyword?: number
+  score_recency?: number
+  score_importance?: number
+  score_popularity?: number
+  score_graph_proximity?: number
   confidence_level?: string
 }
 

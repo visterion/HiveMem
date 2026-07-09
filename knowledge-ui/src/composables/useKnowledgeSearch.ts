@@ -48,7 +48,7 @@ export function useKnowledgeSearch() {
     try {
       const api = useApi()
       const searchArgs: Record<string, unknown> = {
-        query: query.value, limit: 50, include: ['summary', 'created_at'],
+        query: query.value, limit: 50, include: ['summary', 'created_at', 'scores'],
       }
       const tags = [...facets.tag]; if (tags.length) searchArgs.tags = tags
       if (facets.realm.size === 1) searchArgs.realm = [...facets.realm][0]
