@@ -516,6 +516,18 @@ public class WriteToolService {
     }
 
     @Transactional
+    public Map<String, Object> rejectCell(AuthPrincipal principal, UUID cellId, String reason) {
+        Map<String, Object> result = writeToolRepository.rejectCell(cellId);
+        Map<String, Object> opPayload = new java.util.LinkedHashMap<>();
+        opPayload.put("cell_id", cellId.toString());
+        opPayload.put("reason", reason);
+        opPayload.put("agent_id", principal.name());
+        UUID opId = opLogWriter.append("reject_cell", opPayload);
+        pushDispatcher.dispatch(opId);
+        return result;
+    }
+
+    @Transactional
     public Map<String, Object> addTags(AuthPrincipal principal, UUID cellId, List<String> tags) {
         int updated = writeToolRepository.addTags(cellId, tags);
         Map<String, Object> opPayload = new java.util.LinkedHashMap<>();

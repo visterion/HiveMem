@@ -8,10 +8,10 @@ Each token has one of four roles. The role controls which tools the client sees 
 
 | Role | Visible tools | Write behavior | Can approve? |
 |---|---|---|---|
-| `admin` | All 46 | `status: committed` | Yes |
-| `writer` | 42 (no admin tools) | `status: committed` | No |
+| `admin` | All 47 | `status: committed` | Yes |
+| `writer` | 43 (no admin tools) | `status: committed` | No |
 | `reader` | 23 (read only) | Can't write | No |
-| `agent` | 42 (same as writer) | `status: pending` | No |
+| `agent` | 43 (same as writer) | `status: pending` | No |
 
 The `agent` role is the key constraint: agents can add knowledge, but every write goes into a pending queue. Only an admin can approve or reject it. This prevents any agent from writing and self-approving in the same session.
 

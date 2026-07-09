@@ -517,6 +517,47 @@ public class WriteToolRepository {
         });
     }
 
+    public Map<String, Object> rejectCell(UUID cellId) {
+        return dslContext.transactionResult(configuration -> {
+            DSLContext tx = DSL.using(configuration);
+            Record existing = tx.fetchOne("""
+                    SELECT valid_until, status
+                    FROM cells
+                    WHERE id = ?
+                    FOR UPDATE
+                    """, cellId);
+            if (existing == null) {
+                throw new IllegalArgumentException("cell not found");
+            }
+            OffsetDateTime validUntil = existing.get("valid_until", OffsetDateTime.class);
+            if (validUntil != null) {
+                throw new IllegalArgumentException(
+                        "cell version is not current — target the live version");
+            }
+            String currentStatus = existing.get("status", String.class);
+            Map<String, Object> result = new LinkedHashMap<>();
+            if ("rejected".equals(currentStatus)) {
+                result.put("id", cellId.toString());
+                result.put("status", "rejected");
+                return result; // idempotent no-op
+            }
+            Record updated = tx.fetchOne("""
+                    UPDATE cells
+                    SET status = 'rejected'
+                    WHERE id = ?
+                      AND valid_until IS NULL
+                      AND status IN ('committed', 'pending')
+                    RETURNING id, status
+                    """, cellId);
+            if (updated == null) {
+                throw new IllegalArgumentException("cell not found, closed, or already rejected");
+            }
+            result.put("id", uuidValue(updated, "id"));
+            result.put("status", updated.get("status", String.class));
+            return result;
+        });
+    }
+
     public List<Map<String, Object>> checkDuplicateCell(String vectorLiteral, double threshold) {
         List<Map<String, Object>> results = new ArrayList<>();
         for (Record row : dslContext.fetch(

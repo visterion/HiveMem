@@ -58,6 +58,7 @@ public class ToolPermissionService {
             "remove_tunnel",
             "revise_cell",
             "reclassify",
+            "reject_cell",
             "revise_fact",
             "register_agent",
             "diary_write",

@@ -1323,6 +1323,118 @@ class WriteToolsIntegrationTest {
                         .get("from_cell", UUID.class));
     }
 
+    @Test
+    void rejectCellMarksCommittedCellRejectedAndHidesFromSearch() throws Exception {
+        JsonNode added = callToolContent("writer-token", "add_cell", Map.of(
+                "content", "Zebraflux quintessential reject marker phrase",
+                "realm", "alpha",
+                "signal", "facts",
+                "topic", "search",
+                "summary", "Zebraflux quintessential reject marker phrase"
+        ));
+        String cellId = added.path("id").asText();
+        assertThat(cellId).isNotBlank();
+
+        // The committed cell is searchable before rejection.
+        JsonNode before = callToolContent("writer-token", "search", Map.of("query", "Zebraflux"));
+        boolean foundBefore = false;
+        for (JsonNode row : before) {
+            if (cellId.equals(row.path("id").asText())) {
+                foundBefore = true;
+            }
+        }
+        assertThat(foundBefore).as("cell should be searchable before rejection").isTrue();
+
+        JsonNode rejected = callToolContent("writer-token", "reject_cell", Map.of("cell_id", cellId));
+        assertThat(rejected.path("id").asText()).isEqualTo(cellId);
+        assertThat(rejected.path("status").asText()).isEqualTo("rejected");
+
+        org.junit.jupiter.api.Assertions.assertEquals("rejected", dslContext.fetchOne(
+                "SELECT status FROM cells WHERE id = ?", UUID.fromString(cellId)).get("status", String.class));
+
+        // After rejection the cell no longer appears in search (search is over committed cells).
+        JsonNode after = callToolContent("writer-token", "search", Map.of("query", "Zebraflux"));
+        for (JsonNode row : after) {
+            org.junit.jupiter.api.Assertions.assertNotEquals(cellId, row.path("id").asText());
+        }
+    }
+
+    @Test
+    void rejectCellIsIdempotentWhenAlreadyRejected() throws Exception {
+        JsonNode added = callToolContent("writer-token", "add_cell", Map.of(
+                "content", "Idempotent reject candidate",
+                "realm", "alpha",
+                "signal", "facts",
+                "topic", "search"
+        ));
+        String cellId = added.path("id").asText();
+
+        JsonNode first = callToolContent("writer-token", "reject_cell", Map.of("cell_id", cellId));
+        assertThat(first.path("status").asText()).isEqualTo("rejected");
+
+        JsonNode second = callToolContent("writer-token", "reject_cell", Map.of("cell_id", cellId));
+        assertThat(second.path("id").asText()).isEqualTo(cellId);
+        assertThat(second.path("status").asText()).isEqualTo("rejected");
+    }
+
+    @Test
+    void rejectCellRejectsUnknownId() throws Exception {
+        mockMvc.perform(post("/mcp")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer writer-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "jsonrpc":"2.0","id":50,"method":"tools/call",
+                                  "params":{
+                                    "name":"reject_cell",
+                                    "arguments":{
+                                      "cell_id":"00000000-0000-0000-0000-000000000899"
+                                    }
+                                  }
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value(-32602))
+                .andExpect(jsonPath("$.error.message").value("cell not found"));
+    }
+
+    @Test
+    void rejectCellRejectsNonLiveVersion() throws Exception {
+        UUID cellId = UUID.fromString("00000000-0000-0000-0000-000000000850");
+        insertDrawer(cellId, null, "Reject non-live", "r", "facts", "t", "system", 1,
+                "s", null, null, "committed", "writer-1",
+                OffsetDateTime.parse("2026-04-11T09:00:00Z"),
+                OffsetDateTime.parse("2026-04-11T09:00:00Z"),
+                null);
+
+        // Revising closes the old version (sets valid_until), producing a new live revision.
+        callToolContent("writer-token", "revise_cell", Map.of(
+                "old_id", cellId.toString(),
+                "new_content", "Reject non-live v2",
+                "new_summary", "v2"
+        ));
+
+        // Rejecting the OLD, now-closed version must fail.
+        mockMvc.perform(post("/mcp")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer writer-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "jsonrpc":"2.0","id":51,"method":"tools/call",
+                                  "params":{
+                                    "name":"reject_cell",
+                                    "arguments":{
+                                      "cell_id":"00000000-0000-0000-0000-000000000850"
+                                    }
+                                  }
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value(-32602))
+                .andExpect(jsonPath("$.error.message").value(
+                        "cell version is not current — target the live version"));
+    }
+
     private void insertFact(
             UUID id,
             UUID parentId,
