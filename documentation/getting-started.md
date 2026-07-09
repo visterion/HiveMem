@@ -189,7 +189,7 @@ Add to `claude_desktop_config.json`:
 
 ## Teach Your Agent to Use HiveMem
 
-The MCP server ships instructions that tell the agent *how* to use the 34 tools. But the agent won't reliably *remember to archive* unless you tell it to in your own CLAUDE.md.
+The MCP server ships instructions that tell the agent *how* to use the 46 tools. But the agent won't reliably *remember to archive* unless you tell it to in your own CLAUDE.md.
 
 Add this to your **user-level** CLAUDE.md (`~/.claude/CLAUDE.md`) so it applies to every project:
 

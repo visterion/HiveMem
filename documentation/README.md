@@ -11,7 +11,7 @@ Prerequisites, Docker Compose setup, first token, connecting to Claude Code and 
 The four-level knowledge hierarchy — Realms, Signals, Topics, Cells — plus Tunnels, Facts, and Blueprints. Start here if you want to understand how HiveMem organizes knowledge.
 
 ### [Tools](tools.md)
-All 37 MCP tools with descriptions, the parallel REST attachment API, the 6 search signals and their weights, and the progressive summarization layers (content → summary → key points → insight).
+All 46 MCP tools with descriptions, the parallel REST attachment API, the 6 search signals and their weights, and the progressive summarization layers (content → summary → key points → insight).
 
 ### [Architecture](architecture.md)
 System architecture diagram, PostgreSQL data model (ER), security and capability matrix, environment variable reference, and compliance details.

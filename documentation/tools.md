@@ -76,12 +76,14 @@ HiveMem exposes **46 MCP tools** across search, knowledge graph, progressive sum
 
 ## Tool-surface recommendation
 
-**This is a recommendation only — no behavior change has been made.** The 46-tool surface above has grown organically over several rounds of feature work. If the surface is ever pared down for agent ergonomics (fewer tools to reason about per call), a natural split is:
+**Implemented (tool-consolidation round):** the tag, reclassify, saved-search, and quick-facts families have been collapsed into single tools. `add_tags`/`remove_tags`/`bulk_tag` → `manage_tags`; `reclassify_cell`/`bulk_reclassify` → `reclassify`; `save_search`/`delete_saved_search`/`list_saved_searches` → the action-multiplexed `saved_searches`; and the standalone `quick_facts` was folded into `entity_overview` (`depth=quick`). This merged 9 tools into 4 and brought the surface to the **46 tools** documented above.
+
+The remaining surface has still grown organically over several rounds of feature work. If it is ever pared down further for agent ergonomics (fewer tools to reason about per call), a natural split is:
 
 - **Curated core set** (the ~13 tools that cover the large majority of day-to-day agent workflows — orientation, search, browsing, and the primary write path): `wake_up`, `search`, `list_cell_ids`, `list_documents`, `facet_count`, `get_cell`, `entity_overview`, `add_cell`, `revise_cell`, `reclassify`, `manage_tags`, `kg_add`, `search_kg`.
-- **Multiplex candidates** (lower-traffic families where several single-purpose tools could plausibly collapse into one parameterized tool per family, trading a larger input schema for a smaller tool list): diary (`diary_read` + `diary_write`), agents (`list_agents` + `register_agent`), references (`add_reference` + `link_reference` + `reading_list`). (Saved searches have already been consolidated into the action-multiplexed `saved_searches` tool.)
+- **Remaining multiplex candidates** (lower-traffic families where several single-purpose tools could still plausibly collapse into one parameterized tool per family, trading a larger input schema for a smaller tool list): diary (`diary_read` + `diary_write`), agents (`list_agents` + `register_agent`), references (`add_reference` + `link_reference` + `reading_list`).
 
-Everything not named above (blueprints, tunnels, tags, attachments, admin/Queen tooling, etc.) would stay as-is under this proposal. No tools have been removed, renamed, or merged as part of this note — it is documentation of a possible future direction, not a change to `ToolPermissionService` or the registered handlers.
+Everything not named above (blueprints, tunnels, attachments, admin/Queen tooling, etc.) stays as-is; consolidating the remaining candidates is a possible future direction, not yet a change to `ToolPermissionService` or the registered handlers.
 
 ## Attachments
 
