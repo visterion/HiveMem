@@ -67,9 +67,7 @@ public class ToolPermissionService {
             "upload_attachment",
             "save_search",
             "delete_saved_search",
-            "add_tags",
-            "remove_tags",
-            "bulk_tag",
+            "manage_tags",
             "bulk_reclassify"
     );
 

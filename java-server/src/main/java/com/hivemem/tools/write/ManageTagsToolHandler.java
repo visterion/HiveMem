@@ -16,25 +16,25 @@ import java.util.Map;
 import java.util.UUID;
 
 @Component
-@Order(43)
-public class BulkTagToolHandler implements ToolHandler {
+@Order(41)
+public class ManageTagsToolHandler implements ToolHandler {
 
     private final WriteToolService writeToolService;
 
-    public BulkTagToolHandler(WriteToolService writeToolService) {
+    public ManageTagsToolHandler(WriteToolService writeToolService) {
         this.writeToolService = writeToolService;
     }
 
     @Override
     public String name() {
-        return "bulk_tag";
+        return "manage_tags";
     }
 
     @Override
     public String description() {
-        return "Add and/or remove tags on multiple cells in a single transaction. "
-                + "Exactly one of cell_ids or where must be provided. "
-                + "At least one of add_tags or remove_tags must be provided. "
+        return "Add and/or remove tags on one or more cells in a single transaction. "
+                + "Exactly one of cell_ids or where must be provided (single cell = cell_ids:[id]). "
+                + "At least one of add or remove must be provided. "
                 + "where matches are capped at 1000 cells; matches over 200 require confirm: true. "
                 + "Operations are idempotent. Returns {updated: N, matched: N}.";
     }
@@ -47,8 +47,8 @@ public class BulkTagToolHandler implements ToolHandler {
                         + "(exactly one of cell_ids/where). \"none\" realm = cells without a realm.",
                         CellSelectorSchemas.where())
                 .optionalBoolean("confirm", "Required (true) when where matches more than 200 cells")
-                .optionalStringList("add_tags", "Tags to add to every cell (idempotent union)")
-                .optionalStringList("remove_tags", "Tags to remove from every cell (idempotent)")
+                .optionalStringList("add", "Tags to add to every cell (idempotent union)")
+                .optionalStringList("remove", "Tags to remove from every cell (idempotent)")
                 .build();
     }
 
@@ -60,10 +60,10 @@ public class BulkTagToolHandler implements ToolHandler {
         if ((cellIds == null) == !hasWhere) {
             throw new IllegalArgumentException("exactly one of cell_ids or where must be provided");
         }
-        List<String> addTags = WriteArgumentParser.optionalTextList(arguments, "add_tags");
-        List<String> removeTags = WriteArgumentParser.optionalTextList(arguments, "remove_tags");
+        List<String> addTags = WriteArgumentParser.optionalTextList(arguments, "add");
+        List<String> removeTags = WriteArgumentParser.optionalTextList(arguments, "remove");
         if ((addTags == null || addTags.isEmpty()) && (removeTags == null || removeTags.isEmpty())) {
-            throw new IllegalArgumentException("at least one of add_tags or remove_tags required");
+            throw new IllegalArgumentException("at least one of add or remove required");
         }
         if (cellIds != null) {
             return writeToolService.bulkTag(principal, cellIds, addTags, removeTags);

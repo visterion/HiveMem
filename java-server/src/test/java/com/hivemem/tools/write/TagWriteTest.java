@@ -172,9 +172,9 @@ class TagWriteTest {
     void addTagsThenGetCellShowsTag() throws Exception {
         UUID cellId = seedCell("content for tagging", "test-realm");
 
-        JsonNode result = callToolContent("writer-token", "add_tags", Map.of(
-                "cell_id", cellId.toString(),
-                "tags", List.of("invoice", "urgent")
+        JsonNode result = callToolContent("writer-token", "manage_tags", Map.of(
+                "cell_ids", List.of(cellId.toString()),
+                "add", List.of("invoice", "urgent")
         ));
 
         assertThat(result.path("updated").asInt()).isEqualTo(1);
@@ -195,15 +195,15 @@ class TagWriteTest {
         UUID cellId = seedCell("idempotency test", "test-realm");
 
         // Add once
-        callToolContent("writer-token", "add_tags", Map.of(
-                "cell_id", cellId.toString(),
-                "tags", List.of("invoice")
+        callToolContent("writer-token", "manage_tags", Map.of(
+                "cell_ids", List.of(cellId.toString()),
+                "add", List.of("invoice")
         ));
 
         // Add again (same tag)
-        JsonNode result = callToolContent("writer-token", "add_tags", Map.of(
-                "cell_id", cellId.toString(),
-                "tags", List.of("invoice")
+        JsonNode result = callToolContent("writer-token", "manage_tags", Map.of(
+                "cell_ids", List.of(cellId.toString()),
+                "add", List.of("invoice")
         ));
         assertThat(result.path("updated").asInt()).isEqualTo(1);
 
@@ -217,9 +217,9 @@ class TagWriteTest {
     void removeTagsRemovesTag() throws Exception {
         UUID cellId = seedCell("remove tag test", "test-realm", "invoice", "urgent", "draft");
 
-        JsonNode result = callToolContent("writer-token", "remove_tags", Map.of(
-                "cell_id", cellId.toString(),
-                "tags", List.of("urgent")
+        JsonNode result = callToolContent("writer-token", "manage_tags", Map.of(
+                "cell_ids", List.of(cellId.toString()),
+                "remove", List.of("urgent")
         ));
 
         assertThat(result.path("updated").asInt()).isEqualTo(1);
@@ -234,9 +234,9 @@ class TagWriteTest {
         UUID cellId = seedCell("remove idempotent test", "test-realm", "invoice");
 
         // Remove a tag that doesn't exist — should not error
-        JsonNode result = callToolContent("writer-token", "remove_tags", Map.of(
-                "cell_id", cellId.toString(),
-                "tags", List.of("nonexistent-tag")
+        JsonNode result = callToolContent("writer-token", "manage_tags", Map.of(
+                "cell_ids", List.of(cellId.toString()),
+                "remove", List.of("nonexistent-tag")
         ));
 
         assertThat(result.path("updated").asInt()).isEqualTo(1);
@@ -248,12 +248,12 @@ class TagWriteTest {
     void addTagsDoesNotChangeStatus() throws Exception {
         UUID cellId = seedCell("writer commit test", "test-realm");
 
-        callToolContent("writer-token", "add_tags", Map.of(
-                "cell_id", cellId.toString(),
-                "tags", List.of("committed-tag")
+        callToolContent("writer-token", "manage_tags", Map.of(
+                "cell_ids", List.of(cellId.toString()),
+                "add", List.of("committed-tag")
         ));
 
-        // The cell's status should still be 'committed' (add_tags is in-place, no status change)
+        // The cell's status should still be 'committed' (manage_tags is in-place, no status change)
         org.jooq.Record row = dslContext.fetchOne(
                 "SELECT status FROM cells WHERE id = ? AND valid_until IS NULL", cellId);
         assertThat(row).isNotNull();
@@ -269,10 +269,10 @@ class TagWriteTest {
         UUID cell1 = seedCell("bulk cell 1", "test-realm");
         UUID cell2 = seedCell("bulk cell 2", "test-realm", "existing-tag");
 
-        JsonNode result = callToolContent("writer-token", "bulk_tag", Map.of(
+        JsonNode result = callToolContent("writer-token", "manage_tags", Map.of(
                 "cell_ids", List.of(cell1.toString(), cell2.toString()),
-                "add_tags", List.of("bulk-tag"),
-                "remove_tags", List.of("existing-tag")
+                "add", List.of("bulk-tag"),
+                "remove", List.of("existing-tag")
         ));
 
         assertThat(result.path("updated").asInt()).isEqualTo(2);
@@ -293,9 +293,9 @@ class TagWriteTest {
         UUID cell1 = seedCell("bulk add only 1", "test-realm");
         UUID cell2 = seedCell("bulk add only 2", "test-realm");
 
-        JsonNode result = callToolContent("writer-token", "bulk_tag", Map.of(
+        JsonNode result = callToolContent("writer-token", "manage_tags", Map.of(
                 "cell_ids", List.of(cell1.toString(), cell2.toString()),
-                "add_tags", List.of("new-tag")
+                "add", List.of("new-tag")
         ));
 
         assertThat(result.path("updated").asInt()).isEqualTo(2);
@@ -307,12 +307,12 @@ class TagWriteTest {
 
     @Test
     void removeTagsOnNullTagsCellLeavesTagsNull() throws Exception {
-        // C-1: a cell with NULL tags must remain NULL after remove_tags, not become {}
+        // C-1: a cell with NULL tags must remain NULL after tag removal, not become {}
         UUID cellId = seedCellNullTags("null-tags cell", "test-realm");
 
-        JsonNode result = callToolContent("writer-token", "remove_tags", Map.of(
-                "cell_id", cellId.toString(),
-                "tags", List.of("nonexistent-tag")
+        JsonNode result = callToolContent("writer-token", "manage_tags", Map.of(
+                "cell_ids", List.of(cellId.toString()),
+                "remove", List.of("nonexistent-tag")
         ));
 
         assertThat(result.path("updated").asInt()).isEqualTo(1);
@@ -356,9 +356,9 @@ class TagWriteTest {
         UUID cell3 = seedCell("merge-src cell 3", "merge-src");
         UUID otherCell = seedCell("other realm cell", "other");
 
-        JsonNode result = callToolContent("writer-token", "bulk_tag", Map.of(
+        JsonNode result = callToolContent("writer-token", "manage_tags", Map.of(
                 "where", Map.of("realm", "merge-src"),
-                "add_tags", List.of("x")
+                "add", List.of("x")
         ));
 
         assertThat(result.path("updated").asInt()).isEqualTo(3);
@@ -395,10 +395,10 @@ class TagWriteTest {
     void bulkTagRejectsBothCellIdsAndWhere() throws Exception {
         UUID cellId = seedCell("both selectors cell", "test-realm");
 
-        String message = callToolError("writer-token", "bulk_tag", Map.of(
+        String message = callToolError("writer-token", "manage_tags", Map.of(
                 "cell_ids", List.of(cellId.toString()),
                 "where", Map.of("realm", "test-realm"),
-                "add_tags", List.of("x")
+                "add", List.of("x")
         ));
 
         assertThat(message).contains("exactly one");
@@ -406,8 +406,8 @@ class TagWriteTest {
 
     @Test
     void bulkTagRejectsNeither() throws Exception {
-        String message = callToolError("writer-token", "bulk_tag", Map.of(
-                "add_tags", List.of("x")
+        String message = callToolError("writer-token", "manage_tags", Map.of(
+                "add", List.of("x")
         ));
 
         assertThat(message).contains("exactly one");
@@ -419,15 +419,15 @@ class TagWriteTest {
             seedCell("confirm gate cell " + i, "confirm-gate-realm");
         }
 
-        String message = callToolError("writer-token", "bulk_tag", Map.of(
+        String message = callToolError("writer-token", "manage_tags", Map.of(
                 "where", Map.of("realm", "confirm-gate-realm"),
-                "add_tags", List.of("x")
+                "add", List.of("x")
         ));
         assertThat(message).contains("confirm");
 
-        JsonNode result = callToolContent("writer-token", "bulk_tag", Map.of(
+        JsonNode result = callToolContent("writer-token", "manage_tags", Map.of(
                 "where", Map.of("realm", "confirm-gate-realm"),
-                "add_tags", List.of("x"),
+                "add", List.of("x"),
                 "confirm", true
         ));
         assertThat(result.path("updated").asInt()).isEqualTo(201);
