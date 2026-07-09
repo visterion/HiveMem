@@ -15,6 +15,7 @@ import com.hivemem.search.DocumentListRepository;
 import com.hivemem.search.MediaListRepository;
 import com.hivemem.search.FacetRepository;
 import com.hivemem.search.KgSearchRepository;
+import com.hivemem.search.ResultSetStats;
 import com.hivemem.search.SearchWeightsProperties;
 import com.hivemem.write.AdminToolService;
 import org.slf4j.Logger;
@@ -171,9 +172,11 @@ public class ReadToolService {
                 weightSemantic, weightKeyword, weightRecency, weightImportance, weightPopularity,
                 weightGraphProximity, tags, status, realmIn
         );
+        ResultSetStats stats = ResultSetStats.of(
+                rows.stream().map(CellSearchRepository.RankedRow::scoreTotal).toList());
         return rows.stream()
                 .map(row -> projectRow(row, selection,
-                        ConfidenceLevel.from(row.scoreTotal(), confidenceThresholds)))
+                        ConfidenceLevel.classify(row.scoreTotal(), stats, confidenceThresholds)))
                 .toList();
     }
 

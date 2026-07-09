@@ -1,21 +1,26 @@
 package com.hivemem.search;
 
 /**
- * Human-readable retrieval confidence derived from score_total.
+ * Human-readable retrieval confidence, classified relative to the result-set distribution
+ * with an absolute floor. Computed once per result-set (mean + population sigma over score_total).
  *
- * HIGH   → score_total ≥ thresholds.high   (default 0.80)
- * MEDIUM → score_total ≥ thresholds.medium (default 0.65)
- * LOW    → score_total ≥ thresholds.low    (default 0.55)
- * NONE   → score_total < thresholds.low    (too weak to trust)
+ * NONE   -> score_total < floor, OR result-set has fewer than 2 elements (no distribution).
+ * HIGH   -> score_total >= mean + sigma
+ * LOW    -> score_total < mean
+ * MEDIUM -> otherwise (mean <= score_total < mean + sigma)
+ *
+ * When sigma == 0 (all scores equal) every above-floor hit is MEDIUM.
  */
 public enum ConfidenceLevel {
 
     HIGH, MEDIUM, LOW, NONE;
 
-    public static ConfidenceLevel from(double scoreTotal, ConfidenceThresholds thresholds) {
-        if (scoreTotal >= thresholds.getHigh())   return HIGH;
-        if (scoreTotal >= thresholds.getMedium()) return MEDIUM;
-        if (scoreTotal >= thresholds.getLow())    return LOW;
-        return NONE;
+    public static ConfidenceLevel classify(double scoreTotal, ResultSetStats stats, ConfidenceThresholds thresholds) {
+        if (scoreTotal < thresholds.getFloor()) return NONE;
+        if (stats.size() < 2) return NONE;
+        if (stats.sigma() == 0.0) return MEDIUM;
+        if (scoreTotal >= stats.mean() + stats.sigma()) return HIGH;
+        if (scoreTotal < stats.mean()) return LOW;
+        return MEDIUM;
     }
 }
