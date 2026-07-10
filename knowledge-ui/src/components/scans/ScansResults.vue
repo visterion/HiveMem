@@ -31,6 +31,25 @@ function onInput() {
 
 onUnmounted(() => { if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null } })
 
+// Infinite scroll: the store already exposes loadMore()/hasMore (M54), but nothing
+// called it — results silently capped at PAGE_SIZE. Observe a sentinel at the end
+// of the scroll container and page in more while it's visible (H8).
+const sentinelEl = ref<HTMLElement | null>(null)
+let sentinelObserver: IntersectionObserver | null = null
+
+function maybeLoadMore() {
+  if (store.hasMore && !store.loading) store.loadMore()
+}
+
+onMounted(() => {
+  if (typeof IntersectionObserver === 'undefined') return
+  sentinelObserver = new IntersectionObserver(entries => {
+    if (entries.some(e => e.isIntersecting)) maybeLoadMore()
+  })
+  if (sentinelEl.value) sentinelObserver.observe(sentinelEl.value)
+})
+onUnmounted(() => { sentinelObserver?.disconnect(); sentinelObserver = null })
+
 function onSort(v: string) {
   store.setSort(v as 'newest' | 'oldest' | 'title')
   store.reload()
@@ -186,6 +205,9 @@ onMounted(() => { store.reload() })
           @select="store.toggleSelect"
         />
       </template>
+
+      <div v-if="store.searchTruncated" class="truncated-hint">{{ t('scans.searchTruncated') }}</div>
+      <div ref="sentinelEl" class="scroll-sentinel" />
     </div>
 
     <!-- Bulk bar -->
@@ -354,6 +376,17 @@ onMounted(() => { store.reload() })
 
 .hexbig {
   opacity: 0.3;
+}
+
+.scroll-sentinel {
+  height: 1px;
+}
+
+.truncated-hint {
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-2, #888);
+  padding: 12px 0;
 }
 
 /* ── Bulk bar ────────────────────────────────────────────────────────────── */

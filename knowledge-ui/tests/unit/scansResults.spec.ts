@@ -68,4 +68,44 @@ describe('ScansResults', () => {
     await flushPromises()
     expect(w.text()).toContain('Finanzamt')
   })
+
+  describe('infinite scroll (H8)', () => {
+    let observeCb: ((entries: { isIntersecting: boolean }[]) => void) | null = null
+    let originalIO: any
+
+    beforeEach(() => {
+      originalIO = (globalThis as any).IntersectionObserver
+      ;(globalThis as any).IntersectionObserver = class {
+        constructor(cb: (entries: { isIntersecting: boolean }[]) => void) { observeCb = cb }
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      }
+    })
+    afterEach(() => { (globalThis as any).IntersectionObserver = originalIO; observeCb = null })
+
+    it('calls store.loadMore() when the sentinel intersects and hasMore is true', async () => {
+      const vuetify = createVuetify({ components, directives })
+      const w = mount(ScansResults, { global: { plugins: [i18n, vuetify] } })
+      await vi.advanceTimersByTimeAsync(500); await flushPromises()
+      const s = useScansStore()
+      s.hasMore = true
+      const spy = vi.spyOn(s, 'loadMore').mockResolvedValue()
+      observeCb!([{ isIntersecting: true }])
+      expect(spy).toHaveBeenCalled()
+      w.unmount()
+    })
+
+    it('does not call store.loadMore() when hasMore is false', async () => {
+      const vuetify = createVuetify({ components, directives })
+      const w = mount(ScansResults, { global: { plugins: [i18n, vuetify] } })
+      await vi.advanceTimersByTimeAsync(500); await flushPromises()
+      const s = useScansStore()
+      s.hasMore = false
+      const spy = vi.spyOn(s, 'loadMore').mockResolvedValue()
+      observeCb!([{ isIntersecting: true }])
+      expect(spy).not.toHaveBeenCalled()
+      w.unmount()
+    })
+  })
 })
