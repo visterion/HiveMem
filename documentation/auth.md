@@ -116,6 +116,12 @@ guarded paths never emit this header.
   past Spring's forwarded-header rewriting), so rotating `X-Forwarded-For` headers cannot evade
   the lockout. The trackers are Caffeine-bounded (entries expire with the ban window, capped
   size), so high-cardinality sources cannot grow the heap.
+  - **Behind the Cloudflare Tunnel** (production), the TCP peer is loopback for every external
+    request, so `hivemem.security.trusted-proxy` (default `true`, env `HIVEMEM_TRUSTED_PROXY`)
+    makes both limiters key on the tunnel-injected `CF-Connecting-IP` header instead — that
+    header cannot be spoofed by a client going through the tunnel, unlike `X-Forwarded-For`.
+    Set it to `false` for deployments with no trusted reverse proxy in front (e.g. direct LAN
+    access), which falls back to the raw TCP peer address.
 - **Audit log** — every request logged to `/data/audit.log`
 - **Timing-safe** — token comparison uses SHA-256 hash lookup, not string comparison
 - **Path traversal protection** — file import restricted to `/data/imports` and `/tmp`
