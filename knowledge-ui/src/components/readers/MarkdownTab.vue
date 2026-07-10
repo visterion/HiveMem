@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import MarkdownIt from 'markdown-it'
-import katex from 'katex'
+import markdownItKatex from '@vscode/markdown-it-katex'
 import 'katex/dist/katex.min.css'
 import hljs from 'highlight.js'
 import 'highlight.js/styles/github-dark.css'
@@ -20,13 +20,14 @@ const md = new MarkdownIt({
   }
 })
 
-function renderKatex(src: string) {
-  return src
-    .replace(/\$\$([\s\S]+?)\$\$/g, (_, m) => katex.renderToString(m, { displayMode: true, throwOnError: false }))
-    .replace(/(^|[^\\])\$([^$\n]+?)\$/g, (_, pre, m) => pre + katex.renderToString(m, { throwOnError: false }))
-}
+// Runs inside the markdown-it parse pipeline (respects code spans/fences and
+// emits HTML through the renderer), instead of pre-injecting KaTeX HTML into
+// the raw source before parsing — which corrupted code spans (`` `$HOME` ``)
+// and plain-text dollar amounts ("$50 and $60") by treating them as math
+// delimiters, and then got HTML-escaped anyway because `html:false`.
+md.use(markdownItKatex, { throwOnError: false })
 
-const html = computed(() => md.render(renderKatex(props.content || '')))
+const html = computed(() => md.render(props.content || ''))
 </script>
 
 <template>
