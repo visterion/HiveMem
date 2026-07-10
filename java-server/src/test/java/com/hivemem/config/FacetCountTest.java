@@ -120,6 +120,26 @@ class FacetCountTest {
     }
 
     @Test
+    void yearFacetRespectsLimit() {
+        // B4 (LOW): LIMIT was only appended for the tag/fact:* branches; status/realm/signal/year
+        // must be bounded by `limit` too, otherwise a facet with more distinct buckets than the
+        // caller's limit silently returns them all.
+        dslContext.execute("DELETE FROM cells WHERE realm = 'flimit'");
+        for (int i = 0; i < 5; i++) {
+            dslContext.execute(
+                    "INSERT INTO cells (id, content, realm, signal, topic, tags, status, valid_from, created_at) " +
+                    "VALUES (?, 'doc', 'flimit', 'facts', 'lt', '{}', 'committed', now(), (?::date))",
+                    UUID.randomUUID(), (2020 + i) + "-01-01");
+        }
+
+        Map<String, List<Map<String, Object>>> result = facetRepository.facetCounts(
+                "flimit", null, null, null, null, null, null,
+                List.of("year"), 2);
+
+        assertThat(result.get("year")).hasSize(2);
+    }
+
+    @Test
     void unknownFieldThrowsIllegalArgumentException() {
         assertThatThrownBy(() -> facetRepository.facetCounts(
                 "fdocs", null, null, null, null, null, null,

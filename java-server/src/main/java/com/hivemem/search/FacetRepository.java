@@ -172,24 +172,28 @@ public class FacetRepository {
                        "GROUP BY tag ORDER BY count DESC, value LIMIT ?";
             }
             case "status" -> {
+                binds.add(limit);
                 return "SELECT status AS value, count(*)::int AS count " +
                        "FROM cells WHERE " + sharedWhere + " " +
-                       "GROUP BY status ORDER BY count DESC";
+                       "GROUP BY status ORDER BY count DESC LIMIT ?";
             }
             case "realm" -> {
+                binds.add(limit);
                 return "SELECT realm AS value, count(*)::int AS count " +
                        "FROM cells WHERE " + sharedWhere + " " +
-                       "GROUP BY realm ORDER BY count DESC";
+                       "GROUP BY realm ORDER BY count DESC LIMIT ?";
             }
             case "signal" -> {
+                binds.add(limit);
                 return "SELECT signal AS value, count(*)::int AS count " +
                        "FROM cells WHERE " + sharedWhere + " AND signal IS NOT NULL " +
-                       "GROUP BY signal ORDER BY count DESC";
+                       "GROUP BY signal ORDER BY count DESC LIMIT ?";
             }
             case "year" -> {
+                binds.add(limit);
                 return "SELECT to_char(created_at,'YYYY') AS value, count(*)::int AS count " +
                        "FROM cells WHERE " + sharedWhere + " " +
-                       "GROUP BY 1 ORDER BY value DESC";
+                       "GROUP BY 1 ORDER BY value DESC LIMIT ?";
             }
             default -> throw new IllegalArgumentException("Unknown facet field: " + field);
         }
