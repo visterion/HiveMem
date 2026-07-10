@@ -7,6 +7,7 @@ import static org.mockito.Mockito.*;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.web.client.RestClientException;
 
 class MailingAssemblerTest {
 
@@ -73,5 +74,28 @@ class MailingAssemblerTest {
         MailingAssembler assembler = new MailingAssembler(cc);
         List<PageMetadataExtractor.PageMetadata> pages = List.of(meta(1, "X", null));
         assertThrows(IllegalStateException.class, () -> assembler.assemble("documents", pages));
+    }
+
+    @Test
+    void transientFailureIsRetriedOnce() {
+        CompleteClient cc = mock(CompleteClient.class);
+        when(cc.complete(eq("documents"), anyString()))
+                .thenThrow(new RestClientException("boom"))
+                .thenReturn("[{\"mailing\":\"m\",\"description\":\"d\",\"confidence\":1.0,\"pages\":[1]}]");
+        List<DocGroup> groups = new MailingAssembler(cc)
+                .assemble("documents", List.of(meta(1, "X", null)));
+        assertEquals(1, groups.size());
+        verify(cc, times(2)).complete(eq("documents"), anyString());
+    }
+
+    @Test
+    void persistentFailureThrowsAfterTwoAttempts() {
+        CompleteClient cc = mock(CompleteClient.class);
+        when(cc.complete(eq("documents"), anyString()))
+                .thenThrow(new RestClientException("boom"));
+        MailingAssembler assembler = new MailingAssembler(cc);
+        List<PageMetadataExtractor.PageMetadata> pages = List.of(meta(1, "X", null));
+        assertThrows(RestClientException.class, () -> assembler.assemble("documents", pages));
+        verify(cc, times(2)).complete(eq("documents"), anyString());
     }
 }

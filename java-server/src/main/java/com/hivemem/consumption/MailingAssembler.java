@@ -2,6 +2,8 @@ package com.hivemem.consumption;
 
 import java.util.ArrayList;
 import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import tools.jackson.databind.JsonNode;
 
 /** Pass 3 of the 3-pass reassembly: text-only assembly of per-page metadata into mailings.
@@ -10,6 +12,8 @@ import tools.jackson.databind.JsonNode;
  *  that wording is what fixed duplicate-enclosure assignment. Throws on unparseable output so the
  *  orchestrator's degrade-to-pending path takes over. */
 public class MailingAssembler {
+
+    private static final Logger log = LoggerFactory.getLogger(MailingAssembler.class);
 
     static final String PROMPT = """
             Below are per-page descriptions of ONE scanned batch (a stack of several
@@ -65,7 +69,21 @@ public class MailingAssembler {
                     .append(" - ").append(pyRepr(m.summary()))
                     .append('\n');
         }
-        JsonNode arr = LlmJson.parseArray(client.complete(realm, PROMPT.formatted(rows.toString().strip())));
+        String prompt = PROMPT.formatted(rows.toString().strip());
+        JsonNode arr = null;
+        RuntimeException lastException = null;
+        for (int attempt = 1; attempt <= 2; attempt++) {
+            try {
+                arr = LlmJson.parseArray(client.complete(realm, prompt));
+                break;
+            } catch (RuntimeException e) {
+                log.warn("Assembly attempt {}/2 failed: {}", attempt, e.toString());
+                lastException = e;
+            }
+        }
+        if (arr == null) {
+            throw lastException;
+        }
         List<DocGroup> groups = new ArrayList<>();
         for (JsonNode m : arr) {
             DocGroup g = new DocGroup(m.path("mailing").asString("doc-" + (groups.size() + 1)),
