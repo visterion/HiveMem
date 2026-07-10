@@ -111,6 +111,27 @@ describe('scans store — pagination, stale responses, status facet', () => {
     expect(s.results.length).toBe(100)
   })
 
+  it('loadFacets() discards a stale response overtaken by a newer load()/loadFacets() (M53 mirror)', async () => {
+    let resolveFirst!: (v: unknown) => void
+    let call = 0
+    vi.spyOn(MockApiClient.prototype, 'call').mockImplementation((tool: string) => {
+      if (tool === 'list_documents') return Promise.resolve([])
+      if (tool !== 'facet_count') return Promise.resolve({})
+      call++
+      if (call === 1) return new Promise(res => { resolveFirst = res })
+      return Promise.resolve({ status: [{ value: 'new', count: 1 }] })
+    })
+    const s = useScansStore()
+    const p1 = s.loadFacets() // captures the current loadSeq
+    await s.load() // bumps loadSeq — invalidates the in-flight loadFacets above
+    const p2 = s.loadFacets()
+    await p2
+    expect(s.facetCounts.status?.[0]?.value).toBe('new')
+    resolveFirst({ status: [{ value: 'old', count: 1 }] })
+    await p1
+    expect(s.facetCounts.status?.[0]?.value).toBe('new') // stale response must not win
+  })
+
   it('openDocument does not open the reader when the cell cannot be loaded (M55)', async () => {
     vi.spyOn(MockApiClient.prototype, 'call').mockRejectedValue(new Error('boom'))
     const s = useScansStore()

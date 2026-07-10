@@ -128,6 +128,10 @@ export const useScansStore = defineStore('scans', {
       }
     },
     async loadFacets() {
+      // Mirror load()'s M53 loadSeq guard: a slower loadFacets() triggered by an
+      // earlier reload() must not clobber facetCounts computed for a newer one
+      // (e.g. rapid facet toggling / typing).
+      const seq = this.loadSeq
       const api = useApi()
       const args: Record<string, unknown> = {
         realm: REALM,
@@ -137,6 +141,7 @@ export const useScansStore = defineStore('scans', {
       const tags = [...this.facets.tag]; if (tags.length) args.tags = tags
       const status = this.facets.status.size ? [...this.facets.status][0] : undefined; if (status) args.status = status
       const raw = await api.call<FacetCounts>('facet_count', args)
+      if (seq !== this.loadSeq) return // stale — a newer load()/loadFacets() owns the state
 
       // Merge fact:vendor + fact:party into a synthetic 'correspondent' facet.
       // Counts are summed by value (deduplicated: same entity appearing in both
