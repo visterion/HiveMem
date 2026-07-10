@@ -63,6 +63,36 @@ public class KgSearchRepository {
         return results;
     }
 
+    /**
+     * ILIKE fallback for {@code search_kg} when a free-text {@code query} is given but the
+     * embedding sidecar is unavailable and no explicit subject/predicate/object filter was
+     * passed. Matches the query text against subject OR object so results still relate to
+     * the query, instead of returning the newest facts in the whole KG unfiltered.
+     */
+    public List<Map<String, Object>> searchText(String queryText, int limit) {
+        String pattern = '%' + escapeLikePattern(queryText) + '%';
+        String sql = """
+                SELECT id, subject, predicate, object, confidence, valid_from, valid_until
+                FROM active_facts
+                WHERE subject ILIKE ? ESCAPE '\\' OR "object" ILIKE ? ESCAPE '\\'
+                ORDER BY created_at DESC
+                LIMIT ?
+                """;
+        List<Map<String, Object>> results = new ArrayList<>();
+        for (Record row : dslContext.fetch(sql, pattern, pattern, limit)) {
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("id", row.get("id", java.util.UUID.class).toString());
+            result.put("subject", row.get("subject", String.class));
+            result.put("predicate", row.get("predicate", String.class));
+            result.put("object", row.get("object", String.class));
+            result.put("confidence", numberValue(row, "confidence"));
+            result.put("valid_from", timestampValue(row, "valid_from"));
+            result.put("valid_until", timestampValue(row, "valid_until"));
+            results.add(result);
+        }
+        return results;
+    }
+
     public List<Map<String, Object>> semanticSearch(List<Float> queryVector, String subject,
             String predicate, String object_, int limit, int dimension) {
         if (dimension <= 0) {

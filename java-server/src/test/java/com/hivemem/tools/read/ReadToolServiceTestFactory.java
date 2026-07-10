@@ -38,4 +38,23 @@ final class ReadToolServiceTestFactory {
                 mock(KgEntityRepository.class)
         );
     }
+
+    static ReadToolService withEmbeddingAndKgSearch(EmbeddingClient embeddingClient, KgSearchRepository kgSearchRepository) {
+        return new ReadToolService(
+                mock(CellReadRepository.class),
+                kgSearchRepository,
+                mock(CellSearchRepository.class),
+                embeddingClient,
+                mock(AdminToolService.class),
+                mock(SearchWeightsProperties.class),
+                mock(ConfidenceThresholds.class),
+                mock(AttachmentRepository.class),
+                mock(FacetRepository.class),
+                mock(DocumentListRepository.class),
+                mock(MediaListRepository.class),
+                mock(CellSelectorRepository.class),
+                mock(DataQualityRepository.class),
+                mock(KgEntityRepository.class)
+        );
+    }
 }

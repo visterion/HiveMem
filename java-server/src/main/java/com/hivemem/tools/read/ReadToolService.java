@@ -204,9 +204,23 @@ public class ReadToolService {
                 }
             } catch (RuntimeException e) {
                 log.warn("search_kg semantic path unavailable, falling back to ILIKE", e);
+                // Without this, the fallback below (with all filters null) would return the
+                // newest N facts in the whole KG, silently dropping the query text entirely.
+                boolean noExplicitFilter = isBlank(subject) && isBlank(predicate) && isBlank(object_);
+                List<Map<String, Object>> results = noExplicitFilter
+                        ? kgSearchRepository.searchText(query, limit)
+                        : kgSearchRepository.search(subject, predicate, object_, limit);
+                for (Map<String, Object> row : results) {
+                    row.put("degraded", true);
+                }
+                return results;
             }
         }
         return kgSearchRepository.search(subject, predicate, object_, limit);
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     public Map<String, Object> getCell(AuthPrincipal principal, UUID cellId) {
