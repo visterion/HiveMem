@@ -6,6 +6,8 @@ import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.rendering.PDFRenderer;
 import org.apache.pdfbox.text.PDFTextStripper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -17,6 +19,8 @@ import java.io.InputStream;
 
 @Component
 public class PdfAttachmentParser implements AttachmentParser {
+
+    private static final Logger log = LoggerFactory.getLogger(PdfAttachmentParser.class);
 
     private static final int THUMBNAIL_MAX_WIDTH = 500;
     private static final float RENDER_DPI = 150f;
@@ -49,9 +53,17 @@ public class PdfAttachmentParser implements AttachmentParser {
                     ? ocrProperties.getScanDetectionThreshold()
                     : DEFAULT_SCAN_THRESHOLD;
             boolean scanLikely = scanDetector.isScan(text, pageCount, threshold);
-            byte[] thumbnail = renderFirstPageThumbnail(doc);
+            // A thumbnail render failure must never discard successfully-extracted text
+            // (or the scanLikely signal, which drives OCR).
+            byte[] thumbnail = null;
+            try {
+                thumbnail = renderFirstPageThumbnail(doc);
+            } catch (Exception e) {
+                log.warn("PDF page-1 thumbnail render failed, keeping extracted text: {}",
+                        e.getMessage());
+            }
             return ParseResult.withThumbnailAndScan(
-                    text.isBlank() ? null : text.strip(), thumbnail, scanLikely);
+                    text.isBlank() ? null : text.strip(), thumbnail, scanLikely, pageCount);
         }
     }
 

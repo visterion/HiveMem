@@ -45,6 +45,46 @@ class ImageAttachmentParserTest {
     }
 
     @Test
+    void orientation7SwapsDimensionsAndDrawsInsideCanvas() throws Exception {
+        // White landscape canvas with a red top-left marker. A wrong transverse transform
+        // draws the image outside the destination canvas → solid-black thumbnail.
+        BufferedImage img = new BufferedImage(120, 80, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = img.createGraphics();
+        g.setColor(Color.WHITE);
+        g.fillRect(0, 0, 120, 80);
+        g.setColor(Color.RED);
+        g.fillRect(0, 0, 10, 10);
+        g.dispose();
+        ByteArrayOutputStream base = new ByteArrayOutputStream();
+        ImageIO.write(img, "JPEG", base);
+        TiffOutputSet set = new TiffOutputSet();
+        set.getOrCreateRootDirectory().add(TiffTagConstants.TIFF_TAG_ORIENTATION, (short) 7);
+        ByteArrayOutputStream withExif = new ByteArrayOutputStream();
+        new ExifRewriter().updateExifMetadataLossless(base.toByteArray(), withExif, set);
+
+        ParseResult r = parser.parse(new ByteArrayInputStream(withExif.toByteArray()));
+        BufferedImage thumb = ImageIO.read(new ByteArrayInputStream(r.thumbnail()));
+
+        // Transverse swaps dimensions: landscape source becomes portrait.
+        assertThat(thumb.getHeight()).isGreaterThan(thumb.getWidth());
+        // The canvas must be painted (mostly white), not the all-black of an out-of-bounds draw.
+        long white = 0;
+        for (int y = 0; y < thumb.getHeight(); y++) {
+            for (int x = 0; x < thumb.getWidth(); x++) {
+                int rgb = thumb.getRGB(x, y);
+                if (((rgb >> 16) & 0xFF) > 200 && ((rgb >> 8) & 0xFF) > 200 && (rgb & 0xFF) > 200) {
+                    white++;
+                }
+            }
+        }
+        assertThat(white).isGreaterThan((long) thumb.getWidth() * thumb.getHeight() / 2);
+        // Transverse maps (x,y) -> (h-y, w-x): the source top-left marker lands bottom-right.
+        int corner = thumb.getRGB(thumb.getWidth() - 3, thumb.getHeight() - 3);
+        assertThat((corner >> 16) & 0xFF).isGreaterThan(150); // red
+        assertThat((corner >> 8) & 0xFF).isLessThan(120);     // not white
+    }
+
+    @Test
     void orientation1KeepsLandscape() throws Exception {
         byte[] src = jpegWithOrientation(120, 80, (short) 1);
         ParseResult r = parser.parse(new ByteArrayInputStream(src));

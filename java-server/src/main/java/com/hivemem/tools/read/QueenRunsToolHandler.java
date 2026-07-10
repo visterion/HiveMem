@@ -5,6 +5,7 @@ import com.hivemem.mcp.ToolHandler;
 import com.hivemem.mcp.ToolInputSchema;
 import com.hivemem.queen.QueenRunsService;
 import com.hivemem.queen.VistierieUnavailableException;
+import com.hivemem.write.WriteArgumentParser;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
@@ -40,12 +41,24 @@ public class QueenRunsToolHandler implements ToolHandler {
 
     @Override
     public Object call(AuthPrincipal principal, JsonNode arguments) {
-        int limit = arguments != null && arguments.has("limit") ? arguments.get("limit").asInt() : 50;
-        int offset = arguments != null && arguments.has("offset") ? arguments.get("offset").asInt() : 0;
+        int limit = boundedInt(arguments, "limit", 50, 1, 200);
+        int offset = boundedInt(arguments, "offset", 0, 0, 100000);
         try {
             return service.listRuns(limit, offset);
         } catch (VistierieUnavailableException e) {
             return Map.of("items", List.of(), "total", 0, "costAvailable", false, "unavailable", true);
         }
+    }
+
+    /** Enforces the bounds the input schema advertises. */
+    private static int boundedInt(JsonNode arguments, String field, int defaultValue, int min, int max) {
+        Integer value = WriteArgumentParser.optionalInteger(arguments, field);
+        if (value == null) {
+            return defaultValue;
+        }
+        if (value < min || value > max) {
+            throw new IllegalArgumentException("Invalid " + field + " (must be " + min + "-" + max + ")");
+        }
+        return value;
     }
 }

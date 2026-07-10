@@ -38,15 +38,19 @@ public class MediaListRepository {
                 "JOIN attachments a ON a.id = ca.attachment_id AND a.deleted_at IS NULL " +
                 "    AND a.mime_type LIKE 'image/%' " +
                 "LEFT JOIN attachment_image_meta m ON m.attachment_id = a.id " +
-                "WHERE c.valid_until IS NULL " +
+                "WHERE (c.valid_until IS NULL OR c.valid_until > now()) " +
                 "AND c.status = 'committed' " +
-                "AND c.tags::varchar[] && ARRAY['subtype_photo_general','subtype_whiteboard_photo']::varchar[] " +
-                "AND (?::text IS NULL OR c.realm = ?) " +
+                // No cast on c.tags: the column is text[] and a varchar[] cast would defeat
+                // the idx_cells_tags GIN index.
+                "AND c.tags && ARRAY['subtype_photo_general','subtype_whiteboard_photo']::text[] " +
+                // The realm sentinel "none" matches NULL realms only (never a literal realm
+                // named "none"), mirroring the facet/selector contract.
+                "AND (?::text IS NULL OR (?::text = 'none' AND c.realm IS NULL) OR (?::text <> 'none' AND c.realm = ?)) " +
                 "ORDER BY COALESCE(m.taken_at, a.created_at) " + dir + ", a.id " +
                 "LIMIT ? OFFSET ?";
 
         List<Object> binds = new ArrayList<>();
-        binds.add(realm); binds.add(realm);
+        binds.add(realm); binds.add(realm); binds.add(realm); binds.add(realm);
         binds.add(limit); binds.add(offset);
 
         List<Map<String, Object>> result = new ArrayList<>();

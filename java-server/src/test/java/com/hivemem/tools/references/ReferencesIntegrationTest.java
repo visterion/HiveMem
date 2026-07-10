@@ -220,8 +220,9 @@ class ReferencesIntegrationTest {
         List<Map<String, Object>> limited = readToolService.readingList(null, 2);
 
         assertThat(limited).hasSize(2);
-        // Ordered by importance ASC, so importance=1 first, then 2
-        assertThat(limited.get(0)).containsEntry("title", "Ref 1");
+        // Ordered by importance DESC (post H10: highest-importance surfaced first),
+        // so importance=3 first, then 2.
+        assertThat(limited.get(0)).containsEntry("title", "Ref 3");
         assertThat(limited.get(1)).containsEntry("title", "Ref 2");
     }
 

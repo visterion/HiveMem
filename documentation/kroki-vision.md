@@ -25,12 +25,12 @@ hivemem:
   attachment:
     kroki-url: ${HIVEMEM_KROKI_URL:}                # leer = Kroki deaktiviert
     kroki-timeout-seconds: 10
-    kroki-backfill-interval-ms: 3600000             # 1h
+    kroki-backfill-interval: PT1H                   # ISO-8601 (env: HIVEMEM_KROKI_BACKFILL_INTERVAL)
     anthropic-api-key: ${ANTHROPIC_API_KEY:}        # leer = Vision deaktiviert
     vision-timeout-seconds: 30
     vision-model: claude-haiku-4-5-20251001
     vision-daily-budget-usd: 1.0
-    vision-backfill-interval-ms: 3600000
+    vision-backfill-interval: PT1H                  # ISO-8601 (env: HIVEMEM_VISION_BACKFILL_INTERVAL)
     vision-max-input-bytes: 5242880                 # 5 MB
 ```
 

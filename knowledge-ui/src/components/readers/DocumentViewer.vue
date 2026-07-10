@@ -30,17 +30,23 @@ const surface = ref<HTMLElement>()
 let pdfDoc: any = null
 let renderTask: { promise: Promise<void>; cancel?: () => void } | null = null
 let zoomTimer: ReturnType<typeof setTimeout> | null = null
+// Load-generation token: each url change / unmount bumps it, so a stale in-flight
+// getDocument can neither render the old doc under the new tab nor leak post-unmount.
+let loadGen = 0
 
 async function loadPdf() {
+  const gen = ++loadGen
   try {
     const pdfjs: any = await import('pdfjs-dist')
     pdfjs.GlobalWorkerOptions.workerSrc =
       new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString()
-    pdfDoc = await pdfjs.getDocument(props.url).promise
+    const doc = await pdfjs.getDocument(props.url).promise
+    if (gen !== loadGen) { doc?.destroy?.(); return } // stale: url changed or unmounted
+    pdfDoc = doc
     pageCount.value = pdfDoc.numPages
     await renderPage(1)
   } catch {
-    error.value = true
+    if (gen === loadGen) error.value = true
   }
 }
 
@@ -49,8 +55,10 @@ async function renderPage(n: number) {
   renderTask?.cancel?.()
   renderTask = null
   if (!pdfDoc || !canvas.value) return
+  const doc = pdfDoc
   try {
-    const pdfPage = await pdfDoc.getPage(n)
+    const pdfPage = await doc.getPage(n)
+    if (doc !== pdfDoc) return // doc swapped/destroyed while awaiting
     const dpr = window.devicePixelRatio || 1
     const base = pdfPage.getViewport({ scale: 1 })
     const fitW = (surface.value?.clientWidth || base.width)
@@ -77,14 +85,16 @@ async function renderPage(n: number) {
     await task.promise
     renderTask = null
   } catch (e: any) {
-    // A cancelled render is expected when the page changes mid-flight; ignore it.
-    if (e?.name !== 'RenderingCancelledException') error.value = true
+    // A cancelled render is expected when the page changes mid-flight; a stale
+    // (swapped/destroyed) doc erroring must not mark the new doc as failed.
+    if (e?.name !== 'RenderingCancelledException' && doc === pdfDoc) error.value = true
   }
 }
 
 // Reload when the attachment changes (the reader reuses one viewer instance
 // across attachment tabs, so url/kind can change without a remount).
 watch(() => `${props.kind}|${props.url}`, () => {
+  loadGen++ // invalidate any in-flight load for the previous url
   pdfDoc?.destroy?.()
   pdfDoc = null
   error.value = false
@@ -112,8 +122,10 @@ watch(() => z.scale.value, () => {
 
 onMounted(() => { if (props.kind === 'pdf') loadPdf() })
 onBeforeUnmount(() => {
+  loadGen++ // a load resolving after unmount destroys its doc instead of leaking it
   if (zoomTimer) clearTimeout(zoomTimer)
   renderTask?.cancel?.(); pdfDoc?.cleanup?.(); pdfDoc?.destroy?.()
+  pdfDoc = null
 })
 
 // ── pointer gestures ──────────────────────────────────────────────────────────

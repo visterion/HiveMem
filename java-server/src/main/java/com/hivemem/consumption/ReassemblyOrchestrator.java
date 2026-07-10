@@ -65,10 +65,9 @@ public class ReassemblyOrchestrator {
             log.warn("Batch {} has {} pages > max-pages {}; routing to failed/ (re-scan in smaller batches "
                             + "or raise hivemem.consumption.max-pages)",
                     originalName, pageCount, props.getMaxPages());
-            try { mover.moveToFailed(staged); }
-            catch (Exception e) { log.error("Could not move {} to failed/: {}", originalName, e.toString()); }
             if (fileRepo != null) fileRepo.markFailed(hash,
                     "page count " + pageCount + " exceeds max-pages " + props.getMaxPages());
+            moveToFailedTracked(staged, hash, fileRepo);
             return;
         }
         try {
@@ -86,12 +85,12 @@ public class ReassemblyOrchestrator {
                     upright.set(i, PageOrienter.rotate180Png(pages.get(i)));
                 }
                 if (o.blank()) blank.add(pageNo);
+                // Heartbeat inside the per-page loop: each orientation costs one (possibly retried)
+                // LLM call, so a single pass over a large batch can outlast the recovery sweep's
+                // stale threshold — bump updated_at per page so a live run can't be mistaken for a
+                // crash-stranded file and re-staged mid-run (see consumption.md reassembly note).
+                if (hash != null && fileRepo != null) fileRepo.touch(hash);
             }
-
-            // Heartbeat: bump the ledger row's updated_at between passes so a large batch's
-            // (2*N+1)-call worst-case latency can't make the recovery sweep mistake it for a
-            // crash-stranded file and re-stage it mid-run (see consumption.md reassembly note).
-            if (hash != null && fileRepo != null) fileRepo.touch(hash);
 
             // Pass 2 — per-page metadata from the upright renders.
             List<PageMetadataExtractor.PageMetadata> meta = new ArrayList<>();
@@ -100,10 +99,8 @@ public class ReassemblyOrchestrator {
                         extractor.extract(props.getRealm(), i + 1, upright.get(i));
                 if (m.blank()) blank.add(m.page());
                 meta.add(m);
+                if (hash != null && fileRepo != null) fileRepo.touch(hash); // heartbeat (see pass 1)
             }
-
-            // Heartbeat before pass 3 as well (see note above).
-            if (hash != null && fileRepo != null) fileRepo.touch(hash);
 
             // Pass 3 — text-only mailing assembly (throws on garbage → degrade path).
             List<DocGroup> groups = assembler.assemble(props.getRealm(), meta);
@@ -153,8 +150,7 @@ public class ReassemblyOrchestrator {
             }
             if (ingestFailed) {
                 if (fileRepo != null) fileRepo.markFailed(hash, "reassembly sub-doc ingest failed");
-                try { mover.moveToFailed(staged); }
-                catch (Exception me) { log.error("Could not move {} to failed/: {}", originalName, me.toString()); }
+                moveToFailedTracked(staged, hash, fileRepo);
                 return;
             }
             mover.moveToProcessed(staged);
@@ -188,9 +184,21 @@ public class ReassemblyOrchestrator {
             // Batch was salvaged as one pending doc — terminal, not stranded
             if (fileRepo != null) fileRepo.markDone(hash);
         } else {
-            try { mover.moveToFailed(staged); }
-            catch (Exception e) { log.error("Could not move {} to failed/: {}", originalName, e.toString()); }
             if (fileRepo != null) fileRepo.markFailed(hash, "degrade-to-pending ingest failed");
+            moveToFailedTracked(staged, hash, fileRepo);
+        }
+    }
+
+    /** Move to failed/ and persist the (possibly collision-suffixed) landed filename to the ledger
+     *  so the recovery sweep resolves the physical file under its real name for a retry. */
+    private void moveToFailedTracked(Path staged, String hash, ConsumptionFileRepository fileRepo) {
+        try {
+            Path dest = mover.moveToFailed(staged);
+            if (fileRepo != null && hash != null && dest != null) {
+                fileRepo.updateFilename(hash, dest.getFileName().toString());
+            }
+        } catch (Exception e) {
+            log.error("Could not move {} to failed/: {}", staged.getFileName(), e.toString());
         }
     }
 

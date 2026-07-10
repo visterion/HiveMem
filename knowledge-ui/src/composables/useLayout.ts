@@ -1,4 +1,4 @@
-import { ref, type Ref } from 'vue'
+import { getCurrentScope, onScopeDispose, ref, type Ref } from 'vue'
 
 const MOBILE_QUERY = '(max-width: 959px)'
 
@@ -12,6 +12,14 @@ export function useLayout(): { isMobile: Ref<boolean> } {
     const update = () => { isMobile.value = mql.matches }
     if (mql.addEventListener) mql.addEventListener('change', update)
     else if (mql.addListener) mql.addListener(update) // older Safari
+    // Unregister with the calling component/effect scope — otherwise every
+    // useLayout() call leaks a matchMedia listener for the page lifetime (L-F11).
+    if (getCurrentScope()) {
+      onScopeDispose(() => {
+        if (mql.removeEventListener) mql.removeEventListener('change', update)
+        else if (mql.removeListener) mql.removeListener(update) // older Safari
+      })
+    }
   }
   return { isMobile }
 }

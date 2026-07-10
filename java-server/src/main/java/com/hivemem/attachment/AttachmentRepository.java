@@ -33,6 +33,12 @@ public class AttachmentRepository {
         return Optional.ofNullable(row).map(this::toMap);
     }
 
+    /**
+     * Race-free against concurrent identical uploads: when another transaction inserted
+     * the same file_hash between the dedup check and this insert, the upsert reactivates
+     * the winner's row (mirroring {@link #reactivate}) instead of failing with a unique
+     * violation — which would abort the surrounding Postgres transaction.
+     */
     public Map<String, Object> insert(
             String fileHash, String mimeType, String originalFilename,
             long sizeBytes, String s3KeyOriginal, String s3KeyThumbnail,
@@ -42,6 +48,9 @@ public class AttachmentRepository {
                   (file_hash, mime_type, original_filename, size_bytes,
                    s3_key_original, s3_key_thumbnail, uploaded_by, page_count)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (file_hash) DO UPDATE SET
+                  deleted_at = NULL,
+                  s3_key_thumbnail = COALESCE(attachments.s3_key_thumbnail, EXCLUDED.s3_key_thumbnail)
                 RETURNING id, file_hash, mime_type, original_filename, size_bytes,
                           s3_key_original, s3_key_thumbnail, uploaded_by, created_at, page_count
                 """,
@@ -109,7 +118,6 @@ public class AttachmentRepository {
                 + "WHERE a.s3_key_thumbnail IS NULL "
                 + "  AND a.deleted_at IS NULL "
                 + "  AND a.mime_type = ANY(?) "
-                + "  AND a.created_at > now() - interval '7 days' "
                 + "ORDER BY a.created_at DESC LIMIT ?",
                 mimeTypes.toArray(new String[0]), limit);
         List<DiagramRow> out = new ArrayList<>();
@@ -153,6 +161,28 @@ public class AttachmentRepository {
     public void updateThumbnailKey(UUID attachmentId, String s3KeyThumbnail) {
         dsl.execute("UPDATE attachments SET s3_key_thumbnail = ? WHERE id = ?",
                 s3KeyThumbnail, attachmentId);
+    }
+
+    public record ExtractionCellSeed(String content, List<String> tags) {}
+
+    /**
+     * Latest live, committed extraction cell for an attachment — used on dedup re-uploads
+     * to seed the new cell with already-enriched (OCR/vision) content and its subtype
+     * tags instead of re-running the pipeline.
+     */
+    public Optional<ExtractionCellSeed> findExtractionCellSeed(UUID attachmentId) {
+        return dsl.fetchOptional(
+                "SELECT c.content, c.tags FROM cells c "
+                + "JOIN cell_attachments ca ON ca.cell_id = c.id "
+                + "WHERE ca.attachment_id = ? AND ca.extraction_source = true "
+                + "  AND c.valid_until IS NULL AND c.status = 'committed' "
+                + "ORDER BY c.created_at DESC LIMIT 1", attachmentId)
+                .map(r -> {
+                    String[] tags = r.get("tags", String[].class);
+                    return new ExtractionCellSeed(
+                            r.get("content", String.class),
+                            tags == null ? List.of() : List.of(tags));
+                });
     }
 
     public Optional<AttachmentInfo> findAttachmentForCell(UUID cellId) {

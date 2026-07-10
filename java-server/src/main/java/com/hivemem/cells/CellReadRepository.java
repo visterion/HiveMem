@@ -127,14 +127,15 @@ public class CellReadRepository {
         return results;
     }
 
-    public List<Map<String, Object>> listCellsInTopic(String realm, String signal, String topic) {
+    public List<Map<String, Object>> listCellsInTopic(String realm, String signal, String topic, int limit) {
         List<Map<String, Object>> results = new ArrayList<>();
         for (Record row : dslContext.fetch("""
                 SELECT id, summary, importance, created_at
                 FROM active_cells
                 WHERE realm = ? AND signal = ? AND topic = ?
                 ORDER BY created_at DESC
-                """, realm, signal, topic)) {
+                LIMIT ?
+                """, realm, signal, topic, limit)) {
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("id", uuidValue(row, "id"));
             result.put("summary", row.get("summary", String.class));
@@ -223,14 +224,15 @@ public class CellReadRepository {
         return results;
     }
 
-    public List<Map<String, Object>> quickFacts(String entity) {
+    public List<Map<String, Object>> quickFacts(String entity, int limit) {
         List<Map<String, Object>> results = new ArrayList<>();
         for (Record row : dslContext.fetch("""
                 SELECT id, subject, predicate, "object", confidence, valid_from
                 FROM active_facts
                 WHERE subject = ? OR "object" = ?
                 ORDER BY valid_from DESC
-                """, entity, entity)) {
+                LIMIT ?
+                """, entity, entity, limit)) {
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("id", uuidValue(row, "id"));
             result.put("subject", row.get("subject", String.class));
@@ -251,20 +253,20 @@ public class CellReadRepository {
             sql.append("""
                     SELECT id, subject, predicate, "object", confidence, valid_from, valid_until, ingested_at
                     FROM active_facts
-                    WHERE subject ILIKE ?
+                    WHERE subject ILIKE ? ESCAPE '\\'
                     ORDER BY valid_from DESC
                     LIMIT ?
                     """);
-            params.add("%" + subject + "%");
+            params.add("%" + escapeLikePattern(subject) + "%");
             params.add(limit);
         } else {
             sql.append("""
                     SELECT id, subject, predicate, "object", confidence, valid_from, valid_until, ingested_at
                     FROM facts
-                    WHERE subject ILIKE ?
+                    WHERE subject ILIKE ? ESCAPE '\\'
                       AND status = 'committed'
                     """);
-            params.add("%" + subject + "%");
+            params.add("%" + escapeLikePattern(subject) + "%");
             if (asOf != null) {
                 sql.append("  AND valid_from <= ?::timestamptz\n");
                 sql.append("  AND (valid_until IS NULL OR valid_until > ?::timestamptz)\n");
@@ -396,7 +398,7 @@ public class CellReadRepository {
         }
         sql += """
                 GROUP BY r.id
-                ORDER BY r.importance ASC NULLS LAST, r.created_at DESC
+                ORDER BY r.importance DESC NULLS LAST, r.created_at DESC
                 LIMIT ?
                 """;
 
@@ -639,6 +641,11 @@ public class CellReadRepository {
             values.put("confidence", conf == null ? null : conf.doubleValue());
         }
         return Optional.of(selection.project(values));
+    }
+
+    /** Escapes LIKE/ILIKE wildcards so user input matches literally (pair with {@code ESCAPE '\'}). */
+    private static String escapeLikePattern(String value) {
+        return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
     }
 
     private static String textProjection(String field, CellFieldSelection selection) {

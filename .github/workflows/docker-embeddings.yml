@@ -1,9 +1,11 @@
 name: Docker – Embedding Service
 
+# No tag trigger: HiveMem release tags (vX.Y.Z) version the Java server, and
+# path filters are ignored on tag pushes — every release would needlessly
+# rebuild this image. The embeddings image is versioned by branch/sha instead.
 on:
   push:
     branches: [main]
-    tags: ["v*"]
     paths:
       - "embedding-service/**"
 

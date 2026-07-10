@@ -19,12 +19,22 @@ const view = shallowRef<EditorView | null>(null)
 const draft = ref(props.content ?? '')
 const showDiff = ref(false)
 
-const diff = computed(() => computeLineDiff(props.content ?? '', draft.value))
+// The full LCS line diff is too expensive to recompute per keystroke, so it runs
+// against a debounced snapshot of the draft (flushed synchronously on save).
+const diffSource = ref(draft.value)
+let diffTimer: ReturnType<typeof setTimeout> | null = null
+function scheduleDiff() {
+  if (diffTimer) clearTimeout(diffTimer)
+  diffTimer = setTimeout(() => { diffTimer = null; diffSource.value = draft.value }, 250)
+}
+const diff = computed(() => computeLineDiff(props.content ?? '', diffSource.value))
 
 function doSave() {
   // Pull the freshest doc straight from the editor in case the update listener
   // hasn't flushed yet (e.g. save fired from a keybinding mid-composition).
   if (view.value) draft.value = view.value.state.doc.toString()
+  if (diffTimer) { clearTimeout(diffTimer); diffTimer = null }
+  diffSource.value = draft.value
   if (!diff.value.changed) { emit('cancel'); return }
   emit('save', draft.value)
 }
@@ -36,7 +46,10 @@ onMounted(() => {
     { key: 'Escape', run: () => { emit('cancel'); return true } },
   ])
   const updateListener = EditorView.updateListener.of((u) => {
-    if (u.docChanged) draft.value = u.state.doc.toString()
+    if (u.docChanged) {
+      draft.value = u.state.doc.toString()
+      scheduleDiff()
+    }
   })
   view.value = new EditorView({
     parent: host.value,
@@ -48,7 +61,10 @@ onMounted(() => {
   view.value.focus()
 })
 
-onBeforeUnmount(() => { view.value?.destroy(); view.value = null })
+onBeforeUnmount(() => {
+  if (diffTimer) { clearTimeout(diffTimer); diffTimer = null }
+  view.value?.destroy(); view.value = null
+})
 </script>
 
 <template>

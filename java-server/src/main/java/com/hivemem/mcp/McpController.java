@@ -31,7 +31,12 @@ public class McpController {
 
     private static final String SESSION_HEADER = "Mcp-Session-Id";
 
-    private static final Set<String> SEARCH_TOOLS = Set.of("search");
+    /** Tools that require live embeddings and must be gated while re-encoding runs. */
+    private static final Set<String> EMBEDDING_TOOLS =
+            Set.of("search", "entity_overview", "search_kg", "data_quality_report", "add_cell");
+
+    /** SSE emitter lifetime; bounds how long a dead client connection can linger. */
+    private static final long SSE_TIMEOUT_MS = 5 * 60 * 1000L;
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -54,7 +59,7 @@ public class McpController {
      */
     @GetMapping(value = "/mcp", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter stream() {
-        SseEmitter emitter = new SseEmitter(0L);
+        SseEmitter emitter = new SseEmitter(SSE_TIMEOUT_MS);
         try {
             emitter.send(SseEmitter.event().comment("connected"));
         } catch (java.io.IOException ignored) {
@@ -95,12 +100,14 @@ public class McpController {
         }
 
         return switch (method) {
+            // Protocol 2025-06-18 removed JSON-RPC batching, which matches this
+            // server's single-request handling (batch bodies were never supported).
             case "initialize" -> ResponseEntity.ok()
                     .header(SESSION_HEADER, UUID.randomUUID().toString())
                     .body(McpResponse.success(
                             request.id(),
                             Map.of(
-                                    "protocolVersion", "2025-03-26",
+                                    "protocolVersion", "2025-06-18",
                                     "capabilities", Map.of("tools", Map.of()),
                                     "serverInfo", Map.of("name", "hivemem", "version", "4.0.0")
                             )
@@ -118,13 +125,13 @@ public class McpController {
     private ResponseEntity<McpResponse> handleToolCall(McpRequest request, AuthPrincipal principal) {
         JsonNode params = request.params();
         if (params == null || !params.hasNonNull("name")) {
-            return ResponseEntity.badRequest().body(
+            return ResponseEntity.ok(
                     McpResponse.invalidParams(request.id(), "Missing tool name"));
         }
 
         String toolName = params.get("name").asText();
         if (toolName.isBlank()) {
-            return ResponseEntity.badRequest().body(
+            return ResponseEntity.ok(
                     McpResponse.invalidParams(request.id(), "Missing tool name"));
         }
         if (!toolPermissionService.isAllowed(principal.role(), toolName)) {
@@ -132,11 +139,11 @@ public class McpController {
                     McpResponse.forbidden(request.id(), toolName));
         }
 
-        if (SEARCH_TOOLS.contains(toolName) && embeddingMigrationService.isReencodingActive()) {
+        if (EMBEDDING_TOOLS.contains(toolName) && embeddingMigrationService.isReencodingActive()) {
             String progress = embeddingMigrationService.getProgress().orElse("unknown");
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(
                     McpResponse.internalError(request.id(),
-                            "Embedding re-encoding in progress (" + progress + "). Search is temporarily unavailable."));
+                            "Embedding re-encoding in progress (" + progress + "). This tool depends on embeddings and is temporarily unavailable."));
         }
 
         return toolRegistry.resolve(toolName)
@@ -147,14 +154,21 @@ public class McpController {
                         return ResponseEntity.ok(
                                 McpResponse.toolResult(request.id(), json));
                     } catch (IllegalArgumentException e) {
-                        return ResponseEntity.badRequest().body(
-                                McpResponse.invalidParams(request.id(), e.getMessage()));
+                        // Argument validation failures are protocol-level invalid params.
+                        return ResponseEntity.ok(
+                                McpResponse.invalidParams(request.id(), messageOf(e)));
                     } catch (Exception e) {
+                        // Execution failures are reported inside the tool result
+                        // (isError: true) so the model can see and react to them.
                         log.error("Tool call failed: {}", toolName, e);
                         return ResponseEntity.ok(
-                                McpResponse.internalError(request.id(), e.getMessage()));
+                                McpResponse.toolExecutionError(request.id(), messageOf(e)));
                     }
                 })
                 .orElseGet(() -> ResponseEntity.ok(McpResponse.toolNotFound(request.id(), toolName)));
+    }
+
+    private static String messageOf(Exception e) {
+        return e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
     }
 }

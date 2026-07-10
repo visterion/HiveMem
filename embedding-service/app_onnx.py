@@ -204,7 +204,10 @@ def bootstrap_runtime():
         )
 
     tokenizer = Tokenizer.from_file(tokenizer_path)
-    tokenizer.enable_padding(length=MAX_LENGTH)
+    # No padding: inputs are embedded one at a time, so padding every request to
+    # MAX_LENGTH would make short texts pay full-length inference cost.
+    # Truncation still bounds the sequence length.
+    tokenizer.no_padding()
     tokenizer.enable_truncation(max_length=MAX_LENGTH)
 
     session = ort.InferenceSession(onnx_path)
@@ -218,15 +221,26 @@ class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
     def do_POST(self):
-        if self.path == "/embeddings":
-            length = int(self.headers.get("Content-Length", 0))
-            raw = self.rfile.read(length)
-            body = json.loads(raw)
-            mode = body.get("mode", "document")
-            vector = embed(body["text"], mode=mode)
-            self._respond(200, {"vector": vector, "model": MODEL_NAME, "dimension": MODEL_DIMENSION})
-        else:
+        if self.path != "/embeddings":
             self._respond(404, {"error": "not found"})
+            return
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            body = json.loads(self.rfile.read(length))
+        except (ValueError, UnicodeDecodeError):
+            self._respond(400, {"error": "request body must be valid JSON"})
+            return
+        text = body.get("text") if isinstance(body, dict) else None
+        if not isinstance(text, str):
+            self._respond(400, {"error": "field 'text' is required and must be a string"})
+            return
+        mode = body.get("mode", "document")
+        try:
+            vector = embed(text, mode=mode)
+        except Exception as exc:  # keep the server alive; report the failure as HTTP 500
+            self._respond(500, {"error": f"embedding failed: {exc}"})
+            return
+        self._respond(200, {"vector": vector, "model": MODEL_NAME, "dimension": MODEL_DIMENSION})
 
     def do_GET(self):
         if self.path == "/info":

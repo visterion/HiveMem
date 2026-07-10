@@ -12,7 +12,7 @@ class QueenPropertiesTest {
         assertThat(p.isEnabled()).isFalse();
         assertThat(p.getVistierieBaseUrl()).isEqualTo("http://vistierie:8090");
         assertThat(p.getVistierieToken()).isEmpty();
-        assertThat(p.getHivememBaseUrl()).isEqualTo("http://hivemem:8080");
+        assertThat(p.getHivememBaseUrl()).isEqualTo("http://hivemem:8421");
         assertThat(p.getWebhookToken()).isEmpty();
         assertThat(p.getCompletionWebhookToken()).isEmpty();
         assertThat(p.getSchedule()).isEqualTo("0 0 3 * * *");

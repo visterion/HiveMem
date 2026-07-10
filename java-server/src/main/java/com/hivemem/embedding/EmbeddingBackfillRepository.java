@@ -18,11 +18,20 @@ public class EmbeddingBackfillRepository {
         this.dsl = dsl;
     }
 
+    /**
+     * Cells that can actually be embedded right now. Excludes cells still waiting on a summary
+     * (needs_summary, or long content without one — encodeForCell yields null for those): they
+     * would be skipped without a marker every sweep and permanently starve the queue head.
+     * The summarizer re-embeds them once the summary lands.
+     */
     public List<UUID> findCellsMissingEmbedding(int limit) {
         var rows = dsl.fetch(
                 "SELECT id FROM cells WHERE embedding IS NULL AND status = 'committed' AND valid_until IS NULL "
                 + "AND content IS NOT NULL AND content <> '' "
-                + "ORDER BY created_at LIMIT ?", limit);
+                + "AND NOT ('needs_summary' = ANY(COALESCE(tags, '{}'::text[]))) "
+                + "AND (COALESCE(summary, '') <> '' OR char_length(content) <= ?) "
+                + "ORDER BY created_at LIMIT ?",
+                EmbeddingClient.CONTENT_EMBED_MAX_CHARS, limit);
         List<UUID> ids = new ArrayList<>();
         for (Record r : rows) ids.add(r.get(0, UUID.class));
         return ids;

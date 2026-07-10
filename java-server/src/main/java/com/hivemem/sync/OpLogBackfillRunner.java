@@ -20,6 +20,28 @@ public class OpLogBackfillRunner {
 
     private static final Logger log = LoggerFactory.getLogger(OpLogBackfillRunner.class);
 
+    /**
+     * Column-name → op-payload-key mapping per table. OpReplayer reads the op-payload key
+     * contract the live write path emits ({@code cell_id}, {@code from_cell_id}, {@code agent_id},
+     * …), not raw column names — backfilled ops must use the same keys or a fresh peer replays
+     * none of the pre-existing data (every insert sees a NULL id). Columns not listed here pass
+     * through unchanged; extra columns are ignored by the replayer.
+     */
+    private static final Map<String, Map<String, String>> PAYLOAD_KEY_OVERRIDES = Map.of(
+            "cells", Map.of("id", "cell_id", "created_by", "agent_id"),
+            "tunnels", Map.of("id", "tunnel_id", "from_cell", "from_cell_id",
+                    "to_cell", "to_cell_id", "created_by", "agent_id"),
+            "facts", Map.of("id", "fact_id", "created_by", "agent_id"),
+            "agents", Map.of(),
+            "references_", Map.of("id", "reference_id"),
+            "blueprints", Map.of("id", "blueprint_id", "created_by", "agent_id"),
+            "agent_diary", Map.of("id", "entry_id"));
+
+    /** Tables whose rows are versioned; only the ACTIVE revision is backfilled (replaying a
+     *  closed revision as an add_* op would resurrect it as an open row on the peer). */
+    private static final java.util.Set<String> VERSIONED_TABLES =
+            java.util.Set.of("cells", "facts", "tunnels", "blueprints");
+
     private final DSLContext dsl;
     private final OpLogWriter opLogWriter;
     private final ObjectMapper objectMapper;
@@ -51,9 +73,14 @@ public class OpLogBackfillRunner {
     }
 
     private void backfillTable(String tableName, String opType) {
+        Map<String, String> keyOverrides = PAYLOAD_KEY_OVERRIDES.getOrDefault(tableName, Map.of());
         Result<Record> rows;
         try {
-            rows = dsl.fetch("SELECT * FROM " + tableName);
+            String sql = "SELECT * FROM " + tableName;
+            if (VERSIONED_TABLES.contains(tableName)) {
+                sql += " WHERE valid_until IS NULL";
+            }
+            rows = dsl.fetch(sql);
         } catch (Exception e) {
             log.error("Backfill failed for table '{}' (op_type='{}')", tableName, opType, e);
             throw (e instanceof RuntimeException re) ? re : new RuntimeException(e);
@@ -64,7 +91,8 @@ public class OpLogBackfillRunner {
                 if ("embedding".equals(f.getName())) continue;
                 Object value = row.get(f);
                 if (value == null) continue;
-                payload.put(f.getName(), toPayloadValue(f, value));
+                String key = keyOverrides.getOrDefault(f.getName(), f.getName());
+                payload.put(key, toPayloadValue(f, value));
             }
             opLogWriter.append(opType, payload);
         }

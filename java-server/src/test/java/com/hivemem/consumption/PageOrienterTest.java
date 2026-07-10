@@ -9,8 +9,10 @@ import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.util.List;
 import javax.imageio.ImageIO;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 class PageOrienterTest {
 
@@ -63,6 +65,21 @@ class PageOrienterTest {
         assertFalse(o.blank());
         assertEquals(0.0, o.confidence(), 1e-9);
         verify(vm, times(2)).group(anyString(), anyString(), anyList());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void retryReusesPreparedImagesInsteadOfReencoding() throws Exception {
+        VisionMultiClient vm = mock(VisionMultiClient.class);
+        when(vm.group(anyString(), anyString(), anyList()))
+                .thenThrow(new RuntimeException("boom"))
+                .thenReturn("{\"upright\":\"A\",\"blank\":false,\"confidence\":0.9}");
+        new PageOrienter(vm).orient("documents", 2, markedPng());
+
+        ArgumentCaptor<List<VisionMultiClient.Image>> captor = ArgumentCaptor.forClass(List.class);
+        verify(vm, times(2)).group(anyString(), anyString(), captor.capture());
+        assertSame(captor.getAllValues().get(0), captor.getAllValues().get(1),
+                "images must be built once per page, not re-encoded/re-rotated per attempt");
     }
 
     @Test

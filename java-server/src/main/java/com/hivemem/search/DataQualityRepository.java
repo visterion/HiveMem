@@ -91,19 +91,32 @@ public class DataQualityRepository {
         return result;
     }
 
+    /** Nearest neighbours probed per cell; bounds the k-NN scan instead of an O(n^2) cross join. */
+    private static final int DUPLICATE_KNN_NEIGHBOURS = 5;
+
     public List<Map<String, Object>> duplicatePairs(int dimension, double threshold, int limit) {
         if (dimension <= 0) {
             return List.of();
         }
-        String vectorExpr = "(a.embedding::vector(" + dimension + "))";
-        String vectorExprB = "(b.embedding::vector(" + dimension + "))";
-        String sql = "SELECT a.id AS id_a, a.summary AS summary_a, b.id AS id_b, b.summary AS summary_b, "
-                + "(1 - (" + vectorExpr + " <=> " + vectorExprB + "))::real AS similarity "
-                + "FROM cells a JOIN cells b ON a.id < b.id "
-                + "WHERE a.valid_until IS NULL AND b.valid_until IS NULL "
-                + "AND a.embedding IS NOT NULL AND b.embedding IS NOT NULL "
-                + "AND (1 - (" + vectorExpr + " <=> " + vectorExprB + ")) >= ? "
-                + "ORDER BY similarity DESC, id_a, id_b LIMIT ?";
+        // Per-cell LATERAL k-NN probe: the ORDER BY on the casted column matches the
+        // idx_cells_embedding HNSW index expression, so each probe is an index scan rather
+        // than an unindexable full cross join. Each qualifying pair is found from both
+        // sides; a.id < b.id keeps exactly one orientation.
+        String vectorExprA = "(a.embedding::vector(" + dimension + "))";
+        String vectorExprN = "(n.embedding::vector(" + dimension + "))";
+        String sql = "SELECT a.id AS id_a, a.summary AS summary_a, b.id AS id_b, b.summary AS summary_b, b.similarity "
+                + "FROM cells a "
+                + "CROSS JOIN LATERAL ("
+                + "SELECT n.id, n.summary, (1 - (" + vectorExprN + " <=> " + vectorExprA + "))::real AS similarity "
+                + "FROM cells n "
+                + "WHERE n.valid_until IS NULL AND n.embedding IS NOT NULL AND n.id <> a.id "
+                + "ORDER BY " + vectorExprN + " <=> " + vectorExprA + " "
+                + "LIMIT " + DUPLICATE_KNN_NEIGHBOURS
+                + ") b "
+                + "WHERE a.valid_until IS NULL AND a.embedding IS NOT NULL "
+                + "AND a.id < b.id "
+                + "AND b.similarity >= ? "
+                + "ORDER BY b.similarity DESC, id_a, id_b LIMIT ?";
 
         List<Map<String, Object>> results = new ArrayList<>();
         for (Record row : dslContext.fetch(sql, threshold, limit)) {

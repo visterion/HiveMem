@@ -3,6 +3,7 @@ package com.hivemem.consumption;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 
 /** Decides whether a file has stopped changing. All times in epoch millis. Not thread-safe;
  *  call from the single-threaded watcher only. */
@@ -29,5 +30,12 @@ public class StableFileDetector {
 
     public void forget(Path path) {
         seen.remove(path);
+    }
+
+    /** Prune tracking state for paths no longer present in the watch root, so externally-removed
+     *  files (deleted before ever becoming stable) can't grow the map without bound. Call only
+     *  after a COMPLETE directory scan — a partial listing must not forget files still there. */
+    public void retainOnly(Set<Path> present) {
+        seen.keySet().retainAll(present);
     }
 }

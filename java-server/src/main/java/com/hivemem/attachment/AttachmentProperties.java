@@ -3,6 +3,8 @@ package com.hivemem.attachment;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
+import java.time.Duration;
+
 @Component
 @ConfigurationProperties(prefix = "hivemem.attachment")
 public class AttachmentProperties {
@@ -15,13 +17,13 @@ public class AttachmentProperties {
 
     private String krokiUrl = "";
     private int krokiTimeoutSeconds = 10;
-    private long krokiBackfillIntervalMs = 3_600_000L;
+    private Duration krokiBackfillInterval = Duration.ofHours(1);
 
     private String vistierieBaseUrl = "http://vistierie:8090";
     private String vistierieToken = "";
     private int visionTimeoutSeconds = 30;
     private double visionDailyBudgetUsd = 1.0;
-    private long visionBackfillIntervalMs = 3_600_000L;
+    private Duration visionBackfillInterval = Duration.ofHours(1);
     private long visionMaxInputBytes = 5L * 1024 * 1024;
 
     public boolean isEnabled() { return enabled; }
@@ -39,8 +41,8 @@ public class AttachmentProperties {
     public void setKrokiUrl(String v) { this.krokiUrl = v; }
     public int getKrokiTimeoutSeconds() { return krokiTimeoutSeconds; }
     public void setKrokiTimeoutSeconds(int v) { this.krokiTimeoutSeconds = v; }
-    public long getKrokiBackfillIntervalMs() { return krokiBackfillIntervalMs; }
-    public void setKrokiBackfillIntervalMs(long v) { this.krokiBackfillIntervalMs = v; }
+    public Duration getKrokiBackfillInterval() { return krokiBackfillInterval; }
+    public void setKrokiBackfillInterval(Duration v) { this.krokiBackfillInterval = v; }
 
     public String getVistierieBaseUrl() { return vistierieBaseUrl; }
     public void setVistierieBaseUrl(String v) { this.vistierieBaseUrl = v; }
@@ -50,8 +52,8 @@ public class AttachmentProperties {
     public void setVisionTimeoutSeconds(int v) { this.visionTimeoutSeconds = v; }
     public double getVisionDailyBudgetUsd() { return visionDailyBudgetUsd; }
     public void setVisionDailyBudgetUsd(double v) { this.visionDailyBudgetUsd = v; }
-    public long getVisionBackfillIntervalMs() { return visionBackfillIntervalMs; }
-    public void setVisionBackfillIntervalMs(long v) { this.visionBackfillIntervalMs = v; }
+    public Duration getVisionBackfillInterval() { return visionBackfillInterval; }
+    public void setVisionBackfillInterval(Duration v) { this.visionBackfillInterval = v; }
     public long getVisionMaxInputBytes() { return visionMaxInputBytes; }
     public void setVisionMaxInputBytes(long v) { this.visionMaxInputBytes = v; }
 }

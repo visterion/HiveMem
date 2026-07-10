@@ -5,7 +5,6 @@ import { useMediaStore } from '../stores/media'
 import { useJustifiedRows } from '../composables/justified'
 import PhotoTile from '../components/media/PhotoTile.vue'
 import Lightbox from '../components/media/Lightbox.vue'
-import type { MediaItem } from '../api/types'
 
 const { t, locale } = useI18n()
 const media = useMediaStore()
@@ -13,6 +12,7 @@ const media = useMediaStore()
 const stageEl = ref<HTMLElement | null>(null)
 const containerWidth = ref(0)
 let ro: ResizeObserver | null = null
+let measureTimer: ReturnType<typeof setTimeout> | null = null
 
 function measure() {
   if (stageEl.value) containerWidth.value = Math.round(stageEl.value.getBoundingClientRect().width)
@@ -22,11 +22,18 @@ onMounted(() => {
   void media.load()
   measure()
   if (typeof ResizeObserver !== 'undefined') {
-    ro = new ResizeObserver(() => measure())
+    // Debounce width updates so a continuous resize doesn't re-pack every tick.
+    ro = new ResizeObserver(() => {
+      if (measureTimer) clearTimeout(measureTimer)
+      measureTimer = setTimeout(() => { measureTimer = null; measure() }, 100)
+    })
     if (stageEl.value) ro.observe(stageEl.value)
   }
 })
-onBeforeUnmount(() => { ro?.disconnect(); ro = null })
+onBeforeUnmount(() => {
+  ro?.disconnect(); ro = null
+  if (measureTimer) { clearTimeout(measureTimer); measureTimer = null }
+})
 
 function labelFor(key: string): string {
   if (key === 'today') return t('photos.today')
@@ -38,9 +45,14 @@ function labelFor(key: string): string {
   return key
 }
 
-function rowsFor(items: MediaItem[]) {
-  return useJustifiedRows(items, containerWidth.value || 800, 132, 4)
-}
+// Pack rows once per (groups × containerWidth) change instead of re-packing every
+// group on any reactive change during template render.
+const packedGroups = computed(() =>
+  media.groups.map(group => ({
+    key: group.key,
+    rows: useJustifiedRows(group.items, containerWidth.value || 800, 132, 4),
+  })),
+)
 const isEmpty = computed(() => media.loaded && media.photos.length === 0 && !media.error)
 </script>
 
@@ -57,10 +69,10 @@ const isEmpty = computed(() => media.loaded && media.photos.length === 0 && !med
       <div v-if="media.error" class="notice">{{ t('photos.loadError') }}</div>
       <div v-else-if="isEmpty" class="empty">{{ t('photos.empty') }}</div>
 
-      <div v-for="group in media.groups" :key="group.key" class="photo-group">
+      <div v-for="group in packedGroups" :key="group.key" class="photo-group">
         <div class="photo-date">{{ labelFor(group.key) }}</div>
         <div class="photo-rows">
-          <div v-for="(row, ri) in rowsFor(group.items)" :key="ri" class="photo-row" :style="{ height: row.height + 'px' }">
+          <div v-for="(row, ri) in group.rows" :key="ri" class="photo-row" :style="{ height: row.height + 'px' }">
             <div v-for="cell in row.items" :key="cell.item.cell_id" class="photo-slot"
                  :style="{ width: cell.width + 'px', height: cell.height + 'px' }">
               <PhotoTile :item="cell.item"

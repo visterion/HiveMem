@@ -23,6 +23,34 @@ describe('HttpApiClient', () => {
     expect(r.drawer_count).toBe(42)
   })
 
+  it('surfaces the backend JSON-RPC error message on non-2xx responses (L-F7)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(
+      JSON.stringify({ jsonrpc: '2.0', id: 1, error: { code: -32603, message: 'embedding service unavailable' } }),
+      { status: 500 },
+    )))
+    const c = new HttpApiClient({ endpoint: '/mcp', token: 't' })
+    await expect(c.call('search')).rejects.toThrow('embedding service unavailable')
+  })
+
+  it('falls back to the HTTP status for non-JSON error bodies', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('<html>bad gateway</html>', { status: 502 })))
+    const c = new HttpApiClient({ endpoint: '/mcp', token: 't' })
+    await expect(c.call('status')).rejects.toThrow('HTTP 502')
+  })
+
+  it('attaches an abort/timeout signal so requests cannot hang forever (L-F7)', async () => {
+    const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
+      expect(init.signal).toBeTruthy()
+      return new Response(JSON.stringify({
+        jsonrpc: '2.0', id: 1, result: { content: [{ type: 'text', text: '{}' }] },
+      }))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const c = new HttpApiClient({ endpoint: '/mcp', token: 't' })
+    await c.call('status')
+    expect(fetchMock).toHaveBeenCalledOnce()
+  })
+
   it('throws on JSON-RPC error', async () => {
     vi.stubGlobal('fetch', vi.fn(async () =>
       new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, error: { code: -32601, message: 'Method not found' } }))

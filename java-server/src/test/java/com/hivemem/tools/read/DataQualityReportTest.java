@@ -39,6 +39,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @ExtendWith(SpringExtension.class)
@@ -236,7 +237,8 @@ class DataQualityReportTest {
                                         "arguments", Map.of("include", List.of("bogus"))
                                 )
                         ))))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.error.code").value(-32602));
     }
 
     @Test
@@ -253,7 +255,8 @@ class DataQualityReportTest {
                                         "arguments", Map.of("threshold", 0.4)
                                 )
                         ))))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.error.code").value(-32602));
     }
 
     @Test
@@ -270,7 +273,8 @@ class DataQualityReportTest {
                                         "arguments", Map.of("limit", 500)
                                 )
                         ))))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.error.code").value(-32602));
     }
 
     @Test
@@ -287,7 +291,8 @@ class DataQualityReportTest {
                                         "arguments", Map.of("subject_similarity", 1.5)
                                 )
                         ))))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.error.code").value(-32602));
     }
 
     @TestConfiguration(proxyBeanMethods = false)

@@ -4,6 +4,8 @@ export interface HttpApiConfig {
   endpoint: string
   token: string
   pollMs?: number
+  /** Per-request timeout in ms (default 30s) — a hung backend must not leave loading flags stuck forever. */
+  timeoutMs?: number
 }
 
 export class HttpApiClient implements ApiClient {
@@ -30,13 +32,23 @@ export class HttpApiClient implements ApiClient {
     const res = await fetch(this.config.endpoint, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ jsonrpc: '2.0', id, method: 'tools/call', params: { name: tool, arguments: args } })
+      body: JSON.stringify({ jsonrpc: '2.0', id, method: 'tools/call', params: { name: tool, arguments: args } }),
+      signal: AbortSignal.timeout(this.config.timeoutMs ?? 30_000)
     })
     if (res.status === 401) {
       window.location.href = '/login'
       throw new Error('Session expired')
     }
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    if (!res.ok) {
+      // The backend often returns a JSON-RPC error body even on non-2xx — surface
+      // its message instead of an opaque status code (L-F7).
+      let msg = `HTTP ${res.status}`
+      try {
+        const body = await res.json() as { error?: { message?: string } }
+        if (body?.error?.message) msg = body.error.message
+      } catch { /* non-JSON error body — keep the status fallback */ }
+      throw new Error(msg)
+    }
     const json = await res.json() as {
       result?: { content?: Array<{ text?: string; type?: string }> }
       error?: { message: string }

@@ -39,12 +39,20 @@ async function onSaveView() {
     const vals = [...store.facets[k]]
     if (vals.length) filter[k] = vals
   }
-  await store.saveView(name.trim(), filter)
+  try {
+    await store.saveView(name.trim(), filter)
+  } catch {
+    ui.pushToast('error', t('common.actionFailed'))
+  }
 }
 
 async function onDeleteView(id: string, e: MouseEvent) {
   e.stopPropagation()
-  await store.deleteView(id)
+  try {
+    await store.deleteView(id)
+  } catch {
+    ui.pushToast('error', t('common.actionFailed'))
+  }
 }
 
 onMounted(() => {

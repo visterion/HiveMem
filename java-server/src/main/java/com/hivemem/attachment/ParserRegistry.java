@@ -1,5 +1,7 @@
 package com.hivemem.attachment;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.io.InputStream;
@@ -7,6 +9,8 @@ import java.util.List;
 
 @Component
 public class ParserRegistry {
+
+    private static final Logger log = LoggerFactory.getLogger(ParserRegistry.class);
 
     private final List<AttachmentParser> parsers;
 
@@ -20,6 +24,8 @@ public class ParserRegistry {
                 try {
                     return parser.parse(content);
                 } catch (Exception e) {
+                    log.warn("Parser {} failed for mime type {}: {}",
+                            parser.getClass().getSimpleName(), mimeType, e.getMessage());
                     return ParseResult.empty();
                 }
             }

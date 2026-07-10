@@ -13,6 +13,9 @@ import type { Cell } from '../../api/types'
 
 const root = ref<HTMLDivElement>()
 const canvasStore = useCanvasStore()
+// Guard for detached rAF loops (spawn/snap animations): once the component
+// unmounts they must stop touching destroyed Pixi objects.
+let alive = true
 let app: Application | null = null
 let world: Container | null = null
 let snapToRef: ((worldX: number, worldY: number, targetZoom: number, onDone: () => void) => void) | null = null
@@ -166,6 +169,7 @@ onMounted(async () => {
     const targetPanY = app.screen.height / 2 - worldY * targetZoom
     const startT = performance.now()
     function tick(t: number) {
+      if (!alive) return
       const k = Math.min(1, (t - startT) / 280)
       const e = k * k * (3 - 2 * k)
       zoom = startZoom + (targetZoom - startZoom) * e
@@ -177,9 +181,19 @@ onMounted(async () => {
     requestAnimationFrame(tick)
   }
 
-  function onCellClick(c: Cell) {
-    useCellStore().load(c.id)
-    canvasStore.setFocus(c.id)
+  // Guarded load-then-focus with rollback (same pattern as ForceGraphBridge):
+  // focus only moves once the cell actually loaded; a failed load restores it.
+  async function onCellClick(c: Cell) {
+    const previousFocus = canvasStore.focusedId
+    try {
+      const result = useCellStore().load(c.id)
+      if (result && typeof (result as PromiseLike<unknown>).then === 'function') {
+        await result
+      }
+      canvasStore.setFocus(c.id)
+    } catch {
+      canvasStore.setFocus(previousFocus)
+    }
   }
 
   snapToRef = snapTo
@@ -188,6 +202,7 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  alive = false
   cleanup?.(); cleanup = null
   app?.destroy(true, { children: true, texture: false }); app = null; world = null
 })
@@ -198,6 +213,7 @@ function animateSpawn(sprite: any) {
   sprite.alpha = 0
   const startT = performance.now()
   const tick = (t: number) => {
+    if (!alive || sprite.destroyed) return
     const k = Math.min(1, (t - startT) / 520)
     const e = 1 - Math.pow(1 - k, 3)
     sprite.scale.set(targetScale * e * (1 + 0.25 * Math.sin(k * Math.PI)))
@@ -304,7 +320,7 @@ function render() {
       halo.width = halo.height = 60
       halo.x = sp.x; halo.y = sp.y
       halo.alpha = 0.35
-      halo._kind = 'signal'; halo._name = sp.name
+      halo._kind = 'signal'; halo._name = sp.name; halo._key = key
       signalLayer!.addChild(halo)
       renderedSignalKeys.add(key)
     }
@@ -318,15 +334,16 @@ function render() {
       renderedSignalLabels.add(key)
     }
   })
-  // Grow signal halos as the number of cells in them increases (cheap).
+  // Grow signal halos as the number of cells in them increases (cheap). Each halo
+  // carries its own realm|signal key, so the count always comes from the right realm.
   for (const halo of signalLayer.children) {
-    const key = (halo as any)._name && (halo as any)._kind === 'signal'
-      ? [...renderedSignalKeys].find(k => k.endsWith('|' + (halo as any)._name))
-      : null
-    if (!key) continue
-    const sm = cellsByRealmSignal.get(key.split('|')[0])
-    const count = sm?.get(key.split('|')[1])?.length ?? 0
-    ;(halo as any).width = (halo as any).height = 50 + count * 6
+    const s = halo as any
+    if (s._kind !== 'signal' || typeof s._key !== 'string') continue
+    const sep = s._key.lastIndexOf('|')
+    const realm = s._key.slice(0, sep)
+    const sig = s._key.slice(sep + 1)
+    const count = cellsByRealmSignal.get(realm)?.get(sig)?.length ?? 0
+    s.width = s.height = 50 + count * 6
   }
 
   // 6. Rebuild edges (single Graphics object — cheap enough to redraw fully).
@@ -340,7 +357,18 @@ function render() {
     edgesGraphics.moveTo(a.x, a.y).lineTo(b.x, b.y).stroke({ width: 1.4, color: col, alpha: 0.9 })
   }
 
-  // 7. Add new cell sprites only (existing cells keep their sprite instances).
+  // 7a. Remove sprites for cells that no longer exist in the store (reset,
+  // deletion, replacement) so no ghost/clickable dead sprites linger.
+  const liveIds = new Set(canvasStore.cells.map(c => c.id))
+  for (const child of [...cellLayer.children]) {
+    const s = child as any
+    if (s._kind !== 'cell' || liveIds.has(s._cellId)) continue
+    cellLayer.removeChild(s)
+    s.destroy()
+    renderedCellIds.delete(s._cellId)
+  }
+
+  // 7b. Add new cell sprites only (existing cells keep their sprite instances).
   for (const c of canvasStore.cells) {
     if (renderedCellIds.has(c.id)) continue
     const pt = cellPos.get(c.id); if (!pt) continue
@@ -373,8 +401,10 @@ function render() {
 }
 
 watch(() => canvasStore.loaded, v => { if (v) render() })
-watch(() => canvasStore.cells.length, () => render())
-watch(() => canvasStore.tunnels.length, () => render())
+// Watch the array references (the store replaces them immutably), not `.length`:
+// same-length replacements must reconcile too.
+watch(() => canvasStore.cells, () => render())
+watch(() => canvasStore.tunnels, () => render())
 
 watch(() => canvasStore.focusedId, id => {
   if (!cellLayer) return

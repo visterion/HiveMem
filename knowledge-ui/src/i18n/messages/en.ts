@@ -5,8 +5,11 @@ export default {
     connecting: 'Connecting…',
     loading: 'Loading…',
     reload: 'Reload',
+    retry: 'Retry',
     noResults: 'No results.',
     comingSoon: 'Coming soon',
+    actionFailed: 'Action failed. Please try again.',
+    loadFailed: 'Could not load data.',
   },
   nav: {
     search: 'Search', hive: 'Hive', graph: 'Graph', realms: 'Realms', photos: 'Photos',

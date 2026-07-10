@@ -35,7 +35,7 @@ public class ListMediaToolHandler implements ToolHandler {
     @Override
     public Map<String, Object> inputSchema() {
         return ToolInputSchema.object()
-                .optionalString("realm", "Restrict to one realm (default: all realms)")
+                .optionalString("realm", "Restrict to one realm; pass \"none\" for photos with no realm assigned (default: all realms)")
                 .optionalEnumString("sort", "Sort order by capture date (default newest)", "newest", "oldest")
                 .optionalInteger("limit", "Maximum rows to return (default 100, max 500)")
                 .optionalInteger("offset", "Number of rows to skip (default 0)")

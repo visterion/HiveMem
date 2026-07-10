@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -136,6 +137,36 @@ class ReassemblyPartialFailureTest {
         verify(mover, never()).moveToProcessed(any());
         verify(fileRepo).markFailed(eq("deadbeef"), anyString());
         verify(fileRepo, never()).markDone(any());
+    }
+
+    /** M8: the recovery-sweep heartbeat must fire INSIDE the per-page LLM loops (passes 1+2),
+     *  not just between passes, so a large batch's per-page latency can't trip the stale window. */
+    @Test
+    void heartbeatTouchesLedgerPerPageDuringPasses() throws Exception {
+        ConsumptionProperties props = new ConsumptionProperties();
+        PdfPageRasterizer rasterizer = mock(PdfPageRasterizer.class);
+        PageOrienter orienter = mockOrienter();
+        PageMetadataExtractor extractor = mockExtractor();
+        MailingAssembler assembler = mockAssembler();
+        PageReassembler reassembler = mock(PageReassembler.class);
+        AttachmentService attachments = mock(AttachmentService.class);
+        ConsumptionFileMover mover = mock(ConsumptionFileMover.class);
+        ConsumptionFileRepository fileRepo = mock(ConsumptionFileRepository.class);
+
+        byte[] page = inkPng();
+        when(rasterizer.rasterize(any(), anyInt(), anyInt())).thenReturn(List.of(page, page));
+        when(reassembler.toDocuments(any(), anyInt())).thenReturn(List.of(
+                new PageReassembler.ResultDoc(List.of(1), "committed"),
+                new PageReassembler.ResultDoc(List.of(2), "committed")));
+
+        Path stagedPath = Path.of("Scan_heartbeat.pdf");
+        ReassemblyOrchestrator orch = new ReassemblyOrchestrator(props, rasterizer, orienter, extractor,
+                assembler, reassembler, new BatchSplitter(), attachments, mover);
+        orch.reassemble(stagedPath, nPagePdf(2), 2, "cafebabe", fileRepo);
+
+        // 2 pages x 2 per-page passes = at least 4 heartbeats
+        verify(fileRepo, atLeast(4)).touch("cafebabe");
+        verify(fileRepo).markDone("cafebabe");
     }
 
     /** When both sub-docs ingest successfully, the batch must go to processed/ (regression guard). */

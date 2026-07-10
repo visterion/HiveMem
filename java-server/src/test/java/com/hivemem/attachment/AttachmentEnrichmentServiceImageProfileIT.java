@@ -35,6 +35,9 @@ class AttachmentEnrichmentServiceImageProfileIT {
     private VisionBudgetTracker budget;
     private AttachmentEnrichmentService svc;
 
+    /** The revision id reviseCell returns — tag work must target THIS id, not the old cell. */
+    private final UUID newCellId = UUID.randomUUID();
+
     @BeforeEach
     void setUp() throws Exception {
         props = new AttachmentProperties();
@@ -55,7 +58,7 @@ class AttachmentEnrichmentServiceImageProfileIT {
         when(seaweed.download(anyString()))
                 .thenReturn(new ByteArrayInputStream(new byte[]{1, 2, 3}));
         when(writeService.reviseCell(any(), any(), anyString(), any()))
-                .thenReturn(Map.of("new_id", UUID.randomUUID().toString()));
+                .thenReturn(Map.of("new_id", newCellId.toString()));
 
         svc = new AttachmentEnrichmentService(
                 props, /*krokiClient*/ mock(KrokiClient.class), visionClient,
@@ -83,12 +86,15 @@ class AttachmentEnrichmentServiceImageProfileIT {
 
         ExtractionProfile profile = registry.resolveImageSubType("whiteboard_photo");
         assertEquals("image-whiteboard", profile.type());
+        // Tag work targets the NEW revision id from the revise result, not the dead cell.
         for (String t : profile.tagsToApply()) {
-            verify(dsl).execute(contains("array_append"), eq(t), eq(t), eq(cellId));
+            verify(dsl).execute(contains("array_append"), eq(t), eq(t), eq(newCellId));
         }
         verify(dsl).execute(contains("array_append"),
-                eq("subtype_whiteboard_photo"), eq("subtype_whiteboard_photo"), eq(cellId));
+                eq("subtype_whiteboard_photo"), eq("subtype_whiteboard_photo"), eq(newCellId));
+        // vision_pending is removed from BOTH the superseded cell and the new revision.
         verify(dsl).execute(contains("array_remove"), eq("vision_pending"), eq(cellId));
+        verify(dsl).execute(contains("array_remove"), eq("vision_pending"), eq(newCellId));
     }
 
     @Test
@@ -101,11 +107,11 @@ class AttachmentEnrichmentServiceImageProfileIT {
         svc.describeAndRevise(UUID.randomUUID(), cellId, "k", "image/jpeg");
 
         verify(dsl).execute(contains("array_append"),
-                eq("subtype_document_scan"), eq("subtype_document_scan"), eq(cellId));
+                eq("subtype_document_scan"), eq("subtype_document_scan"), eq(newCellId));
         verify(dsl).execute(contains("array_append"),
-                eq("document"), eq("document"), eq(cellId));
+                eq("document"), eq("document"), eq(newCellId));
         verify(dsl).execute(contains("array_append"),
-                eq("has_text"), eq("has_text"), eq(cellId));
+                eq("has_text"), eq("has_text"), eq(newCellId));
     }
 
     @Test
@@ -118,9 +124,9 @@ class AttachmentEnrichmentServiceImageProfileIT {
         svc.describeAndRevise(UUID.randomUUID(), cellId, "k", "image/jpeg");
 
         verify(dsl).execute(contains("array_append"),
-                eq("subtype_photo_general"), eq("subtype_photo_general"), eq(cellId));
+                eq("subtype_photo_general"), eq("subtype_photo_general"), eq(newCellId));
         verify(dsl).execute(contains("array_append"),
-                eq("photo"), eq("photo"), eq(cellId));
+                eq("photo"), eq("photo"), eq(newCellId));
     }
 
     @Test
@@ -135,9 +141,9 @@ class AttachmentEnrichmentServiceImageProfileIT {
         org.mockito.InOrder order = inOrder(dsl);
         order.verify(dsl).execute(contains("array_remove"),
                 eq("subtype_whiteboard_photo"), eq("subtype_document_scan"),
-                eq("subtype_photo_general"), eq(cellId));
+                eq("subtype_photo_general"), eq(newCellId));
         order.verify(dsl).execute(contains("array_append"),
-                eq("subtype_whiteboard_photo"), eq("subtype_whiteboard_photo"), eq(cellId));
+                eq("subtype_whiteboard_photo"), eq("subtype_whiteboard_photo"), eq(newCellId));
     }
 
     @Test

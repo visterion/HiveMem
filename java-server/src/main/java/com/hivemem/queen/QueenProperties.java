@@ -16,7 +16,7 @@ public class QueenProperties {
     /** Optional Vistierie ADMIN token. When set, queen_runs uses GET /admin/runs to include cost metrics. */
     private String vistierieAdminToken = "";
     /** HiveMem's own externally-reachable base URL, used to build tool webhook_url + completion_webhook. */
-    private String hivememBaseUrl = "http://hivemem:8080";
+    private String hivememBaseUrl = "http://hivemem:8421";
     /** Token Vistierie presents to HiveMem on every tool webhook call (agent.webhook_token). */
     private String webhookToken = "";
     /** Token Vistierie presents to HiveMem on the completion webhook. */

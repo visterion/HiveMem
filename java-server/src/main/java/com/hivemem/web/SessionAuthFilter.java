@@ -54,6 +54,15 @@ public class SessionAuthFilter extends OncePerRequestFilter {
         boolean isHooks = path.startsWith("/hooks");
         boolean isApi = path.startsWith("/api/");
         boolean isVistierie = path.startsWith("/vistierie");
+        // Peer sync authenticates with a bearer token (no browser session); defer to
+        // AuthFilter like /mcp and /hooks instead of redirecting the peer to /login.
+        boolean isSync = path.startsWith("/sync");
+        // /admin serves two callers: browsers (session cookie; sessionless requests are
+        // redirected to /login below) and CLI/scripts presenting a bearer token
+        // (e.g. connect-peers.sh -> /admin/peers). Bearer requests defer to AuthFilter,
+        // which validates the token or 401s — never an unauthenticated passthrough.
+        boolean isAdminBearer = path.startsWith("/admin")
+                && request.getHeader("Authorization") != null;
 
         HttpSession session = request.getSession(false);
         if (session != null) {
@@ -69,7 +78,7 @@ public class SessionAuthFilter extends OncePerRequestFilter {
             }
         }
 
-        if (isMcp || isHooks || isVistierie) {
+        if (isMcp || isHooks || isVistierie || isSync || isAdminBearer) {
             filterChain.doFilter(request, response);
         } else if (isApi) {
             response.sendError(HttpServletResponse.SC_UNAUTHORIZED);

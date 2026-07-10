@@ -53,6 +53,11 @@ public class GetCellToolHandler implements ToolHandler {
         }
 
         CellFieldSelection selection = CellFieldSelection.forGetCell(CellFieldSelection.parseInclude(arguments));
-        return readToolService.getCell(principal, UUID.fromString(cellId), selection);
+        Object cell = readToolService.getCell(principal, UUID.fromString(cellId), selection);
+        if (cell == null) {
+            // Without this the client receives the literal text "null" as a success.
+            throw new IllegalArgumentException("Cell not found: " + cellId);
+        }
+        return cell;
     }
 }

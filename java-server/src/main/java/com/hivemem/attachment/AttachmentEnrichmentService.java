@@ -79,7 +79,7 @@ public class AttachmentEnrichmentService {
 
     // ── Backfill (scheduled hourly) ────────────────────────────────────────
 
-    @Scheduled(fixedRateString = "${hivemem.attachment.kroki-backfill-interval-ms:3600000}")
+    @Scheduled(fixedRateString = "${hivemem.attachment.kroki-backfill-interval:PT1H}")
     public void backfillThumbnails() {
         if (!krokiClient.isEnabled()) return;
         List<AttachmentRepository.DiagramRow> rows =
@@ -91,7 +91,7 @@ public class AttachmentEnrichmentService {
         }
     }
 
-    @Scheduled(fixedRateString = "${hivemem.attachment.vision-backfill-interval-ms:3600000}")
+    @Scheduled(fixedRateString = "${hivemem.attachment.vision-backfill-interval:PT1H}")
     public void backfillVisionDescriptions() {
         if (!visionClient.isEnabled()) return;
         if (!visionBudget.canSpend()) return;
@@ -138,8 +138,14 @@ public class AttachmentEnrichmentService {
             return;
         }
         try {
-            VisionClient.ImageDescriptionResult r = visionClient.describeImage(imageBytes, mimeType);
-            visionBudget.recordCall(r.inputTokens(), r.outputTokens());
+            VisionClient.ImageDescriptionResult r;
+            visionBudget.beginCall();
+            try {
+                r = visionClient.describeImage(imageBytes, mimeType);
+                visionBudget.recordCall(r.inputTokens(), r.outputTokens());
+            } finally {
+                visionBudget.endCall();
+            }
 
             if (r.content() == null || r.content().isBlank()) {
                 log.info("Vision returned empty content for cell {} — tagging vision_failed", cellId);
@@ -148,17 +154,30 @@ public class AttachmentEnrichmentService {
                 return;
             }
 
-            writeService.reviseCell(SYSTEM_PRINCIPAL, cellId, r.content(), null);
+            // reviseCell closes the old cell and creates a NEW revision (which inherits tags).
+            // All tag work must target the new id, or the tags land on a dead cell and the
+            // live revision keeps vision_pending forever (re-describe loop). Mirrors
+            // OcrService.processOne.
+            var reviseResult = writeService.reviseCell(SYSTEM_PRINCIPAL, cellId, r.content(), null);
+            UUID targetId = cellId;
+            Object newIdObj = reviseResult.get("new_id");
+            if (newIdObj != null) {
+                targetId = UUID.fromString(newIdObj.toString());
+            }
 
             com.hivemem.extraction.ExtractionProfile profile =
                     profileRegistry.resolveImageSubType(r.subType());
-            cleanOldSubtypeTags(cellId);
-            applyTag(cellId, "subtype_" + r.subType());
+            cleanOldSubtypeTags(targetId);
+            applyTag(targetId, "subtype_" + r.subType());
             for (String t : profile.tagsToApply()) {
-                applyTag(cellId, t);
+                applyTag(targetId, t);
             }
+            // Remove the pending tag from the superseded cell AND the new revision.
             removeTag(cellId, "vision_pending");
-            log.debug("Vision sub-type {} stored for cell {}", r.subType(), cellId);
+            if (!targetId.equals(cellId)) {
+                removeTag(targetId, "vision_pending");
+            }
+            log.debug("Vision sub-type {} stored for cell {}", r.subType(), targetId);
         } catch (HttpClientErrorException.TooManyRequests e) {
             log.warn("Vision 429 for cell {} — will retry on backfill", cellId);
         } catch (VisionClient.OversizeImageException e) {

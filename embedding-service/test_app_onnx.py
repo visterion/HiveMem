@@ -37,7 +37,7 @@ def stub_modules():
         def from_file(path):
             return DummyTokenizer()
 
-        def enable_padding(self, length):
+        def no_padding(self):
             return None
 
         def enable_truncation(self, max_length):

@@ -4,6 +4,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
@@ -19,11 +20,18 @@ public class PeerClient {
 
     private static final Logger log = LoggerFactory.getLogger(PeerClient.class);
 
+    /** A blackholed peer must not hang the shared scheduler thread — bound connect/read. */
+    private static final int CONNECT_TIMEOUT_MS = 10_000;
+    private static final int READ_TIMEOUT_MS = 30_000;
+
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
 
     public PeerClient(RestClient.Builder builder, ObjectMapper objectMapper) {
-        this.restClient = builder.build();
+        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+        requestFactory.setConnectTimeout(CONNECT_TIMEOUT_MS);
+        requestFactory.setReadTimeout(READ_TIMEOUT_MS);
+        this.restClient = builder.requestFactory(requestFactory).build();
         this.objectMapper = objectMapper;
     }
 

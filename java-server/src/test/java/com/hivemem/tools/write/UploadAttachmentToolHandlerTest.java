@@ -97,7 +97,7 @@ class UploadAttachmentToolHandlerTest {
         AuthPrincipal bob = new AuthPrincipal("bob", AuthRole.WRITER);
         JsonNode args = MAPPER.readTree(String.format("""
                 {"realm":"legal","signal":"facts","topic":"vertrag-x","cell_id":"%s",
-                 "filename":"a.pdf","mime_type":"application/pdf","data":""}""", linkId));
+                 "filename":"a.pdf","mime_type":"application/pdf","data":"aGk="}""", linkId));
 
         Object out = handler.call(bob, args);
         assertNotNull(out);
@@ -121,7 +121,7 @@ class UploadAttachmentToolHandlerTest {
 
         AuthPrincipal alice = new AuthPrincipal("alice", AuthRole.WRITER);
         JsonNode args = MAPPER.readTree("""
-                {"realm":"work","filename":"a.txt","mime_type":"text/plain","data":""}""");
+                {"realm":"work","filename":"a.txt","mime_type":"text/plain","data":"aGk="}""");
 
         RuntimeException ex = assertThrows(RuntimeException.class, () -> handler.call(alice, args));
         assert ex.getMessage().startsWith("Upload failed:");

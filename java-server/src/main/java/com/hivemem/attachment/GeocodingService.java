@@ -3,6 +3,7 @@ package com.hivemem.attachment;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Async;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
@@ -21,6 +22,7 @@ public class GeocodingService {
     private final GeocodingProperties props;
     private final ConcurrentHashMap<String, String> cache = new ConcurrentHashMap<>();
     private volatile long lastRequestMs = 0L;
+    private volatile boolean cacheSeeded = false;
 
     public GeocodingService(NominatimClient client, ImageMetaRepository repo, GeocodingProperties props) {
         this.client = client;
@@ -35,6 +37,7 @@ public class GeocodingService {
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
     public void onGeocodeRequested(GeocodeRequestedEvent event) {
         if (!props.isEnabled()) return;
+        seedCacheOnce();
         String key = round(event.lat()) + "," + round(event.lon());
 
         String cached = cache.get(key);
@@ -44,12 +47,45 @@ public class GeocodingService {
         }
 
         throttle();
-        Optional<String> name = client.reverse(event.lat(), event.lon());
-        if (name.isPresent()) {
-            cache.put(key, name.get());
-            repo.updatePlace(event.attachmentId(), name.get(), "done");
-        } else {
-            repo.updatePlace(event.attachmentId(), null, "failed");
+        try {
+            Optional<String> name = client.reverse(event.lat(), event.lon());
+            if (name.isPresent()) {
+                cache.put(key, name.get());
+                repo.updatePlace(event.attachmentId(), name.get(), "done");
+            } else {
+                // Nominatim answered but knows no place here — a definitive negative.
+                repo.updatePlace(event.attachmentId(), null, "failed");
+            }
+        } catch (Exception e) {
+            // Transient failure (network/HTTP): keep geocode_status = 'pending' so the
+            // hourly retry sweep revisits it instead of freezing it as 'failed' forever.
+            log.warn("Reverse-geocode failed for attachment {} ({}): {} — will retry",
+                    event.attachmentId(), key, e.getMessage());
+        }
+    }
+
+    /** Hourly retry of geocodes stuck in 'pending' (transient failures, restarts, missed events). */
+    @Scheduled(fixedDelay = 3_600_000L, initialDelay = 300_000L)
+    public void retryPendingGeocodes() {
+        if (!props.isEnabled()) return;
+        for (ImageMetaRepository.PendingGeocode row : repo.findPendingGeocodes(50)) {
+            onGeocodeRequested(new GeocodeRequestedEvent(row.attachmentId(), row.gpsLat(), row.gpsLon()));
+        }
+    }
+
+    /** Seed the in-memory coordinate→place cache from already-resolved rows, once per boot. */
+    private void seedCacheOnce() {
+        if (cacheSeeded) return;
+        synchronized (this) {
+            if (cacheSeeded) return;
+            try {
+                for (ImageMetaRepository.ResolvedPlace p : repo.findResolvedPlaces()) {
+                    cache.putIfAbsent(round(p.gpsLat()) + "," + round(p.gpsLon()), p.placeName());
+                }
+            } catch (Exception e) {
+                log.warn("Geocode cache seeding failed (continuing without): {}", e.getMessage());
+            }
+            cacheSeeded = true;
         }
     }
 

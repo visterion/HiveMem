@@ -99,20 +99,10 @@ public class AttachmentService {
             // 4. Dedup check
             Optional<Map<String, Object>> existing = repo.findByHash(hash);
             Map<String, Object> attachmentRow;
+            boolean deduplicated = existing.isPresent();
 
             if (existing.isPresent()) {
-                Map<String, Object> existingRow = existing.get();
-                UUID existingId = UUID.fromString((String) existingRow.get("id"));
-
-                // Upload thumbnail only if the existing row has none
-                String s3KeyThumbnail = (String) existingRow.get("s3_key_thumbnail");
-                if (thumbnail != null && s3KeyThumbnail == null) {
-                    s3KeyThumbnail = hash + "-thumb.jpg";
-                    uploadThumbnail(s3KeyThumbnail, thumbnail, thumbnailMimeType);
-                }
-
-                // Idempotent: clears deleted_at if soft-deleted, updates thumbnail key if null
-                attachmentRow = repo.reactivate(existingId, s3KeyThumbnail);
+                attachmentRow = reactivateExisting(existing.get(), hash, thumbnail, thumbnailMimeType);
             } else {
                 // 5. Upload original to SeaweedFS
                 long sizeBytes = Files.size(tempFile);
@@ -120,22 +110,41 @@ public class AttachmentService {
                 String s3KeyOriginal = hash + "." + ext;
                 seaweedFs.upload(s3KeyOriginal, tempFile, mimeType);
 
-                // Upload thumbnail
+                // Upload thumbnail; the key is persisted only when the upload succeeded, so
+                // a failed upload leaves NULL (repairable) instead of a dead key that 500s.
                 String s3KeyThumbnail = null;
                 if (thumbnail != null) {
-                    s3KeyThumbnail = hash + "-thumb.jpg";
-                    uploadThumbnail(s3KeyThumbnail, thumbnail, thumbnailMimeType);
+                    s3KeyThumbnail = uploadThumbnail(hash + "-thumb.jpg", thumbnail, thumbnailMimeType);
                 }
 
-                Integer pageCount = pdfPageCount(tempFile, mimeType);
+                // Reuse the page count the parser already determined instead of re-loading the PDF.
+                Integer pageCount = parsed.pageCount() != null
+                        ? parsed.pageCount()
+                        : pdfPageCount(tempFile, mimeType);
+                // Upsert: a concurrent identical upload racing past the dedup check above
+                // reactivates the winner's row instead of failing with a unique violation.
                 attachmentRow = repo.insert(hash, mimeType, originalFilename, sizeBytes,
                         s3KeyOriginal, s3KeyThumbnail, uploadedBy, pageCount);
             }
 
-            // 6. Create extraction Cell
-            String cellContent = (parsed.extractedText() != null && !parsed.extractedText().isBlank())
-                    ? parsed.extractedText()
-                    : (originalFilename != null ? originalFilename : "unknown file");
+            // 6. Create extraction Cell.
+            // Dedup re-upload: reuse the existing extraction cell's enriched content
+            // (OCR / vision output) instead of re-running the expensive pipeline.
+            AttachmentRepository.ExtractionCellSeed seed = null;
+            if (deduplicated) {
+                seed = repo.findExtractionCellSeed(
+                        UUID.fromString((String) attachmentRow.get("id"))).orElse(null);
+            }
+            // Content equal to the bare filename means the prior pipeline never enriched
+            // the cell (still pending / failed) — treat it as not seeded and re-run.
+            String seededContent = seed != null ? seed.content() : null;
+            boolean contentSeeded = seededContent != null && !seededContent.isBlank()
+                    && !seededContent.equals(originalFilename);
+            String cellContent = contentSeeded
+                    ? seededContent
+                    : (parsed.extractedText() != null && !parsed.extractedText().isBlank())
+                        ? parsed.extractedText()
+                        : (originalFilename != null ? originalFilename : "unknown file");
             List<Float> embedding;
             boolean embeddingPending = false;
             try {
@@ -159,19 +168,34 @@ public class AttachmentService {
             }
             UUID attachmentId = UUID.fromString((String) attachmentRow.get("id"));
 
-            if (parsed.scanLikely()) {
+            // Carry vision subtype tags over to the seeded cell so media-UI filtering
+            // (subtype_photo_general etc.) still sees it without a re-described image.
+            if (contentSeeded) {
+                for (String t : seed.tags()) {
+                    if (t.startsWith("subtype_")) {
+                        dsl.execute(
+                                "UPDATE cells SET tags = "
+                                + "CASE WHEN ? = ANY(tags) THEN tags ELSE array_append(tags, ?) END "
+                                + "WHERE id = ?", t, t, cellId);
+                    }
+                }
+            }
+
+            if (parsed.scanLikely() && !contentSeeded) {
                 // Scan PDF: tag for OCR; OCR will revise content and trigger summarizer.
                 String key = (String) attachmentRow.get("s3_key_original");
                 writeRepo.tagOcrPending(cellId);
                 eventPublisher.publishEvent(
                         new com.hivemem.ocr.OcrRequestedEvent(cellId, attachmentId, key));
             } else if (mimeType != null && mimeType.startsWith("image/")) {
-                String key = (String) attachmentRow.get("s3_key_original");
-                writeRepo.tagVisionPending(cellId);
-                eventPublisher.publishEvent(
-                        new VisionDescriptionRequestedEvent(attachmentId, cellId, key, mimeType));
+                if (!contentSeeded) {
+                    String key = (String) attachmentRow.get("s3_key_original");
+                    writeRepo.tagVisionPending(cellId);
+                    eventPublisher.publishEvent(
+                            new VisionDescriptionRequestedEvent(attachmentId, cellId, key, mimeType));
+                }
                 extractAndStoreImageMeta(tempFile, attachmentId);
-            } else if (krokiClient.supports(mimeType)) {
+            } else if (krokiClient.supports(mimeType) && attachmentRow.get("s3_key_thumbnail") == null) {
                 String fileHash = (String) attachmentRow.get("file_hash");
                 writeRepo.tagKrokiPending(cellId);
                 eventPublisher.publishEvent(
@@ -199,7 +223,7 @@ public class AttachmentService {
             Map<String, Object> result = new LinkedHashMap<>(attachmentRow);
             result.put("cell_id", cellId.toString());
             result.put("has_thumbnail", attachmentRow.get("s3_key_thumbnail") != null);
-            result.put("deduplicated", existing.isPresent());
+            result.put("deduplicated", deduplicated);
             return result;
 
         } finally {
@@ -221,6 +245,27 @@ public class AttachmentService {
         return seaweedFs.download(key);
     }
 
+    /** Ranged download of the original (HTTP Range semantics, end inclusive). */
+    public InputStream downloadRange(UUID id, long start, long endInclusive) {
+        Map<String, Object> row = repo.findById(id)
+                .orElseThrow(() -> new NoSuchElementException("Attachment not found: " + id));
+        return seaweedFs.downloadRange((String) row.get("s3_key_original"), start, endInclusive);
+    }
+
+    /**
+     * Dedup path: clears deleted_at, uploads a thumbnail only when the existing row has
+     * none (and the key is persisted only when that upload succeeded — see uploadThumbnail).
+     */
+    private Map<String, Object> reactivateExisting(Map<String, Object> existingRow, String hash,
+                                                   byte[] thumbnail, String thumbnailMimeType) {
+        UUID existingId = UUID.fromString((String) existingRow.get("id"));
+        String s3KeyThumbnail = (String) existingRow.get("s3_key_thumbnail");
+        if (thumbnail != null && s3KeyThumbnail == null) {
+            s3KeyThumbnail = uploadThumbnail(hash + "-thumb.jpg", thumbnail, thumbnailMimeType);
+        }
+        return repo.reactivate(existingId, s3KeyThumbnail);
+    }
+
     private void extractAndStoreImageMeta(Path tempFile, UUID attachmentId) {
         try {
             // Skip if metadata already exists (dedup/re-ingest path is idempotent).
@@ -239,11 +284,17 @@ public class AttachmentService {
         }
     }
 
-    private void uploadThumbnail(String key, byte[] bytes, String mimeType) {
+    /**
+     * @return the key when the upload succeeded, {@code null} when it failed — so callers
+     *         never persist a key that references a nonexistent S3 object.
+     */
+    private String uploadThumbnail(String key, byte[] bytes, String mimeType) {
         try {
             seaweedFs.uploadBytes(key, bytes, mimeType != null ? mimeType : "image/jpeg");
+            return key;
         } catch (Exception e) {
             log.warn("Thumbnail upload failed for key {}: {}", key, e.getMessage());
+            return null;
         }
     }
 

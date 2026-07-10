@@ -3,6 +3,7 @@ import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useCellStore } from '../../stores/cell'
 import { useScansStore } from '../../stores/scans'
+import { useUiStore } from '../../stores/ui'
 import { useApi } from '../../api/useApi'
 import { docName } from '../../api/cellLabel'
 import MarkdownTab from './MarkdownTab.vue'
@@ -11,6 +12,7 @@ import HmIcon from '../shell/HmIcon.vue'
 const { t } = useI18n()
 const cellStore = useCellStore()
 const scans = useScansStore()
+const ui = useUiStore()
 
 const cell = computed(() => cellStore.current?.cell ?? null)
 
@@ -40,20 +42,40 @@ async function addTag() {
   if (!raw?.trim() || !cell.value) return
   const add = raw.split(',').map(s => s.trim()).filter(Boolean)
   if (!add.length) return
+  const prev = [...tags.value]
   tags.value = [...new Set([...tags.value, ...add])]
-  await scans.editTags(cell.value.id, add, [])
+  try {
+    await scans.editTags(cell.value.id, add, [])
+  } catch {
+    tags.value = prev
+    ui.pushToast('error', t('common.actionFailed'))
+  }
 }
 
 async function removeTag(tag: string) {
   if (!cell.value) return
+  const prev = [...tags.value]
   tags.value = tags.value.filter(x => x !== tag)
-  await scans.editTags(cell.value.id, [], [tag])
+  try {
+    await scans.editTags(cell.value.id, [], [tag])
+  } catch {
+    tags.value = prev
+    ui.pushToast('error', t('common.actionFailed'))
+  }
 }
 
 async function approve() {
   if (!cell.value) return
+  const prev = status.value
   status.value = 'committed'
-  await useApi().call('approve_pending', { ids: [cell.value.id], decision: 'committed' }).catch(() => {})
+  try {
+    await useApi().call('approve_pending', { ids: [cell.value.id], decision: 'committed' })
+  } catch {
+    // Roll back so the approve button reappears and the user can retry.
+    status.value = prev
+    ui.pushToast('error', t('common.actionFailed'))
+    return
+  }
   await scans.reload().catch(() => {})
 }
 </script>

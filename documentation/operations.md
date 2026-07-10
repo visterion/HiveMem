@@ -31,18 +31,36 @@ The exact test count changes over time; use the CI badge and workflow runs as th
 
 ## Deploy Changes
 
-```bash
-# Set required env vars first:
-export HIVEMEM_JDBC_URL=jdbc:postgresql://postgres:5432/hivemem
-export HIVEMEM_DB_USER=hivemem
-export HIVEMEM_DB_PASSWORD=secret
-export HIVEMEM_EMBEDDING_URL=http://embeddings:8081
-export HIVEMEM_API_TOKEN=your-admin-token
+Deployment is compose-based. `docker-compose.yml` wires the services together on the
+`hivemem-net` network (`hivemem-db`, `hivemem-embeddings`, `seaweedfs`, `hivemem` on
+port `8421`) and has **no committed secret defaults** — put the secrets in a `.env`
+file next to the compose file (gitignored):
 
+```bash
+# .env (next to docker-compose.yml)
+HIVEMEM_DB_PASSWORD=<strong password>
+SEAWEEDFS_S3_ACCESS_KEY=<access key>
+SEAWEEDFS_S3_SECRET_KEY=<secret key>
+```
+
+The SeaweedFS credentials must match `seaweedfs/s3.json`, which you create once from
+`seaweedfs/s3.json.template` (the real file is gitignored).
+
+**Local build + deploy** (builds the image from source via the multi-stage Dockerfile,
+then recreates the stack — dependencies come up first via their healthchecks):
+
+```bash
 ./deploy.sh java
 ```
 
-The script builds the Docker image, restarts the container, and waits for a successful health check on `/mcp`.
+The script builds the image, runs `docker compose up -d`, and waits for HTTP 200 on
+`http://localhost:8421/login`. To roll back, `docker compose up -d` with the previously
+working image (compose pins the image name; earlier builds remain in the local image
+store under their image IDs).
+
+**Production** pulls a pinned release tag (e.g. `9.3.0`) from GHCR instead of building —
+bump the tag in the production compose file and `docker compose pull && docker compose
+up -d hivemem`.
 
 ## Migrations
 
@@ -117,8 +135,8 @@ Attachment storage is optional. Set `HIVEMEM_ATTACHMENT_ENABLED=true` to enable.
 | `HIVEMEM_ATTACHMENT_ENABLED` | `false` | Enable attachment storage |
 | `SEAWEEDFS_S3_ENDPOINT` | `http://localhost:8333` | SeaweedFS S3 API endpoint |
 | `SEAWEEDFS_S3_BUCKET` | `hivemem-attachments` | S3 bucket name |
-| `SEAWEEDFS_S3_ACCESS_KEY` | `hivemem` | S3 access key |
-| `SEAWEEDFS_S3_SECRET_KEY` | `hivemem_secret` | S3 secret key |
+| `SEAWEEDFS_S3_ACCESS_KEY` | *(empty — required)* | S3 access key; must match `seaweedfs/s3.json` |
+| `SEAWEEDFS_S3_SECRET_KEY` | *(empty — required)* | S3 secret key; must match `seaweedfs/s3.json` |
 
 ### Backup
 
@@ -126,7 +144,12 @@ The `seaweedfs_data` Docker volume must be backed up together with the PostgreSQ
 
 ### Deployment
 
-SeaweedFS is included in `docker-compose.yml` as a sidecar service. No additional configuration needed for the default setup.
+SeaweedFS is included in `docker-compose.yml` as a sidecar service. Create
+`seaweedfs/s3.json` from `seaweedfs/s3.json.template` with the same credentials you set
+in `SEAWEEDFS_S3_ACCESS_KEY` / `SEAWEEDFS_S3_SECRET_KEY`; the compose file mounts it
+read-only. The S3 port (`8333`) is **not** published to the host — only the `hivemem`
+service reaches it over the compose network. For ad-hoc inspection use `docker exec`
+inside a container on `hivemem-net`, or temporarily publish the port.
 
 > **Note:** The S3 client runs with `chunkedEncodingEnabled(false)`. SeaweedFS does not decode SigV4 streaming (`aws-chunked`) request bodies, so the AWS SDK's default chunked signing would otherwise bake the chunk framing into the stored object and corrupt every JPEG/PDF. Do not re-enable it.
 
@@ -248,7 +271,7 @@ Add the following environment variables to your HiveMem deployment and restart t
 
 ```
 HIVEMEM_QUEEN_ENABLED=true
-HIVEMEM_QUEEN_HIVEMEM_BASE_URL=http://hivemem:8080
+HIVEMEM_QUEEN_HIVEMEM_BASE_URL=http://hivemem:8421
 HIVEMEM_QUEEN_WEBHOOK_TOKEN=<strong random token>
 HIVEMEM_QUEEN_COMPLETION_WEBHOOK_TOKEN=<second strong random token>
 HIVEMEM_QUEEN_SCHEDULE=0 0 3 * * *

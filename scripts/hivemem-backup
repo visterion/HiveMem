@@ -21,9 +21,17 @@ if [ -z "${HIVEMEM_DB_HOST:-}" ] && [ -n "${HIVEMEM_JDBC_URL:-}" ]; then
 fi
 DB_HOST="${HIVEMEM_DB_HOST:-localhost}"
 
-pg_dump -U "$DB_USER" -h "$DB_HOST" "$DB_NAME" | gzip > "$DUMP_FILE"
+# Dump to a temp file and only move it into place after a successful dump and
+# gzip integrity check — a failed dump must never look like a good backup or
+# cause rotation to delete older good dumps.
+TMP_FILE="$DUMP_FILE.tmp"
+trap 'rm -f "$TMP_FILE"' EXIT
 
-# Keep only last 7 daily dumps
+pg_dump -U "$DB_USER" -h "$DB_HOST" "$DB_NAME" | gzip > "$TMP_FILE"
+gzip -t "$TMP_FILE"
+mv "$TMP_FILE" "$DUMP_FILE"
+
+# Keep only last 7 daily dumps (only after a verified dump landed)
 ls -t "$BACKUP_DIR"/hivemem-*.sql.gz 2>/dev/null | tail -n +8 | xargs -r rm
 
 echo "[$(date)] Backup complete: $DUMP_FILE ($(du -h "$DUMP_FILE" | cut -f1))"

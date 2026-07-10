@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, watch, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useScansStore } from '../../stores/scans'
 import type { FacetKey } from '../../stores/scans'
+import { useUiStore } from '../../stores/ui'
 import { useApi } from '../../api/useApi'
 import DocCard from './DocCard.vue'
 import DocTable from './DocTable.vue'
@@ -11,18 +12,24 @@ import HmIcon from '../shell/HmIcon.vue'
 
 const { t } = useI18n()
 const store = useScansStore()
+const ui = useUiStore()
 
-// Local debounced query
+// Local debounced query, kept in sync when the store's query changes elsewhere
+// (e.g. saved views or programmatic resets).
 const q = ref(store.query)
+watch(() => store.query, v => { if (v !== q.value) q.value = v })
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
 function onInput() {
   if (debounceTimer) clearTimeout(debounceTimer)
   debounceTimer = setTimeout(() => {
+    debounceTimer = null
     store.setQuery(q.value)
     store.reload()
   }, 200)
 }
+
+onUnmounted(() => { if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null } })
 
 function onSort(v: string) {
   store.setSort(v as 'newest' | 'oldest' | 'title')
@@ -40,10 +47,16 @@ function onClearFacets() {
 }
 
 async function onApprove() {
-  await useApi().call('approve_pending', {
-    ids: [...store.selection],
-    decision: 'committed',
-  }).catch(() => {})
+  try {
+    await useApi().call('approve_pending', {
+      ids: [...store.selection],
+      decision: 'committed',
+    })
+  } catch {
+    // Keep the selection so the user can retry the failed approval.
+    ui.pushToast('error', t('common.actionFailed'))
+    return
+  }
   store.clearSelection()
   store.reload()
 }
@@ -52,13 +65,22 @@ async function onBulkTag() {
   const raw = window.prompt(t('scans.bulkTagPrompt'))
   if (!raw?.trim()) return
   const tags = raw.split(',').map(s => s.trim()).filter(Boolean)
-  if (tags.length) await store.bulkTag(tags)
+  if (!tags.length) return
+  try {
+    await store.bulkTag(tags)
+  } catch {
+    ui.pushToast('error', t('common.actionFailed'))
+  }
 }
 
 async function onBulkRealm() {
   const realm = window.prompt(t('scans.bulkRealmPrompt'))
   if (!realm?.trim()) return
-  await store.bulkReclassify(realm.trim())
+  try {
+    await store.bulkReclassify(realm.trim())
+  } catch {
+    ui.pushToast('error', t('common.actionFailed'))
+  }
 }
 
 // All facet keys that can have active values

@@ -60,6 +60,20 @@ public class SeparationJobRepository {
                 runId, correlationId);
     }
 
+    /**
+     * Atomically claim an awaiting job before doing any work with it. Webhook apply() and the
+     * reconcile sweep's degrade() race near the stale threshold (and webhooks can be delivered
+     * twice); the conditional UPDATE guarantees a single winner.
+     *
+     * @return true iff this caller flipped the job from 'awaiting' to 'processing'
+     */
+    public boolean claim(UUID correlationId) {
+        int updated = dsl.execute(
+                "UPDATE consumption_jobs SET status='processing', updated_at=now() "
+                        + "WHERE correlation_id=? AND status='awaiting'", correlationId);
+        return updated == 1;
+    }
+
     public void markDone(UUID correlationId) {
         dsl.execute("UPDATE consumption_jobs SET status='done', updated_at=now() WHERE correlation_id=?",
                 correlationId);

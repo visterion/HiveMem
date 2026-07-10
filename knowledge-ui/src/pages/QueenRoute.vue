@@ -2,10 +2,12 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useQueenStore } from '../stores/queen'
+import { useUiStore } from '../stores/ui'
 import { realmColorFor } from '../composables/realmMeta'
 import HmIcon from '../components/shell/HmIcon.vue'
 
 const store = useQueenStore()
+const ui = useUiStore()
 const { t } = useI18n()
 const detailOpen = ref(false)
 let timer: number | null = null
@@ -43,12 +45,41 @@ const sumCost = computed(() =>
   store.costAvailable ? store.runs.reduce((s, r) => s + (r.costMicros ?? 0), 0) : null)
 const detailRun = computed(() => store.selectedRun?.run as Record<string, any> | undefined)
 
-async function openRun(id: string) { await store.selectRun(id); detailOpen.value = true }
+async function openRun(id: string) {
+  try {
+    await store.selectRun(id)
+    detailOpen.value = true
+  } catch {
+    ui.pushToast('error', t('common.loadFailed'))
+  }
+}
 function closeDetail() { detailOpen.value = false }
 
+async function decide(id: string, approved: boolean) {
+  try {
+    await store.approve(id, approved)
+  } catch {
+    ui.pushToast('error', t('common.actionFailed'))
+  }
+}
+
+// Background refresh must never surface as an unhandled rejection (e.g. during a
+// backend restart) — remember the failure and recover silently on the next tick.
+const refreshFailed = ref(false)
+function refreshSafe() {
+  store.refresh()
+    .then(() => { refreshFailed.value = false })
+    .catch(() => { refreshFailed.value = true })
+}
+
 onMounted(async () => {
-  await store.refresh()
-  timer = window.setInterval(() => store.refresh(), 10_000)
+  try {
+    await store.refresh()
+  } catch {
+    refreshFailed.value = true
+    ui.pushToast('error', t('common.loadFailed'))
+  }
+  timer = window.setInterval(refreshSafe, 10_000)
 })
 onUnmounted(() => { if (timer) clearInterval(timer) })
 </script>
@@ -71,6 +102,7 @@ onUnmounted(() => { if (timer) clearInterval(timer) })
       </div>
 
       <div v-if="store.unavailable" class="notice">{{ t('queen.unavailable') }}</div>
+      <div v-if="refreshFailed" class="notice">{{ t('common.loadFailed') }}</div>
 
       <div class="card q-card">
         <div class="qtable">
@@ -108,8 +140,8 @@ onUnmounted(() => { if (timer) clearInterval(timer) })
           <div v-if="p.realm" class="prop-cell"><span class="rdot" :style="{ background: realmColorFor(p.realm) }" /> {{ p.realm }}</div>
           <p class="prop-detail">{{ p.description }}</p>
           <div class="prop-actions">
-            <button class="btn" style="flex:1" @click="store.approve(p.id, true)"><HmIcon name="check" :size="15" /> {{ t('queen.accept') }}</button>
-            <button class="btn ghost" style="flex:1" @click="store.approve(p.id, false)"><HmIcon name="close" :size="15" /> {{ t('queen.reject') }}</button>
+            <button class="btn" style="flex:1" @click="decide(p.id, true)"><HmIcon name="check" :size="15" /> {{ t('queen.accept') }}</button>
+            <button class="btn ghost" style="flex:1" @click="decide(p.id, false)"><HmIcon name="close" :size="15" /> {{ t('queen.reject') }}</button>
           </div>
         </div>
       </div>

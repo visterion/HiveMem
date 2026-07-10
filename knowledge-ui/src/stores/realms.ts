@@ -23,8 +23,14 @@ export const useRealmsStore = defineStore('realms', {
     },
   },
   actions: {
+    // Drop the cached realm list so the next loadRealms() refetches. Called after
+    // writes that change realm counts (add_cell, Obsidian import) — otherwise a
+    // brand-new realm never appears until a full page reload (M57).
+    invalidate() {
+      this.loaded = false
+    },
     async loadRealms() {
-      if (this.loaded) return
+      if (this.loaded || this.loading) return
       this.loading = true
       try {
         const raw = await useApi().call<Record<string, FacetValue[]>>('facet_count', { fields: ['realm'] })

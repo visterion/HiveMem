@@ -18,14 +18,22 @@ public class OcrRepository {
         this.dsl = dsl;
     }
 
-    /** Returns cell IDs that need OCR (or failed OCR > 1h ago). */
+    /**
+     * Returns cell IDs that need OCR, plus retryable failures.
+     * Fresh {@code ocr_pending} cells always come first so a backlog of failures can
+     * never starve the queue, and cells escalated to {@code ocr_failed_permanent}
+     * (after 3 attempts, see {@link #tagFailed}) are never retried.
+     */
     public List<UUID> findCellsPendingOcr(int limit) {
         var rows = dsl.fetch(
                 "SELECT id FROM cells WHERE "
                 + "  ('ocr_pending' = ANY(tags) "
-                + "    OR ('ocr_failed' = ANY(tags) AND created_at < now() - interval '1 hour')) "
+                + "    OR ('ocr_failed' = ANY(tags) "
+                + "        AND NOT ('ocr_failed_permanent' = ANY(tags)) "
+                + "        AND created_at < now() - interval '1 hour')) "
                 + "AND status = 'committed' AND valid_until IS NULL "
-                + "ORDER BY created_at LIMIT ?", limit);
+                + "ORDER BY CASE WHEN 'ocr_failed' = ANY(tags) THEN 1 ELSE 0 END, created_at "
+                + "LIMIT ?", limit);
         List<UUID> ids = new ArrayList<>();
         for (Record r : rows) ids.add(r.get(0, UUID.class));
         return ids;
@@ -42,16 +50,24 @@ public class OcrRepository {
                 r.get("s3_key_original", String.class)));
     }
 
+    /**
+     * Escalates one step per failure: ocr_failed → ocr_failed_2 → ocr_failed_permanent.
+     * Permanent failures are excluded from {@link #findCellsPendingOcr}, capping a
+     * permanently broken document at 3 OCR attempts instead of retrying forever.
+     */
     public void tagFailed(UUID cellId) {
         dsl.execute(
-                "UPDATE cells SET tags = "
-                + "  CASE WHEN 'ocr_failed' = ANY(tags) THEN tags ELSE array_append(tags, 'ocr_failed') END "
-                + "WHERE id = ?", cellId);
+                "UPDATE cells SET tags = CASE "
+                + "  WHEN 'ocr_failed_2' = ANY(tags) THEN array_append(tags, 'ocr_failed_permanent') "
+                + "  WHEN 'ocr_failed' = ANY(tags) THEN array_append(tags, 'ocr_failed_2') "
+                + "  ELSE array_append(tags, 'ocr_failed') END "
+                + "WHERE id = ? AND NOT ('ocr_failed_permanent' = ANY(tags))", cellId);
     }
 
     public void removeOcrPendingTag(UUID cellId) {
         dsl.execute(
-                "UPDATE cells SET tags = array_remove(array_remove(tags, 'ocr_pending'), 'ocr_failed') "
+                "UPDATE cells SET tags = array_remove(array_remove(array_remove(array_remove("
+                + "tags, 'ocr_pending'), 'ocr_failed'), 'ocr_failed_2'), 'ocr_failed_permanent') "
                 + "WHERE id = ?", cellId);
     }
 

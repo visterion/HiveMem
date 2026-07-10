@@ -1,11 +1,17 @@
 package com.hivemem.embedding;
 
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
 import java.util.List;
 
 @Component
@@ -15,6 +21,11 @@ public class HttpEmbeddingClient implements EmbeddingClient {
     private volatile int expectedDimension = -1;
     private final int maxRetries;
     private final long retryBackoffMs;
+    /** Bounded content-hash → vector cache: identical texts (repeated queries, dedupe checks,
+     *  hook lookups, sync replay) skip the HTTP hop. Keyed by mode + SHA-256 of the text. */
+    private final Cache<String, List<Float>> vectorCache;
+    /** Cached /info result serving {@link #dimension()} without an HTTP hop per caller. */
+    private volatile EmbeddingInfo cachedInfo;
 
     @Autowired
     public HttpEmbeddingClient(RestClient.Builder builder, EmbeddingProperties properties) {
@@ -32,6 +43,10 @@ public class HttpEmbeddingClient implements EmbeddingClient {
         this.restClient = builder.baseUrl(properties.getBaseUrl().toString()).build();
         this.maxRetries = Math.max(0, properties.getMaxRetries());
         this.retryBackoffMs = Math.max(0, properties.getRetryBackoffMs());
+        this.vectorCache = Caffeine.newBuilder()
+                .maximumSize(properties.getCacheMaxEntries())
+                .expireAfterWrite(properties.getCacheTtl())
+                .build();
     }
 
     @Override
@@ -45,7 +60,22 @@ public class HttpEmbeddingClient implements EmbeddingClient {
             throw new IllegalStateException("Embedding service /info returned invalid response");
         }
         this.expectedDimension = response.dimension();
-        return new EmbeddingInfo(response.model(), response.dimension());
+        EmbeddingInfo info = new EmbeddingInfo(response.model(), response.dimension());
+        this.cachedInfo = info;
+        return info;
+    }
+
+    /** The embedding dimension from the cached model info; only the first call pays an HTTP hop. */
+    @Override
+    public int dimension() {
+        EmbeddingInfo info = cachedInfo;
+        return (info != null ? info : getInfo()).dimension();
+    }
+
+    @Override
+    public void invalidateCaches() {
+        cachedInfo = null;
+        vectorCache.invalidateAll();
     }
 
     @Override
@@ -59,6 +89,17 @@ public class HttpEmbeddingClient implements EmbeddingClient {
     }
 
     private List<Float> encode(String text, String mode) {
+        String cacheKey = mode + ':' + contentHash(text);
+        List<Float> cached = vectorCache.getIfPresent(cacheKey);
+        if (cached != null) {
+            return cached;
+        }
+        List<Float> vector = encodeRemote(text, mode);
+        vectorCache.put(cacheKey, vector);
+        return vector;
+    }
+
+    private List<Float> encodeRemote(String text, String mode) {
         String jsonBody = "{\"text\":" + toJsonString(text) + ",\"mode\":\"" + mode + "\"}";
         int attempt = 0;
         while (true) {
@@ -98,6 +139,16 @@ public class HttpEmbeddingClient implements EmbeddingClient {
         } catch (InterruptedException ie) {
             Thread.currentThread().interrupt();
             throw new EmbeddingUnavailableException("Interrupted during embedding retry backoff", ie);
+        }
+    }
+
+    /** SHA-256 hex of the text — bounds cache-key size regardless of content length. */
+    static String contentHash(String text) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            return HexFormat.of().formatHex(digest.digest(text.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 unavailable", e); // guaranteed by the JDK spec
         }
     }
 

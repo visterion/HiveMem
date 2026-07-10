@@ -18,11 +18,16 @@ export const useAuthStore = defineStore('auth', {
       applyBackendDefault(w.default_language)
     },
     async logout() {
-      await fetch('/logout', { method: 'POST' })
-      this.role = null
-      this.identity = null
-      resetApi()
-      window.location.href = '/login'
+      try {
+        await fetch('/logout', { method: 'POST' })
+      } finally {
+        // Clear client state even if the network call failed — the UI must never
+        // stay "logged in" after the user asked to leave (L-F13).
+        this.role = null
+        this.identity = null
+        resetApi()
+        window.location.href = '/login'
+      }
     }
   }
 })

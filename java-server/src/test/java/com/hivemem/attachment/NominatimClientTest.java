@@ -46,8 +46,17 @@ class NominatimClientTest {
     }
 
     @Test
-    void returnsEmptyOnServerError() {
+    void throwsGeocodeUnavailableOnServerError() {
         server.stubFor(get(urlPathEqualTo("/reverse")).willReturn(aResponse().withStatus(500)));
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> client.reverse(1.0, 2.0))
+                .isInstanceOf(NominatimClient.GeocodeUnavailableException.class);
+    }
+
+    @Test
+    void returnsEmptyWhenNoPlaceInAnswer() {
+        server.stubFor(get(urlPathEqualTo("/reverse")).willReturn(okJson("""
+                {"address":{"country_code":"de"}}
+                """)));
         assertThat(client.reverse(1.0, 2.0)).isEmpty();
     }
 }

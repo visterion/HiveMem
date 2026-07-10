@@ -157,7 +157,7 @@ class ListCellIdsToolTest {
                                         "arguments", Map.of("where", Map.of("bogus", "x"))
                                 )
                         ))))
-                .andExpect(status().isBadRequest())
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.error.code").value(-32602));
     }
 

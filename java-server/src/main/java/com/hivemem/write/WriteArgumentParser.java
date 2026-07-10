@@ -72,8 +72,8 @@ public final class WriteArgumentParser {
             throw new IllegalArgumentException("Invalid " + field);
         }
         double value = node.asDouble();
-        if (!Double.isFinite(value)) {
-            throw new IllegalArgumentException("Invalid " + field);
+        if (!Double.isFinite(value) || value < 0.0 || value > 1.0) {
+            throw new IllegalArgumentException("Invalid " + field + " (must be within [0,1])");
         }
         return value;
     }

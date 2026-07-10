@@ -1,0 +1,6 @@
+# Runtime-only deps: inference + HF file downloads (no torch, no optimum).
+# Pinned so image rebuilds are reproducible (bump deliberately, not on rebuild).
+onnxruntime==1.27.0
+tokenizers==0.23.1
+numpy==2.5.1
+huggingface_hub==1.23.0

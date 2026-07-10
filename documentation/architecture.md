@@ -202,7 +202,10 @@ When GPS coordinates are present, ingest publishes a `GeocodeRequestedEvent` and
 `GeocodingService` (async, `@TransactionalEventListener` AFTER_COMMIT) reverse-geocodes them to a `place_name`
 ("City, CC") via a Nominatim endpoint, caching by rounded coordinates and throttling to
 ≤1 request/second. The resolution state is tracked in `geocode_status`
-(`none` | `pending` | `done` | `failed`).
+(`none` | `pending` | `done` | `failed`). Transient lookup failures (network/HTTP) keep
+the row `pending` — an hourly sweep retries them; `failed` is reserved for a definitive
+"no place found" answer. On startup the coordinate cache is seeded from already-resolved
+rows so restarts don't re-hit Nominatim.
 
 A one-time idempotent startup backfill (`ImageMetaBackfillRunner`) populates metadata for
 images uploaded before this feature existed. The `list_media` MCP tool reads this table
@@ -231,7 +234,7 @@ Content-based dedup runs **after** the cell's embedding exists, so it can rely o
 - **Long documents:** dedup runs in `SummarizerService.summarizeOne`, once the summary has been generated and the cell re-embedded.
 - **Short documents (≤500 chars):** the embedding is available immediately, so dedup runs at OCR time in `OcrService`.
 
-`DocumentDedupService.findAndDiscardDuplicate` runs a two-stage check against current committed scan cells, and only ever discards cells whose `source` starts with `consumption:`: pgvector cosine recall (`recall-threshold`) then a normalized character-4-gram Jaccard gate (`text-threshold`). A confirmed re-scan (matching a strictly older cell) is soft-deleted, its attachment binary is removed if no other live cell references it, and a `duplicate_of` tunnel links it to the original. The check is best-effort: any error keeps the document. Note: byte-identical re-uploads are already deduped earlier by SHA-256 in `AttachmentService.ingest`; this step covers same-content/different-bytes re-scans.
+`DocumentDedupService.findAndDiscardDuplicate` runs a two-stage check against current committed scan cells, and only ever discards cells whose `source` starts with `consumption:`: pgvector cosine recall (`recall-threshold`) then a normalized character-4-gram Jaccard gate (`text-threshold`). A confirmed re-scan (matching a strictly older cell) is soft-deleted, its attachment binary is removed if no other live cell references it, and a `duplicate_of` tunnel links it to the original. The check is best-effort: any error keeps the document. Note: byte-identical re-uploads are already deduped earlier by SHA-256 in `AttachmentService.ingest` — since the dedup fix, a re-upload also seeds the new cell with the existing extraction cell's already-enriched content (OCR/vision output, incl. `subtype_*` tags) instead of re-running the OCR/vision pipeline; this step covers same-content/different-bytes re-scans.
 
 Configuration (`hivemem.consumption.dedup.*`):
 
@@ -276,6 +279,10 @@ Every HiveMem tool is mapped to a specific role to ensure least privilege. Write
 | `HIVEMEM_JDBC_URL` | (required) | JDBC connection string to PostgreSQL |
 | `HIVEMEM_DB_USER` | (required) | PostgreSQL username |
 | `HIVEMEM_DB_PASSWORD` | (required) | PostgreSQL password |
+| `HIVEMEM_DB_POOL_MAX` | `20` | Hikari max pool size (sized for web traffic + scheduled sweeps) |
+| `HIVEMEM_DB_POOL_MIN_IDLE` | `5` | Hikari minimum idle connections |
+| `HIVEMEM_DB_CONNECTION_TIMEOUT_MS` | `10000` | Hikari connection-acquisition timeout (ms) — fail fast when the pool is saturated |
+| `SESSION_COOKIE_SECURE` | `true` | `Secure` flag on the session cookie; set `false` only for plain-HTTP local setups |
 | `HIVEMEM_EMBEDDING_URL` | `http://localhost:8081` | URL of the external embeddings service |
 | `HIVEMEM_EMBEDDING_TIMEOUT` | `PT30S` | HTTP timeout per embedding request (ISO 8601 duration) |
 | `HIVEMEM_EMBEDDING_MAX_RETRIES` | `3` | Retry attempts before abandoning an embedding request |

@@ -23,11 +23,29 @@ public class SummarizerRepository {
         var rows = dsl.fetch(
                 "SELECT id FROM cells WHERE 'needs_summary' = ANY(tags) "
                 + "AND status='committed' AND valid_until IS NULL "
-                + "AND ('summarize_throttled' != ALL(tags) OR created_at < now() - interval '15 minutes') "
+                + "AND (summarize_throttled_until IS NULL OR summarize_throttled_until <= now()) "
                 + "ORDER BY created_at LIMIT ?", limit);
         List<UUID> ids = new ArrayList<>();
         for (Record r : rows) ids.add(r.get(0, UUID.class));
         return ids;
+    }
+
+    /**
+     * Atomically claim a cell for summarization so the AFTER_COMMIT event worker and the
+     * scheduled backfill cannot process it concurrently. Returns false if another worker holds
+     * a fresh claim. Stale claims (> 10 minutes, e.g. a crashed worker) are reclaimable.
+     */
+    public boolean tryClaim(UUID id) {
+        int rows = dsl.execute(
+                "UPDATE cells SET summarize_claimed_at = now() WHERE id = ? "
+                + "AND (summarize_claimed_at IS NULL OR summarize_claimed_at < now() - interval '10 minutes')",
+                id);
+        return rows > 0;
+    }
+
+    /** Release a summarization claim (always called, in a finally block). */
+    public void clearClaim(UUID id) {
+        dsl.execute("UPDATE cells SET summarize_claimed_at = NULL WHERE id = ?", id);
     }
 
     public Optional<CellSnapshot> findCellSnapshot(UUID id) {
@@ -51,16 +69,18 @@ public class SummarizerRepository {
                 + "WHERE id = ?", id);
     }
 
-    /** Remove the needs_summary tag once a summary has been written. */
+    /** Remove the needs_summary tag once a summary has been written; a successful (or
+     *  permanently abandoned) cell also sheds its throttle tag and backoff timestamp. */
     public void removeNeedsSummaryTag(UUID id) {
         dsl.execute(
-                "UPDATE cells SET tags = array_remove(tags, 'needs_summary') WHERE id = ?", id);
+                "UPDATE cells SET tags = array_remove(array_remove(tags, 'needs_summary'), 'summarize_throttled'), "
+                + "summarize_throttled_until = NULL WHERE id = ?", id);
     }
 
-    /** Tag a cell as throttled (rate-limited) to defer it for the next backfill. */
+    /** Mark a cell throttled (429): visibility tag plus the backoff deadline the finder honors. */
     public void tagThrottled(UUID id) {
         dsl.execute(
-                "UPDATE cells SET tags = "
+                "UPDATE cells SET summarize_throttled_until = now() + interval '15 minutes', tags = "
                 + "  CASE WHEN 'summarize_throttled' = ANY(tags) THEN tags ELSE array_append(tags, 'summarize_throttled') END "
                 + "WHERE id = ?", id);
     }

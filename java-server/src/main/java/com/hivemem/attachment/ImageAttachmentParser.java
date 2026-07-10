@@ -61,7 +61,8 @@ public class ImageAttachmentParser implements AttachmentParser {
             case 4 -> { tx.scale(1, -1); tx.translate(0, -h); }                // mirror vertical
             case 5 -> { tx.rotate(Math.PI / 2); tx.scale(1, -1); swap = true; } // transpose
             case 6 -> { tx.translate(h, 0); tx.rotate(Math.PI / 2); swap = true; } // 90 CW
-            case 7 -> { tx.scale(-1, 1); tx.translate(-h, 0); tx.rotate(Math.PI / 2); swap = true; } // transverse
+            // transverse: (x,y) -> (h-y, w-x); rotate first, then flip, then shift into the canvas
+            case 7 -> { tx.translate(h, w); tx.scale(1, -1); tx.rotate(Math.PI / 2); swap = true; }
             case 8 -> { tx.translate(0, w); tx.rotate(-Math.PI / 2); swap = true; } // 90 CCW
             default -> { return img; }
         }

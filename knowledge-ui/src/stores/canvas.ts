@@ -16,17 +16,27 @@ export const useCanvasStore = defineStore('canvas', {
     hoveredId: null as string | null,
     streamActive: false,
     _streamAbort: false,
+    _loadingTopLevel: false,
   }),
   actions: {
     async loadTopLevel() {
-      const api = useApi()
-      const rows = await api.call<Array<{ value: string; label?: string; cell_count: number }>>('list')
-      this.realms = rows.map(r => ({ name: r.value, cell_count: r.cell_count, signals: [] }))
-      this.cells = []
-      this.tunnels = []
-      this.loaded = true
-      this._streamAbort = false
-      void this._longPoll()
+      // Guard against double-runs (e.g. two routes mounting in quick succession):
+      // a second call while the first load or its stream is still active would
+      // append every cell/tunnel a second time (M56).
+      if (this._loadingTopLevel || this.streamActive) return
+      this._loadingTopLevel = true
+      try {
+        const api = useApi()
+        const rows = await api.call<Array<{ value: string; label?: string; cell_count: number }>>('list')
+        this.realms = rows.map(r => ({ name: r.value, cell_count: r.cell_count, signals: [] }))
+        this.cells = []
+        this.tunnels = []
+        this.loaded = true
+        this._streamAbort = false
+        void this._longPoll() // sets streamActive synchronously before first await
+      } finally {
+        this._loadingTopLevel = false
+      }
     },
     async _longPoll() {
       this.streamActive = true

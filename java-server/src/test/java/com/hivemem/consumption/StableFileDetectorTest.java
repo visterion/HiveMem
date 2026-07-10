@@ -45,4 +45,20 @@ class StableFileDetectorTest {
         d.forget(p);
         assertFalse(d.isStable(p, 10L, 1000_000L, 1010_000L));
     }
+
+    @Test
+    void retainOnlyPrunesExternallyRemovedPaths() {
+        StableFileDetector d = new StableFileDetector(5);
+        Path kept = Path.of("/tmp/kept.pdf");
+        Path removed = Path.of("/tmp/removed.pdf");
+        d.isStable(kept, 10L, 1000_000L, 1000_000L);
+        d.isStable(removed, 10L, 1000_000L, 1000_000L);
+
+        d.retainOnly(java.util.Set.of(kept));
+
+        // kept survived the prune -> second sighting is stable
+        assertTrue(d.isStable(kept, 10L, 1000_000L, 1010_000L));
+        // removed was pruned -> counts as a first sighting again
+        assertFalse(d.isStable(removed, 10L, 1000_000L, 1010_000L));
+    }
 }

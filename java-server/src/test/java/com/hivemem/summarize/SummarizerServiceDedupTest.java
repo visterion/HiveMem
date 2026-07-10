@@ -38,6 +38,7 @@ class SummarizerServiceDedupTest {
     }
 
     private void stubSummary() {
+        when(repo.tryClaim(cellId)).thenReturn(true); // open the concurrency-claim gate
         when(repo.findCellSnapshot(cellId)).thenReturn(Optional.of(
                 new SummarizerRepository.CellSnapshot(cellId, "long scanned text", null,
                         List.of(), null, List.of())));

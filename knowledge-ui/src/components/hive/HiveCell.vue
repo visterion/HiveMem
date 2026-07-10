@@ -178,6 +178,7 @@ function buildGeometry() {
   geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2))
   geo.setIndex(indices)
   geo.computeVertexNormals()
+  geometry.value?.dispose() // free the GPU buffers of the replaced geometry
   geometry.value = geo
 
   const edgePos: number[] = []
@@ -188,6 +189,7 @@ function buildGeometry() {
   }
   const edges = new THREE.BufferGeometry()
   edges.setAttribute('position', new THREE.Float32BufferAttribute(edgePos, 3))
+  edgesGeometry.value?.dispose()
   edgesGeometry.value = edges
 
   if (tex.value) tex.value.dispose()
@@ -203,6 +205,7 @@ onBeforeUnmount(() => {
   if (tex.value) tex.value.dispose()
   geometry.value?.dispose()
   edgesGeometry.value?.dispose()
+  edgeMaterial.dispose()
 })
 
 // Local hover state only -- no cross-cell coordination in cinema view.
@@ -221,13 +224,14 @@ function onPointerLeave(e: any) {
 
 const groupPos = computed<[number, number, number]>(() => props.cell.centroid)
 
+// Single shared edge material per cell (disposed on unmount) — creating a new
+// material on every rebuild leaked GPU programs.
+const edgeMaterial = new THREE.LineBasicMaterial({ color: '#2a2a2a' })
+
 // Pre-build LineSegments object so the template stays declarative.
 const edgeObject = computed(() => {
   if (!edgesGeometry.value) return null
-  return new THREE.LineSegments(
-    edgesGeometry.value,
-    new THREE.LineBasicMaterial({ color: '#2a2a2a' }),
-  )
+  return new THREE.LineSegments(edgesGeometry.value, edgeMaterial)
 })
 </script>
 

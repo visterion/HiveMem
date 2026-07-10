@@ -5,6 +5,11 @@ import org.jooq.Record;
 import org.jooq.impl.DSL;
 import org.springframework.stereotype.Repository;
 
+import javax.sql.DataSource;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -13,9 +18,16 @@ import java.util.UUID;
 public class EmbeddingStateRepository {
 
     private final DSLContext dslContext;
+    private final DataSource dataSource;
+    /** Session advisory locks are per-connection: the lock is held on this pinned connection
+     *  until {@link #releaseAdvisoryLock} — acquiring and releasing on different pooled
+     *  connections (the previous DSLContext-based approach) made the unlock a no-op and left
+     *  the lock stuck on an idle pooled connection. */
+    private Connection lockConnection;
 
-    public EmbeddingStateRepository(DSLContext dslContext) {
+    public EmbeddingStateRepository(DSLContext dslContext, DataSource dataSource) {
         this.dslContext = dslContext;
+        this.dataSource = dataSource;
     }
 
     public Optional<EmbeddingInfo> loadStoredInfo() {
@@ -75,6 +87,18 @@ public class EmbeddingStateRepository {
         dslContext.execute(
                 "UPDATE cells SET embedding = ?::vector WHERE id = ?",
                 embeddingArray, cellId);
+    }
+
+    /**
+     * NULL the embedding (an old-model vector must not survive a dimension change — it would
+     * break the new HNSW index cast) and tag needs_summary so the summarizer refills it.
+     */
+    public void clearEmbeddingAndTagNeedsSummary(UUID cellId) {
+        dslContext.execute(
+                "UPDATE cells SET embedding = NULL, tags = "
+                + "CASE WHEN 'needs_summary' = ANY(COALESCE(tags, '{}'::text[])) THEN tags "
+                + "ELSE array_append(COALESCE(tags, '{}'::text[]), 'needs_summary') END "
+                + "WHERE id = ?", cellId);
     }
 
     public int countFactsCommitted() {
@@ -146,13 +170,65 @@ public class EmbeddingStateRepository {
         });
     }
 
-    public boolean tryAdvisoryLock(long lockId) {
-        Record row = dslContext.fetchOne("SELECT pg_try_advisory_lock(?) AS acquired", lockId);
-        return row != null && Boolean.TRUE.equals(row.get("acquired", Boolean.class));
+    /**
+     * Acquire the reencoding advisory lock on a dedicated connection that stays pinned (checked
+     * out of the pool) until {@link #releaseAdvisoryLock}, so acquire and release happen on the
+     * SAME session. Returns false when another instance holds the lock (or this one already does).
+     */
+    public synchronized boolean tryAdvisoryLock(long lockId) {
+        if (lockConnection != null) {
+            return false;
+        }
+        Connection conn = null;
+        try {
+            conn = dataSource.getConnection();
+            boolean acquired = false;
+            try (PreparedStatement st = conn.prepareStatement("SELECT pg_try_advisory_lock(?)")) {
+                st.setLong(1, lockId);
+                try (ResultSet rs = st.executeQuery()) {
+                    if (rs.next()) {
+                        acquired = rs.getBoolean(1);
+                    }
+                }
+            }
+            if (acquired) {
+                lockConnection = conn;
+                return true;
+            }
+            conn.close();
+            return false;
+        } catch (SQLException e) {
+            closeQuietly(conn);
+            throw new IllegalStateException("Failed to acquire advisory lock " + lockId, e);
+        }
     }
 
-    public void releaseAdvisoryLock(long lockId) {
-        dslContext.execute("SELECT pg_advisory_unlock(?)", lockId);
+    /** Release the lock on the pinned connection, then return the connection to the pool. */
+    public synchronized void releaseAdvisoryLock(long lockId) {
+        if (lockConnection == null) {
+            return;
+        }
+        try (Connection conn = lockConnection;
+             PreparedStatement st = conn.prepareStatement("SELECT pg_advisory_unlock(?)")) {
+            st.setLong(1, lockId);
+            st.execute();
+        } catch (SQLException e) {
+            // Best effort: a broken connection is evicted by the pool, which also drops the
+            // session-level lock on the server side.
+        } finally {
+            lockConnection = null;
+        }
+    }
+
+    private static void closeQuietly(Connection conn) {
+        if (conn == null) {
+            return;
+        }
+        try {
+            conn.close();
+        } catch (SQLException ignored) {
+            // nothing sensible to do
+        }
     }
 
     private void upsert(String key, String content) {

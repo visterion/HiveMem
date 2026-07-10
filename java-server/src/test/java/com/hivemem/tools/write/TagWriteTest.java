@@ -160,7 +160,7 @@ class TagWriteTest {
                                         "arguments", arguments
                                 )
                         ))))
-                .andExpect(status().isBadRequest())
+                .andExpect(status().isOk())
                 .andReturn();
         JsonNode body = objectMapper.readTree(result.getResponse().getContentAsString());
         return body.path("error").path("message").asText();

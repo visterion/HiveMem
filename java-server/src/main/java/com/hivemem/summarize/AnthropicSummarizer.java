@@ -181,14 +181,17 @@ public class AnthropicSummarizer {
                 documentType, facts, language, taxRelevant, inputTokens, outputTokens);
     }
 
+    /** Result of the cheap title backfill call; {@code title} is null on an empty/blank
+     *  response, but the token usage is still reported so the caller can charge the budget. */
+    public record TitleResult(String title, int inputTokens, int outputTokens) {}
+
     /**
      * Cheap title-only completion used to backfill a short title for already-summarized cells
      * (which never re-enter the full summarize path). Input is the existing summary, output is a
      * handful of tokens; the model returns the bare title, which we strip of fences/quotes.
-     * Returns null on an empty/blank response.
      */
-    public String generateTitle(String summary) {
-        if (summary == null || summary.isBlank()) return null;
+    public TitleResult generateTitle(String summary) {
+        if (summary == null || summary.isBlank()) return new TitleResult(null, 0, 0);
         String system = "You title documents for a personal knowledge base. "
                 + "Given a document summary, reply with ONLY a concise title of at most 6 words. "
                 + "No quotes, no punctuation at the ends, no prose, no explanation. "
@@ -209,20 +212,23 @@ public class AnthropicSummarizer {
                 .body(body)
                 .retrieve()
                 .body(JsonNode.class);
-        if (resp == null) return null;
+        if (resp == null) return new TitleResult(null, 0, 0);
+        int inputTokens = resp.path("usage").path("inputTokens").asInt(0);
+        int outputTokens = resp.path("usage").path("outputTokens").asInt(0);
         String text = resp.path("text").asText(null);
-        if (text == null || text.isBlank()) return null;
+        if (text == null || text.isBlank()) return new TitleResult(null, inputTokens, outputTokens);
         // Take the first non-empty line, drop code fences and surrounding quotes.
         String line = text.strip();
         if (line.startsWith("```")) line = stripJsonFences(line);
         int nl = line.indexOf('\n');
         if (nl >= 0) line = line.substring(0, nl);
         line = line.strip().replaceAll("^[\"'»«„]+", "").replaceAll("[\"'»«„]+$", "").strip();
-        return line.isBlank() ? null : line;
+        return new TitleResult(line.isBlank() ? null : line, inputTokens, outputTokens);
     }
 
-    /** Result of the cheap backfill tax classifier. */
-    public record TaxClassification(boolean taxRelevant, String language) {}
+    /** Result of the cheap backfill tax classifier; carries token usage for budget charging. */
+    public record TaxClassification(boolean taxRelevant, String language,
+                                    int inputTokens, int outputTokens) {}
 
     /**
      * Cheap classifier for the backfill: given a document summary, decide tax relevance and
@@ -230,7 +236,7 @@ public class AnthropicSummarizer {
      * {@code (false, null)} on an empty/blank response.
      */
     public TaxClassification classifyTaxRelevance(String summary) {
-        if (summary == null || summary.isBlank()) return new TaxClassification(false, null);
+        if (summary == null || summary.isBlank()) return new TaxClassification(false, null, 0, 0);
         String system = "You classify documents for a personal knowledge base. "
                 + "Decide whether the document could matter for a private German income-tax "
                 + "return (invoices for craftsman/services, donation receipts, salary statements, "
@@ -253,16 +259,20 @@ public class AnthropicSummarizer {
                 .body(body)
                 .retrieve()
                 .body(JsonNode.class);
-        if (resp == null) return new TaxClassification(false, null);
+        if (resp == null) return new TaxClassification(false, null, 0, 0);
+        int inputTokens = resp.path("usage").path("inputTokens").asInt(0);
+        int outputTokens = resp.path("usage").path("outputTokens").asInt(0);
         String text = resp.path("text").asText(null);
-        if (text == null || text.isBlank()) return new TaxClassification(false, null);
+        if (text == null || text.isBlank()) {
+            return new TaxClassification(false, null, inputTokens, outputTokens);
+        }
         try {
             JsonNode parsed = MAPPER.readTree(stripJsonFences(text));
             boolean tax = parsed.path("tax_relevant").asBoolean(false);
             String lang = parsed.hasNonNull("language") ? parsed.path("language").asText() : null;
-            return new TaxClassification(tax, lang);
+            return new TaxClassification(tax, lang, inputTokens, outputTokens);
         } catch (Exception e) {
-            return new TaxClassification(false, null);
+            return new TaxClassification(false, null, inputTokens, outputTokens);
         }
     }
 

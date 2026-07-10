@@ -157,7 +157,7 @@ class FacetCountWhereContractTest {
                                         )
                                 )
                         ))))
-                .andExpect(status().isBadRequest())
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.error.message").value(org.hamcrest.Matchers.containsString("where")));
     }
 
@@ -179,7 +179,7 @@ class FacetCountWhereContractTest {
                                         )
                                 )
                         ))))
-                .andExpect(status().isBadRequest())
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.error.message").value(org.hamcrest.Matchers.containsString("where")));
     }
 

@@ -4,8 +4,8 @@
       "name": "hivemem",
       "credentials": [
         {
-          "accessKey": "hivemem",
-          "secretKey": "hivemem_secret"
+          "accessKey": "REPLACE_WITH_SEAWEEDFS_S3_ACCESS_KEY",
+          "secretKey": "REPLACE_WITH_SEAWEEDFS_S3_SECRET_KEY"
         }
       ],
       "actions": ["Admin", "Read", "Write"]

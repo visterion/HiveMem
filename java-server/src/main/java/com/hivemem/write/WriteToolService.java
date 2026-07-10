@@ -80,6 +80,9 @@ public class WriteToolService {
         List<Float> embedding = embeddingClient.encodeForCell(content, summary);
 
         if (dedupeThreshold != null) {
+            // Serialize concurrent identical adds so the dedupe check-then-insert cannot race
+            // (mirrors updateBlueprint's pg_advisory_xact_lock pattern).
+            writeToolRepository.advisoryXactLock("cell-dedupe:" + content);
             List<Map<String, Object>> duplicates = writeToolRepository.checkDuplicateCell(
                     embedding.toString(), dedupeThreshold);
             if (!duplicates.isEmpty()) {
@@ -170,6 +173,9 @@ public class WriteToolService {
 
         int superseded = 0;
         if (!conflictMode.equals("insert")) {
+            // Serialize the conflict check-then-supersede against concurrent kg_add on the same
+            // (subject, predicate) — otherwise two supersedes can both miss each other's insert.
+            writeToolRepository.advisoryXactLock("kg-conflict:" + subject + "|" + predicate);
             List<Map<String, Object>> conflicts =
                     writeToolRepository.checkContradiction(subject, predicate, object);
             if (!conflicts.isEmpty()) {
@@ -236,8 +242,10 @@ public class WriteToolService {
      * subject, object, confidence, source, status and the ORIGINAL valid_from (the fact was true
      * since then; only its name changed). Emits one kg_invalidate + one kg_add op per renamed
      * fact, so OpReplayer replays it identically to a manual invalidate+add.
+     *
+     * <p>All embeddings are precomputed BEFORE the write transaction opens: up to ~1000 embedding
+     * HTTP calls must not hold a pooled connection or row locks for minutes.
      */
-    @Transactional
     public Map<String, Object> kgRenamePredicate(AuthPrincipal principal, String from, String to,
                                                  String subject, boolean confirm) {
         if (from.equals(to)) {
@@ -253,42 +261,50 @@ public class WriteToolService {
             throw new IllegalArgumentException(
                     "kg_rename_predicate would touch " + facts.size() + " facts; pass confirm: true");
         }
+        List<List<Float>> embeddings = new java.util.ArrayList<>(facts.size());
         for (Map<String, Object> fact : facts) {
-            UUID factId = (UUID) fact.get("id");
-            writeToolRepository.invalidateFact(factId);
-            Map<String, Object> invalidatePayload = new java.util.LinkedHashMap<>();
-            invalidatePayload.put("fact_id", factId.toString());
-            pushDispatcher.dispatch(opLogWriter.append("kg_invalidate", invalidatePayload));
-
-            String factSubject = (String) fact.get("subject");
-            String object = (String) fact.get("object");
             List<Float> embedding = null;
             try {
-                embedding = embeddingClient.encodeDocument(factSubject + " " + to + " " + object);
+                embedding = embeddingClient.encodeDocument(
+                        fact.get("subject") + " " + to + " " + fact.get("object"));
             } catch (RuntimeException e) {
                 log.warn("Fact embedding unavailable during rename, storing without embedding", e);
             }
-            Map<String, Object> inserted = writeToolRepository.addFact(
-                    factSubject, to, object,
-                    ((Number) fact.get("confidence")).doubleValue(),
-                    (UUID) fact.get("source_id"),
-                    (String) fact.get("status"),
-                    (String) fact.get("agent_id"),
-                    (OffsetDateTime) fact.get("valid_from"),
-                    embedding);
-            Map<String, Object> addPayload = new java.util.LinkedHashMap<>();
-            addPayload.put("fact_id", inserted.get("id"));
-            addPayload.put("subject", factSubject);
-            addPayload.put("predicate", to);
-            addPayload.put("object", object);
-            addPayload.put("confidence", fact.get("confidence"));
-            addPayload.put("source_id", fact.get("source_id") == null ? null : fact.get("source_id").toString());
-            addPayload.put("status", fact.get("status"));
-            addPayload.put("agent_id", fact.get("agent_id"));
-            addPayload.put("valid_from", fact.get("valid_from") == null ? null : fact.get("valid_from").toString());
-            pushDispatcher.dispatch(opLogWriter.append("kg_add", addPayload));
+            embeddings.add(embedding);
         }
-        return Map.of("renamed", facts.size(), "matched", facts.size());
+        return writeToolRepository.inTransaction(() -> {
+            for (int i = 0; i < facts.size(); i++) {
+                Map<String, Object> fact = facts.get(i);
+                UUID factId = (UUID) fact.get("id");
+                writeToolRepository.invalidateFact(factId);
+                Map<String, Object> invalidatePayload = new java.util.LinkedHashMap<>();
+                invalidatePayload.put("fact_id", factId.toString());
+                pushDispatcher.dispatch(opLogWriter.append("kg_invalidate", invalidatePayload));
+
+                String factSubject = (String) fact.get("subject");
+                String object = (String) fact.get("object");
+                Map<String, Object> inserted = writeToolRepository.addFact(
+                        factSubject, to, object,
+                        ((Number) fact.get("confidence")).doubleValue(),
+                        (UUID) fact.get("source_id"),
+                        (String) fact.get("status"),
+                        (String) fact.get("agent_id"),
+                        (OffsetDateTime) fact.get("valid_from"),
+                        embeddings.get(i));
+                Map<String, Object> addPayload = new java.util.LinkedHashMap<>();
+                addPayload.put("fact_id", inserted.get("id"));
+                addPayload.put("subject", factSubject);
+                addPayload.put("predicate", to);
+                addPayload.put("object", object);
+                addPayload.put("confidence", fact.get("confidence"));
+                addPayload.put("source_id", fact.get("source_id") == null ? null : fact.get("source_id").toString());
+                addPayload.put("status", fact.get("status"));
+                addPayload.put("agent_id", fact.get("agent_id"));
+                addPayload.put("valid_from", fact.get("valid_from") == null ? null : fact.get("valid_from").toString());
+                pushDispatcher.dispatch(opLogWriter.append("kg_add", addPayload));
+            }
+            return Map.of("renamed", facts.size(), "matched", facts.size());
+        });
     }
 
     /**
@@ -310,8 +326,10 @@ public class WriteToolService {
      * conflicts introduced by this operation. In other words it reports how many (subject,predicate)
      * groups now need human resolution (e.g. a follow-up kg_add with on_conflict=supersede), not
      * merely those this call created.
+     *
+     * <p>All embeddings are precomputed BEFORE the write transaction opens (see
+     * {@link #kgRenamePredicate}).
      */
-    @Transactional
     public Map<String, Object> kgAlias(AuthPrincipal principal, String canonical,
                                        List<String> aliases, boolean confirm) {
         if (aliases == null || aliases.isEmpty()) {
@@ -333,51 +351,60 @@ public class WriteToolService {
                     "kg_alias would migrate " + facts.size() + " facts; pass confirm: true");
         }
 
-        kgEntityRepository.upsert(canonical, aliases, principal.name());
-
+        List<List<Float>> embeddings = new java.util.ArrayList<>(facts.size());
         for (Map<String, Object> fact : facts) {
-            UUID factId = (UUID) fact.get("id");
-            writeToolRepository.invalidateFact(factId);
-            Map<String, Object> invalidatePayload = new java.util.LinkedHashMap<>();
-            invalidatePayload.put("fact_id", factId.toString());
-            pushDispatcher.dispatch(opLogWriter.append("kg_invalidate", invalidatePayload));
-
-            String predicate = (String) fact.get("predicate");
-            String object = (String) fact.get("object");
             List<Float> embedding = null;
             try {
-                embedding = embeddingClient.encodeDocument(canonical + " " + predicate + " " + object);
+                embedding = embeddingClient.encodeDocument(
+                        canonical + " " + fact.get("predicate") + " " + fact.get("object"));
             } catch (RuntimeException e) {
                 log.warn("Fact embedding unavailable during alias migration, storing without embedding", e);
             }
-            Map<String, Object> inserted = writeToolRepository.addFact(
-                    canonical, predicate, object,
-                    ((Number) fact.get("confidence")).doubleValue(),
-                    (UUID) fact.get("source_id"),
-                    (String) fact.get("status"),
-                    (String) fact.get("agent_id"),
-                    (OffsetDateTime) fact.get("valid_from"),
-                    embedding);
-            Map<String, Object> addPayload = new java.util.LinkedHashMap<>();
-            addPayload.put("fact_id", inserted.get("id"));
-            addPayload.put("subject", canonical);
-            addPayload.put("predicate", predicate);
-            addPayload.put("object", object);
-            addPayload.put("confidence", fact.get("confidence"));
-            addPayload.put("source_id", fact.get("source_id") == null ? null : fact.get("source_id").toString());
-            addPayload.put("status", fact.get("status"));
-            addPayload.put("agent_id", fact.get("agent_id"));
-            addPayload.put("valid_from", fact.get("valid_from") == null ? null : fact.get("valid_from").toString());
-            pushDispatcher.dispatch(opLogWriter.append("kg_add", addPayload));
+            embeddings.add(embedding);
         }
 
-        int resultingConflicts = writeToolRepository.countCanonicalConflicts(canonical);
+        return writeToolRepository.inTransaction(() -> {
+            kgEntityRepository.upsert(canonical, aliases, principal.name());
 
-        Map<String, Object> result = new java.util.LinkedHashMap<>();
-        result.put("registered", true);
-        result.put("migrated", facts.size());
-        result.put("resulting_conflicts", resultingConflicts);
-        return result;
+            for (int i = 0; i < facts.size(); i++) {
+                Map<String, Object> fact = facts.get(i);
+                UUID factId = (UUID) fact.get("id");
+                writeToolRepository.invalidateFact(factId);
+                Map<String, Object> invalidatePayload = new java.util.LinkedHashMap<>();
+                invalidatePayload.put("fact_id", factId.toString());
+                pushDispatcher.dispatch(opLogWriter.append("kg_invalidate", invalidatePayload));
+
+                String predicate = (String) fact.get("predicate");
+                String object = (String) fact.get("object");
+                Map<String, Object> inserted = writeToolRepository.addFact(
+                        canonical, predicate, object,
+                        ((Number) fact.get("confidence")).doubleValue(),
+                        (UUID) fact.get("source_id"),
+                        (String) fact.get("status"),
+                        (String) fact.get("agent_id"),
+                        (OffsetDateTime) fact.get("valid_from"),
+                        embeddings.get(i));
+                Map<String, Object> addPayload = new java.util.LinkedHashMap<>();
+                addPayload.put("fact_id", inserted.get("id"));
+                addPayload.put("subject", canonical);
+                addPayload.put("predicate", predicate);
+                addPayload.put("object", object);
+                addPayload.put("confidence", fact.get("confidence"));
+                addPayload.put("source_id", fact.get("source_id") == null ? null : fact.get("source_id").toString());
+                addPayload.put("status", fact.get("status"));
+                addPayload.put("agent_id", fact.get("agent_id"));
+                addPayload.put("valid_from", fact.get("valid_from") == null ? null : fact.get("valid_from").toString());
+                pushDispatcher.dispatch(opLogWriter.append("kg_add", addPayload));
+            }
+
+            int resultingConflicts = writeToolRepository.countCanonicalConflicts(canonical);
+
+            Map<String, Object> result = new java.util.LinkedHashMap<>();
+            result.put("registered", true);
+            result.put("migrated", facts.size());
+            result.put("resulting_conflicts", resultingConflicts);
+            return result;
+        });
     }
 
     @Transactional
@@ -473,11 +500,49 @@ public class WriteToolService {
         opPayload.put("new_cell_id", result.get("new_id").toString());
         opPayload.put("new_content", newContent);
         opPayload.put("new_summary", newSummary);
+        // Ship the LLM-derived enrichment so peers replay it too (OpReplayer prefers these over
+        // the old revision's values); without them peers only ever see the bare summary.
+        opPayload.put("new_key_points", keyPoints);
+        opPayload.put("new_insight", insight);
+        opPayload.put("new_tags", tags);
         opPayload.put("agent_id", principal.name());
         opPayload.put("status", status);
         UUID opId = opLogWriter.append("revise_cell", opPayload);
         pushDispatcher.dispatch(opId);
         return result;
+    }
+
+    /**
+     * Update derived cell metadata (document_type, topic/title, valid_from, extra tags) on the
+     * current revision, op-logged as {@code update_cell_meta} so the change replicates to peers.
+     * Used by the summarizer, whose enrichment previously bypassed the op log entirely. Null
+     * arguments leave the corresponding field unchanged.
+     */
+    @Transactional
+    public Map<String, Object> updateCellMeta(
+            AuthPrincipal principal,
+            UUID cellId,
+            String documentType,
+            String topic,
+            OffsetDateTime validFrom,
+            List<String> addTagsList
+    ) {
+        if (documentType == null && topic == null && validFrom == null
+                && (addTagsList == null || addTagsList.isEmpty())) {
+            return Map.of("updated", 0);
+        }
+        int updated = writeToolRepository.updateCellMeta(cellId, documentType, topic, validFrom, addTagsList);
+
+        Map<String, Object> opPayload = new java.util.LinkedHashMap<>();
+        opPayload.put("cell_id", cellId.toString());
+        opPayload.put("document_type", documentType);
+        opPayload.put("topic", topic);
+        opPayload.put("valid_from", validFrom == null ? null : validFrom.toString());
+        opPayload.put("add_tags", addTagsList);
+        opPayload.put("agent_id", principal.name());
+        UUID opId = opLogWriter.append("update_cell_meta", opPayload);
+        pushDispatcher.dispatch(opId);
+        return Map.of("updated", updated);
     }
 
     @Transactional

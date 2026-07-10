@@ -5,6 +5,7 @@ import com.hivemem.attachment.AttachmentRepository;
 import com.hivemem.auth.AuthPrincipal;
 import com.hivemem.mcp.ToolHandler;
 import com.hivemem.mcp.ToolInputSchema;
+import com.hivemem.write.WriteArgumentParser;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
@@ -38,7 +39,7 @@ public class ListAttachmentsToolHandler implements ToolHandler {
 
     @Override
     public Object call(AuthPrincipal principal, JsonNode arguments) {
-        UUID cellId = UUID.fromString(arguments.get("cell_id").asText());
+        UUID cellId = WriteArgumentParser.requiredUuid(arguments, "cell_id");
         return repo.findByCellId(cellId);
     }
 }

@@ -179,7 +179,10 @@ class ReadToolIntegrationTest {
 
         JsonNode results = callToolContent("search", Map.of(
                 "query", "semantic oracle", "limit", 10, "include", List.of("scores")));
-        assertThat(results.get(0).path("id").asText()).isEqualTo("00000000-0000-0000-0000-000000000501");
+        // Both cells match "oracle"; under the balanced profile the importance signal now
+        // (correctly, post H10) favours the importance=5 cell (502) over the importance=1
+        // cell (501), so the 5-star cell ranks first even though 501 matches more lexemes.
+        assertThat(results.get(0).path("id").asText()).isEqualTo("00000000-0000-0000-0000-000000000502");
         assertThat(results.get(0).path("score_total").isNumber()).isTrue();
         assertThat(results.get(0).path("score_semantic").isNumber()).isTrue();
         assertThat(results.get(0).path("score_keyword").isNumber()).isTrue();
@@ -190,7 +193,8 @@ class ReadToolIntegrationTest {
         assertThat(results).hasSize(2);
 
         // Query "oracle" matches both cells; weighting favours importance, so
-        // the importance=1 cell ranks above the importance=5 cell.
+        // the importance=5 cell ranks above the importance=1 cell (5 = most
+        // important, matching the 5-star UI convention).
         JsonNode weightedResults = callToolContent("search", Map.of(
                 "query", "oracle",
                 "limit", 10,
@@ -201,7 +205,7 @@ class ReadToolIntegrationTest {
                 "weight_popularity", 0.1
         ));
         assertThat(weightedResults).hasSize(2);
-        assertThat(weightedResults.get(0).path("id").asText()).isEqualTo("00000000-0000-0000-0000-000000000501");
+        assertThat(weightedResults.get(0).path("id").asText()).isEqualTo("00000000-0000-0000-0000-000000000502");
     }
 
     @Test
@@ -298,7 +302,7 @@ class ReadToolIntegrationTest {
                                   }
                                 }
                                 """))
-                .andExpect(status().isBadRequest())
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.error.code").value(-32602))
                 .andExpect(jsonPath("$.error.message").value("Invalid limit"));
     }
@@ -551,9 +555,22 @@ class ReadToolIntegrationTest {
     }
 
     @Test
-    void getDrawerToolReturnsNullWhenDrawerDoesNotExist() throws Exception {
-        JsonNode content = callToolContent("get_cell", Map.of("cell_id", "00000000-0000-0000-0000-000000000999"));
-        assertThat(content.isNull()).isTrue();
+    void getDrawerToolReturnsNotFoundErrorWhenDrawerDoesNotExist() throws Exception {
+        // get_cell for a missing id now raises a not-found error (was: literal "null" result).
+        mockMvc.perform(post("/mcp")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer good-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "jsonrpc", "2.0",
+                                "id", 1,
+                                "method", "tools/call",
+                                "params", Map.of(
+                                        "name", "get_cell",
+                                        "arguments", Map.of("cell_id", "00000000-0000-0000-0000-000000000999")
+                                )))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.error.code").value(-32602))
+                .andExpect(jsonPath("$.error.message").value(org.hamcrest.Matchers.containsString("not found")));
     }
 
     @Test
@@ -692,7 +709,7 @@ class ReadToolIntegrationTest {
                                   "params":{"name":"list","arguments":{"signal":"facts"}}
                                 }
                                 """))
-                .andExpect(status().isBadRequest())
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.error.code").value(-32602))
                 .andExpect(jsonPath("$.error.message").value("signal requires realm"));
     }
@@ -710,7 +727,7 @@ class ReadToolIntegrationTest {
                                   "params":{"name":"list","arguments":{"realm":"alpha","topic":"milestones"}}
                                 }
                                 """))
-                .andExpect(status().isBadRequest())
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.error.code").value(-32602))
                 .andExpect(jsonPath("$.error.message").value("topic requires realm and signal"));
     }
@@ -1230,7 +1247,7 @@ class ReadToolIntegrationTest {
                                   }
                                 }
                                 """))
-                .andExpect(status().isBadRequest())
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.error.code").value(-32602))
                 .andExpect(jsonPath("$.error.message").value(
                         org.hamcrest.Matchers.containsString("type")));
@@ -1316,12 +1333,13 @@ class ReadToolIntegrationTest {
 
         JsonNode content = callToolContent("reading_list", Map.of());
         assertThat(content).hasSize(2);
-        assertThat(content.get(0).path("title").asText()).isEqualTo("PostgreSQL guide");
-        assertThat(content.get(0).path("linked_cells").asInt()).isEqualTo(1);
-        assertThat(content.get(0).path("status").asText()).isEqualTo("unread");
-        assertThat(content.get(1).path("title").asText()).isEqualTo("Java migration notes");
-        assertThat(content.get(1).path("linked_cells").asInt()).isEqualTo(2);
-        assertThat(content.get(1).path("status").asText()).isEqualTo("reading");
+        // Ordered by importance DESC: the importance=3 reference before the importance=1 one.
+        assertThat(content.get(0).path("title").asText()).isEqualTo("Java migration notes");
+        assertThat(content.get(0).path("linked_cells").asInt()).isEqualTo(2);
+        assertThat(content.get(0).path("status").asText()).isEqualTo("reading");
+        assertThat(content.get(1).path("title").asText()).isEqualTo("PostgreSQL guide");
+        assertThat(content.get(1).path("linked_cells").asInt()).isEqualTo(1);
+        assertThat(content.get(1).path("status").asText()).isEqualTo("unread");
 
         JsonNode filtered = callToolContent("reading_list", Map.of("ref_type", "article"));
         assertThat(filtered).hasSize(1);
@@ -1470,7 +1488,7 @@ class ReadToolIntegrationTest {
                                   "params":{"name":"reading_list","arguments":{"limit":0}}
                                 }
                                 """))
-                .andExpect(status().isBadRequest())
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.error.code").value(-32602))
                 .andExpect(jsonPath("$.error.message").value("Invalid limit"));
 
@@ -1485,7 +1503,7 @@ class ReadToolIntegrationTest {
                                   "params":{"name":"reading_list","arguments":{"limit":101}}
                                 }
                                 """))
-                .andExpect(status().isBadRequest())
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.error.code").value(-32602))
                 .andExpect(jsonPath("$.error.message").value("Invalid limit"));
 
@@ -1500,7 +1518,7 @@ class ReadToolIntegrationTest {
                                   "params":{"name":"reading_list","arguments":{"limit":1.9}}
                                 }
                                 """))
-                .andExpect(status().isBadRequest())
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.error.code").value(-32602))
                 .andExpect(jsonPath("$.error.message").value("Invalid limit"));
     }
@@ -1518,7 +1536,7 @@ class ReadToolIntegrationTest {
                                   "params":{"name":"diary_read","arguments":{"agent":"alpha-agent","last_n":101}}
                                 }
                                 """))
-                .andExpect(status().isBadRequest())
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.error.code").value(-32602))
                 .andExpect(jsonPath("$.error.message").value("Invalid last_n"));
 
@@ -1533,7 +1551,7 @@ class ReadToolIntegrationTest {
                                   "params":{"name":"diary_read","arguments":{"agent":"alpha-agent","last_n":1.5}}
                                 }
                                 """))
-                .andExpect(status().isBadRequest())
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.error.code").value(-32602))
                 .andExpect(jsonPath("$.error.message").value("Invalid last_n"));
     }
@@ -1551,7 +1569,7 @@ class ReadToolIntegrationTest {
                                   "params":{"name":"diary_read","arguments":{}}
                                 }
                                 """))
-                .andExpect(status().isBadRequest())
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.error.code").value(-32602))
                 .andExpect(jsonPath("$.error.message").value("Missing agent"));
 
@@ -1566,7 +1584,7 @@ class ReadToolIntegrationTest {
                                   "params":{"name":"diary_read","arguments":{"agent":123}}
                                 }
                                 """))
-                .andExpect(status().isBadRequest())
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.error.code").value(-32602))
                 .andExpect(jsonPath("$.error.message").value("Missing agent"));
     }

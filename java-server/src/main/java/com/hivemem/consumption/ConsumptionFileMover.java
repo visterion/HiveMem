@@ -25,22 +25,35 @@ public class ConsumptionFileMover {
 
     public Path moveToRoot(Path src) throws IOException {
         Files.createDirectories(root);
-        Path dest = root.resolve(src.getFileName());
-        while (Files.exists(dest)) {
-            dest = root.resolve(suffixed(src.getFileName().toString(), counter.incrementAndGet()));
-        }
-        Files.move(src, dest, StandardCopyOption.ATOMIC_MOVE);
-        return dest;
+        return moveNoReplace(src, root);
     }
 
     private Path move(Path src, String subdir) throws IOException {
         Path targetDir = root.resolve(subdir);
         Files.createDirectories(targetDir);
-        Path dest = targetDir.resolve(src.getFileName());
-        while (Files.exists(dest)) {
-            dest = targetDir.resolve(suffixed(src.getFileName().toString(), counter.incrementAndGet()));
+        return moveNoReplace(src, targetDir);
+    }
+
+    /** Claim the destination name atomically (createFile is create-new) before moving onto it.
+     *  A bare exists()-check would be TOCTOU-racy: two movers could pick the same free name and
+     *  ATOMIC_MOVE (rename(2)) silently replaces, losing one of the files. */
+    private Path moveNoReplace(Path src, Path targetDir) throws IOException {
+        String name = src.getFileName().toString();
+        Path dest = targetDir.resolve(name);
+        while (true) {
+            try {
+                Files.createFile(dest);   // atomic claim of the destination name
+                break;
+            } catch (FileAlreadyExistsException taken) {
+                dest = targetDir.resolve(suffixed(name, counter.incrementAndGet()));
+            }
         }
-        Files.move(src, dest, StandardCopyOption.ATOMIC_MOVE);
+        try {
+            Files.move(src, dest, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException moveErr) {
+            try { Files.deleteIfExists(dest); } catch (IOException ignored) { } // drop the placeholder
+            throw moveErr;
+        }
         return dest;
     }
 

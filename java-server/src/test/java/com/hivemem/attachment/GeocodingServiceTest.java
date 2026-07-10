@@ -44,6 +44,41 @@ class GeocodingServiceTest {
     }
 
     @Test
+    void transientLookupFailureLeavesStatusPending() {
+        when(client.reverse(anyDouble(), anyDouble()))
+                .thenThrow(new NominatimClient.GeocodeUnavailableException("boom", null));
+        UUID id = UUID.randomUUID();
+        service().onGeocodeRequested(new GeocodeRequestedEvent(id, 1.0, 2.0));
+        // No status write: the row stays 'pending' so the retry sweep revisits it.
+        verify(repo, never()).updatePlace(any(), any(), any());
+    }
+
+    @Test
+    void retrySweepRevisitsPendingRows() {
+        UUID id = UUID.randomUUID();
+        when(repo.findPendingGeocodes(50)).thenReturn(
+                java.util.List.of(new ImageMetaRepository.PendingGeocode(id, 49.487, 8.466)));
+        when(client.reverse(49.487, 8.466)).thenReturn(Optional.of("Mannheim, DE"));
+
+        service().retryPendingGeocodes();
+
+        verify(repo).updatePlace(id, "Mannheim, DE", "done");
+    }
+
+    @Test
+    void seedsCacheFromResolvedRowsBeforeFirstLookup() {
+        when(repo.findResolvedPlaces()).thenReturn(java.util.List.of(
+                new ImageMetaRepository.ResolvedPlace(49.487, 8.466, "Mannheim, DE")));
+        UUID id = UUID.randomUUID();
+
+        service().onGeocodeRequested(new GeocodeRequestedEvent(id, 49.487, 8.466));
+
+        // Cache hit from the seeded row — Nominatim is never called.
+        verifyNoInteractions(client);
+        verify(repo).updatePlace(id, "Mannheim, DE", "done");
+    }
+
+    @Test
     void disabledTogglePersistsNothing() {
         props.setEnabled(false);
         service().onGeocodeRequested(new GeocodeRequestedEvent(UUID.randomUUID(), 1.0, 2.0));

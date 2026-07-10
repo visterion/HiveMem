@@ -1,9 +1,22 @@
 import { defineStore } from 'pinia'
 import { useApi } from '../api/useApi'
+import { useRealmsStore } from './realms'
 import type { Cell, Fact, Tunnel, SearchResult } from '../api/types'
 import type { ParsedNote } from '../composables/obsidianImport'
 
 type CellEntry = { cell: Cell; facts: Fact[]; tunnels: Tunnel[] }
+
+// Fill fields the cached row is missing (undefined) from a richer row, without
+// overwriting locally-known values (e.g. optimistic tag edits). Search rows are
+// partial — the server treats an explicit `include` as a replacement of the default
+// field set — so cached entries must be healable, or the reader shows blanks and
+// an edit seeds the editor with undefined and destroys the real content (C3).
+function fillMissingFields(target: Cell, source: Cell): void {
+  const t = target as unknown as Record<string, unknown>
+  for (const [k, v] of Object.entries(source)) {
+    if (t[k] === undefined) t[k] = v
+  }
+}
 
 // Cells have no `title`; facts are keyed on a human subject. Use summary/topic when
 // available, and skip the lookup for bare cells (e.g. scans) so a blank subject never
@@ -23,7 +36,10 @@ export const useCellStore = defineStore('cell', {
     cache: new Map<string, CellEntry>(),
     currentId: null as string | null,
     loading: false,
-    selectedScores: null as SearchResult | null
+    selectedScores: null as SearchResult | null,
+    // Monotonic token: only the latest load()/open() commits currentId/loading, so
+    // out-of-order responses can't clobber the user's newest selection (M52).
+    loadSeq: 0
   }),
   getters: {
     current(s): CellEntry | null {
@@ -32,6 +48,10 @@ export const useCellStore = defineStore('cell', {
   },
   actions: {
     async load(id: string) {
+      const seq = ++this.loadSeq
+      // A plain load is not a search hit — clear a stale score breakdown so the
+      // inspector doesn't show the previous result's scores for this cell (L-F9).
+      this.selectedScores = null
       this.loading = true
       try {
         if (!this.cache.has(id)) {
@@ -44,61 +64,89 @@ export const useCellStore = defineStore('cell', {
           ])
           const facts = await fetchFacts(cell)
           this.store(id, { cell, facts, tunnels })
+        } else {
+          this.touch(id)
         }
-        this.currentId = id
-      } finally { this.loading = false }
+        if (seq === this.loadSeq) this.currentId = id
+      } finally {
+        if (seq === this.loadSeq) this.loading = false
+      }
     },
     // Open a cell using an already-fetched (rich) row — e.g. a search result that
     // carries content/summary. Avoids a second get_cell that would drop those fields,
     // so the panel shows a real label and the OCR/parsed content immediately.
     async open(cell: Cell) {
+      const seq = ++this.loadSeq
       this.selectedScores = (cell && 'score_total' in cell) ? (cell as unknown as SearchResult) : null
       this.loading = true
       try {
         const id = cell.id
-        if (!this.cache.has(id)) {
+        const cached = this.cache.get(id)
+        if (!cached) {
           const tunnels = await useApi().call<{ edges: Tunnel[] }>('traverse', { cell_id: id, max_depth: 1 })
             .then(r => r.edges ?? [])
             .catch(() => [])
           const facts = await fetchFacts(cell)
           this.store(id, { cell, facts, tunnels })
+        } else {
+          // Upgrade an earlier (possibly partial) cached row with any richer fields
+          // this row carries — cache.has must never freeze a partial row (C3).
+          fillMissingFields(cached.cell, cell)
+          this.touch(id)
         }
-        this.currentId = id
-      } finally { this.loading = false }
+        if (seq === this.loadSeq) this.currentId = id
+      } finally {
+        if (seq === this.loadSeq) this.loading = false
+      }
     },
-    // Attachments are not carried by search rows (used by open()) and are only
-    // needed when the reader is shown, so fetch them lazily via get_cell (which
-    // returns them by default) and merge into the cached entry. Idempotent.
+    // Search rows are partial: no attachments, and possibly no content/tags (their
+    // `include` replaces the server's default field set). When the reader needs the
+    // full cell, fetch it via get_cell and merge every missing field into the cached
+    // entry — not just attachments, or a partial row renders a blank reader and an
+    // edit overwrites the real content (C3). Idempotent.
     async ensureAttachments(id: string) {
       const entry = this.cache.get(id)
-      if (!entry || entry.cell.attachments !== undefined) return
+      if (!entry) return
+      const c = entry.cell as Partial<Cell>
+      if (c.attachments !== undefined && c.content !== undefined && c.tags !== undefined) return
       const full = await useApi().call<Cell>('get_cell', { cell_id: id }).catch(() => null)
       const current = this.cache.get(id)
       if (full && current) {
-        current.cell.attachments = full.attachments ?? []
+        fillMissingFields(current.cell, full)
+        // get_cell returned no attachments field → record "none" so we don't refetch forever.
+        if (current.cell.attachments === undefined) current.cell.attachments = full.attachments ?? []
       }
     },
     // Bulk-import parsed Obsidian notes: one add_cell per note (default realm when the
     // note has none), stub cells for [[wiki-links]] whose target isn't in the vault, then
     // an add_tunnel per link. Title→id mapping resolves links to the cells just created.
+    // Partial failures don't abort the import: failed notes/links are counted in
+    // `failed` and the rest of the vault still lands (L-F12).
     async importObsidian(
       notes: ParsedNote[],
       opts: { defaultRealm: string; onProgress?: (done: number, total: number) => void }
-    ): Promise<{ cellsCreated: number; tunnelsCreated: number; stubsCreated: number }> {
+    ): Promise<{ cellsCreated: number; tunnelsCreated: number; stubsCreated: number; failed: number }> {
       const api = useApi()
       const titleToId = new Map<string, string>()
       const total = notes.length
       let done = 0
+      let cellsCreated = 0
+      let failed = 0
       for (const note of notes) {
-        const res = await api.call<{ id: string }>('add_cell', {
-          content: note.content,
-          realm: note.realm || opts.defaultRealm,
-          ...(note.signal ? { signal: note.signal } : {}),
-          topic: note.title,
-          ...(note.tags.length ? { tags: note.tags } : {}),
-          ...(note.validFrom ? { valid_from: note.validFrom } : {})
-        })
-        titleToId.set(note.title, res.id)
+        try {
+          const res = await api.call<{ id: string }>('add_cell', {
+            content: note.content,
+            realm: note.realm || opts.defaultRealm,
+            ...(note.signal ? { signal: note.signal } : {}),
+            topic: note.title,
+            ...(note.tags.length ? { tags: note.tags } : {}),
+            ...(note.validFrom ? { valid_from: note.validFrom } : {})
+          })
+          titleToId.set(note.title, res.id)
+          cellsCreated++
+        } catch {
+          failed++ // keep importing the remaining notes; links to this one are skipped/stubbed
+        }
         opts.onProgress?.(++done, total)
       }
       let stubsCreated = 0
@@ -107,18 +155,23 @@ export const useCellStore = defineStore('cell', {
         const fromId = titleToId.get(note.title)
         if (!fromId) continue
         for (const link of note.links) {
-          let targetId = titleToId.get(link)
-          if (!targetId) {
-            const stub = await api.call<{ id: string }>('add_cell', { content: link, topic: link, realm: opts.defaultRealm })
-            targetId = stub.id
-            titleToId.set(link, targetId)
-            stubsCreated++
+          try {
+            let targetId = titleToId.get(link)
+            if (!targetId) {
+              const stub = await api.call<{ id: string }>('add_cell', { content: link, topic: link, realm: opts.defaultRealm })
+              targetId = stub.id
+              titleToId.set(link, targetId)
+              stubsCreated++
+            }
+            await api.call('add_tunnel', { from_cell: fromId, to_cell: targetId, relation: 'related_to' })
+            tunnelsCreated++
+          } catch {
+            failed++
           }
-          await api.call('add_tunnel', { from_cell: fromId, to_cell: targetId, relation: 'related_to' })
-          tunnelsCreated++
         }
       }
-      return { cellsCreated: notes.length, tunnelsCreated, stubsCreated }
+      if (cellsCreated || stubsCreated) useRealmsStore().invalidate()
+      return { cellsCreated, tunnelsCreated, stubsCreated, failed }
     },
     // Create a tunnel from the current cell to another via add_tunnel, appending the
     // result to the source cell's cached tunnels so the reader shows it immediately.
@@ -177,6 +230,8 @@ export const useCellStore = defineStore('cell', {
       if (opts.summary !== undefined) args.summary = opts.summary
       if (opts.importance !== undefined) args.importance = opts.importance
       const res = await api.call<{ id: string }>('add_cell', args)
+      // Realm counts changed (possibly a brand-new realm) — drop the cached list.
+      useRealmsStore().invalidate()
       this.cache.delete(res.id)
       await this.load(res.id)
       return res
@@ -203,11 +258,27 @@ export const useCellStore = defineStore('cell', {
       }
       return res
     },
+    // Move a cache hit to the back of the Map's insertion order so the size-capped
+    // cache evicts least-recently-used entries instead of oldest-inserted (L-F10).
+    touch(id: string) {
+      const entry = this.cache.get(id)
+      if (entry) {
+        this.cache.delete(id)
+        this.cache.set(id, entry)
+      }
+    },
     store(id: string, entry: CellEntry) {
+      this.cache.delete(id) // re-insert at the back (freshest)
       this.cache.set(id, entry)
       if (this.cache.size > 50) {
-        const first = this.cache.keys().next().value
-        if (first) this.cache.delete(first)
+        // Evict the least-recently-used entry, but never the currently-displayed
+        // cell or the one just stored (L-F10).
+        for (const key of this.cache.keys()) {
+          if (key !== this.currentId && key !== id) {
+            this.cache.delete(key)
+            break
+          }
+        }
       }
     },
     clear() { this.currentId = null; this.selectedScores = null }

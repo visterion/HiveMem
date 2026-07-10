@@ -14,20 +14,20 @@ Skipped if:
 - Fewer than 5 words
 - Starts with a social phrase (`wie geht `, `wie läuft `, `hallo`, `guten morgen`, …) and has ≤ 8 words
 
-Force-include: prefix prompt with `!mem ` to bypass all skip logic.
+Force-include: prefix prompt with `!mem ` to bypass all skip logic. The `!mem ` marker itself is stripped before the prompt is embedded and searched.
 
 ## Stage 2 — Embedding + Search
 
-The prompt is embedded via the configured embedding model (`paraphrase-multilingual-MiniLM-L12-v2`) and passed to `ranked_search` — a PostgreSQL function combining five signals:
+The prompt is embedded via the configured embedding model (`paraphrase-multilingual-MiniLM-L12-v2`) and passed to `ranked_search` — a PostgreSQL function combining six signals. The hook uses its own precision-tuned weight preset (`hivemem.hooks.weights.*`), independent of the UI/`search`-tool weights:
 
 | Signal | Default weight | What it measures |
 |---|---|---|
-| `score_semantic` | 0.30 | Cosine similarity between prompt and cell embeddings |
-| `score_keyword` | 0.15 | Full-text match (tsvector) |
-| `score_recency` | 0.15 | How recently the cell was created |
-| `score_importance` | 0.15 | Manually assigned importance (1–5) |
-| `score_popularity` | 0.15 | Access frequency |
-| `score_graph_proximity` | 0.10 | Distance via tunnel graph |
+| `score_semantic` | 0.70 | Cosine similarity between prompt and cell embeddings |
+| `score_keyword` | 0.10 | Full-text match (tsvector) |
+| `score_recency` | 0.05 | How recently the cell was created |
+| `score_importance` | 0.05 | Manually assigned importance (1–5) |
+| `score_popularity` | 0.05 | Access frequency |
+| `score_graph_proximity` | 0.05 | Distance via tunnel graph |
 
 `ranked_search` applies a hard pre-filter: `score_semantic > 0.3 OR score_keyword > 0`. Results are ordered by `score_total` descending.
 

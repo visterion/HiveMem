@@ -1,5 +1,7 @@
 package com.hivemem.hooks;
 
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import com.hivemem.embedding.EmbeddingClient;
 import com.hivemem.search.CellSearchRepository;
 import com.hivemem.search.CellSearchRepository.RankedRow;
@@ -9,12 +11,13 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.nio.file.Path;
+import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 @Service
@@ -30,7 +33,12 @@ public class HookContextService {
     private final ContextFormatter formatter;
     private final HookProperties props;
 
-    private final ConcurrentHashMap<String, AtomicInteger> turnCounters = new ConcurrentHashMap<>();
+    // Bounded like SessionInjectionCache: idle sessions expire instead of leaking.
+    // expireAfterAccess so a long-lived active session keeps its counter.
+    private final Cache<String, AtomicInteger> turnCounters = Caffeine.newBuilder()
+            .expireAfterAccess(Duration.ofHours(1))
+            .maximumSize(50_000)
+            .build();
 
     public HookContextService(
             CellSearchRepository searchRepository,
@@ -58,16 +66,14 @@ public class HookContextService {
         if (skipHeuristics.evaluate(req.prompt()).skip()) return ContextResult.empty();
 
         String sessionKey = req.session_id() == null ? "_" : req.session_id();
-        int turn = turnCounters
-                .computeIfAbsent(sessionKey, k -> new AtomicInteger())
-                .incrementAndGet();
+        String query = stripMemPrefix(req.prompt());
 
         List<RankedRow> rows;
         try {
-            List<Float> queryVector = embeddingClient.encodeQuery(req.prompt());
+            List<Float> queryVector = embeddingClient.encodeQuery(query);
             SearchWeights w = props.getWeights().toSearchWeights();
             rows = searchRepository.rankedSearch(
-                    queryVector, req.prompt(), null, null, null, SEARCH_LIMIT,
+                    queryVector, query, null, null, null, SEARCH_LIMIT,
                     w.semantic(), w.keyword(), w.recency(),
                     w.importance(), w.popularity(), w.graphProximity(),
                     null, null, null);
@@ -75,6 +81,12 @@ public class HookContextService {
             log.warn("Hook search failed; returning empty context", e);
             return ContextResult.empty();
         }
+
+        // Only successful searches count as a turn; failed searches must not
+        // shrink the dedup window.
+        int turn = turnCounters
+                .get(sessionKey, k -> new AtomicInteger())
+                .incrementAndGet();
 
         double threshold = thresholdOverride != null ? thresholdOverride : props.getRelevanceThreshold();
         int maxCells = maxCellsOverride != null ? maxCellsOverride : props.getMaxCells();
@@ -85,19 +97,22 @@ public class HookContextService {
                 ? cwdFirstComparator(projectHint)
                 : Comparator.comparingDouble(r -> -r.scoreTotal());
 
-        List<RankedRow> filtered = rows.stream()
+        List<RankedRow> candidates = rows.stream()
                 .filter(r -> r.scoreTotal() >= threshold)
                 .filter(r -> r.scoreSemantic() >= minSemantic)
-                .filter(r -> !cache.recentlyInjected(sessionKey, r.id(), turn))
                 .sorted(order)
-                .limit(maxCells)
                 .toList();
 
-        if (filtered.isEmpty()) return ContextResult.empty();
-
-        for (RankedRow r : filtered) {
-            cache.recordInjection(sessionKey, r.id(), turn);
+        // Atomic check-and-record per cell (dedup window), only for cells actually injected.
+        List<RankedRow> filtered = new ArrayList<>();
+        for (RankedRow r : candidates) {
+            if (filtered.size() >= maxCells) break;
+            if (cache.tryRecordInjection(sessionKey, r.id(), turn)) {
+                filtered.add(r);
+            }
         }
+
+        if (filtered.isEmpty()) return ContextResult.empty();
 
         List<UUID> cellIds = filtered.stream().map(RankedRow::id).toList();
         Map<UUID, List<CellSearchRepository.RefRow>> refMapRaw;
@@ -131,6 +146,16 @@ public class HookContextService {
 
         String formatted = formatter.format(enriched, turn);
         return new ContextResult(formatted, attributions);
+    }
+
+    /** The force-include marker is a control token, not search signal — strip it before embedding. */
+    private static String stripMemPrefix(String prompt) {
+        String trimmed = prompt.trim();
+        if (trimmed.regionMatches(true, 0, "!mem ", 0, 5)) {
+            String stripped = trimmed.substring(5).trim();
+            if (!stripped.isEmpty()) return stripped;
+        }
+        return prompt;
     }
 
     private String extractProjectHint(String cwd) {

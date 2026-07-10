@@ -87,7 +87,7 @@ public class OcrService {
         processOne(event.cellId(), event.s3Key());
     }
 
-    @Scheduled(fixedRateString = "${hivemem.ocr.backfill-interval-ms:3600000}")
+    @Scheduled(fixedRateString = "${hivemem.ocr.backfill-interval:PT1H}")
     public void backfill() {
         List<UUID> ids = repo.findCellsPendingOcr(props.getBackfillBatchSize());
         for (UUID id : ids) {
@@ -191,8 +191,14 @@ public class OcrService {
 
     private String transcribeWithVision(byte[] pngBytes, UUID cellId, int pageNum) {
         try {
-            VisionClient.VisionResult vr = visionClient.transcribe(pngBytes, "image/png");
-            visionBudget.recordCall(vr.inputTokens(), vr.outputTokens());
+            VisionClient.VisionResult vr;
+            visionBudget.beginCall();
+            try {
+                vr = visionClient.transcribe(pngBytes, "image/png");
+                visionBudget.recordCall(vr.inputTokens(), vr.outputTokens());
+            } finally {
+                visionBudget.endCall();
+            }
             return vr.description();
         } catch (VisionClient.OversizeImageException e) {
             log.info("Vision-OCR skipped (oversize) page {} of cell {}", pageNum, cellId);

@@ -96,10 +96,16 @@ cloudflared tunnel run hivemem
    to obtain a `client_id`
 6. Claude.ai redirects you to `/oauth/authorize` — log in to HiveMem in your
    browser via the existing web-UI session if you are not already
-7. After login, you are redirected back to Claude.ai with an authorization code
-8. Claude.ai exchanges the code at `/oauth/token` for an access + refresh token
-9. Subsequent MCP tool calls from Claude.ai authenticate with the access token;
-   Claude.ai handles refresh-rotation automatically
+7. `/oauth/authorize` renders a **consent screen** showing the requesting client
+   and the scope being granted; a session-bound one-time CSRF token guards the
+   confirmation. Only after you approve (POST `action=approve`) is an
+   authorization code issued; denying (or a missing/invalid CSRF token) returns
+   `error=access_denied`. The granted scope is capped to your token's role, so a
+   reader session cannot mint a `write` code.
+8. After approval, you are redirected back to Claude.ai with an authorization code
+9. Claude.ai exchanges the code at `/oauth/token` for an access + refresh token
+10. Subsequent MCP tool calls from Claude.ai authenticate with the access token;
+    Claude.ai handles refresh-rotation automatically
 
 You should now see HiveMem's tools available in your Claude.ai sidebar.
 

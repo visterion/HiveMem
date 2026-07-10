@@ -63,6 +63,17 @@ class KgEntityRepositoryTest {
     }
 
     @Test
+    void casingVariantCanonicalMergesIntoExistingRow() {
+        repo.upsert("HiveMem", List.of("alias-a"), "tester");
+        repo.upsert("hivemem", List.of("alias-b"), "tester");
+        // The first spelling wins; the variant's aliases are unioned in.
+        assertThat(repo.resolve("alias-a")).isEqualTo("HiveMem");
+        assertThat(repo.resolve("alias-b")).isEqualTo("HiveMem");
+        long rows = dsl.fetchOne("SELECT count(*) AS n FROM kg_entity").get("n", Long.class);
+        assertThat(rows).isEqualTo(1);
+    }
+
+    @Test
     void upsertUnionsAliasesOnConflict() {
         repo.upsert("HiveMem", List.of("alias-a"), "tester");
         repo.upsert("HiveMem", List.of("alias-b"), "tester");

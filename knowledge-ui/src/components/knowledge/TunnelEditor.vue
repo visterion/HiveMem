@@ -1,13 +1,15 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useApi } from '../../api/useApi'
 import { useCellStore } from '../../stores/cell'
+import { useUiStore } from '../../stores/ui'
 import { cellLabel } from '../../api/cellLabel'
 import type { Cell, Relation } from '../../api/types'
 
 const cellStore = useCellStore()
 const api = useApi()
+const ui = useUiStore()
 const { t } = useI18n()
 
 const RELATIONS: Relation[] = ['related_to', 'builds_on', 'contradicts', 'refines']
@@ -21,17 +23,26 @@ const relation = ref<Relation>('related_to')
 const note = ref('')
 const adding = ref(false)
 let timer: number | null = null
+let searchSeq = 0 // stale-response guard: only the latest search may write results
 
 function onSearch() {
   target.value = null
   if (timer) clearTimeout(timer)
   timer = setTimeout(async () => {
+    timer = null
     const q = query.value.trim()
     if (!q) { results.value = []; return }
+    const seq = ++searchSeq
     const rows = await api.call<Cell[]>('search', { query: q, limit: 8 }).catch(() => [] as Cell[])
+    if (seq !== searchSeq) return
     results.value = rows.filter(c => c.id !== fromId.value)
   }, 180) as unknown as number
 }
+
+onUnmounted(() => {
+  if (timer) { clearTimeout(timer); timer = null }
+  searchSeq++ // drop any in-flight response after unmount
+})
 
 function pick(c: Cell) {
   target.value = { id: c.id, label: cellLabel(c) }
@@ -48,6 +59,9 @@ async function add() {
     query.value = ''
     note.value = ''
     relation.value = 'related_to'
+  } catch {
+    // Keep the form state so the user can retry.
+    ui.pushToast('error', t('common.actionFailed'))
   } finally {
     adding.value = false
   }

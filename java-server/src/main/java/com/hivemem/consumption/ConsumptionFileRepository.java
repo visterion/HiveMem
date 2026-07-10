@@ -17,6 +17,8 @@ public class ConsumptionFileRepository {
     /**
      * Insert a new row for the given hash, or increment attempts if it already exists.
      * Always resets state to 'processing' so a retry sweep can re-stage failed rows.
+     * The filename is refreshed on conflict: re-staged files may carry a collision suffix,
+     * and the recovery sweep resolves the physical file by this name.
      */
     public void startProcessing(String sha256, String filename) {
         dsl.execute("""
@@ -24,6 +26,7 @@ public class ConsumptionFileRepository {
                 VALUES (?, ?, 'processing', 1)
                 ON CONFLICT (sha256) DO UPDATE
                   SET attempts   = consumption_file.attempts + 1,
+                      filename   = excluded.filename,
                       state      = 'processing',
                       updated_at = now()
                 """, sha256, filename);
@@ -66,6 +69,13 @@ public class ConsumptionFileRepository {
     /** Bump updated_at on a processing row so the recovery sweep won't re-select it for another stale window. */
     public void touch(String sha256) {
         dsl.execute("UPDATE consumption_file SET updated_at = now() WHERE sha256 = ?", sha256);
+    }
+
+    /** Persist the actual on-disk filename after a collision-suffixed move, so the recovery
+     *  sweep resolves the physical file under its real name instead of the stale original. */
+    public void updateFilename(String sha256, String filename) {
+        dsl.execute("UPDATE consumption_file SET filename = ?, updated_at = now() WHERE sha256 = ?",
+                filename, sha256);
     }
 
     /** Returns rows in 'failed' state that have not yet exhausted their retry budget. */

@@ -101,7 +101,7 @@ public class SummarizerService {
         summarizeOne(event.cellId());
     }
 
-    @Scheduled(fixedRateString = "${hivemem.summarize.backfill-interval-ms:300000}")
+    @Scheduled(fixedRateString = "${hivemem.summarize.backfill-interval:PT5M}")
     public void backfill() {
         if (!budget.canSpend()) return;
         List<UUID> ids = repo.findCellsNeedingSummary(props.getBackfillBatchSize());
@@ -112,6 +112,19 @@ public class SummarizerService {
     }
 
     void summarizeOne(UUID cellId) {
+        // Atomic claim: the AFTER_COMMIT event worker and the scheduled backfill can race on the
+        // same cell — without the claim both pay an LLM call and produce competing revisions.
+        if (!repo.tryClaim(cellId)) {
+            return;
+        }
+        try {
+            summarizeClaimed(cellId);
+        } finally {
+            repo.clearClaim(cellId);
+        }
+    }
+
+    private void summarizeClaimed(UUID cellId) {
         var snap = repo.findCellSnapshot(cellId).orElse(null);
         if (snap == null) return;
         if (snap.summary() != null && !snap.summary().isBlank()) {
@@ -145,35 +158,32 @@ public class SummarizerService {
             UUID newId = extractNewId(reviseResult);
             UUID targetId = newId != null ? newId : cellId;
 
-            // Store document_type on the (new) cell row.
-            String docType = result.documentType() != null
-                    ? result.documentType() : extractionProps.getDefaultFallbackType();
-            repo.setDocumentType(targetId, docType);
-
-            // Store the short LLM title in topic (the document's display name).
-            if (result.title() != null && !result.title().isBlank()) {
-                repo.setTopic(targetId, result.title().trim());
-            }
-
             // Persist facts.
             persistFacts(targetId, result.facts());
 
-            // Tax-relevance tag (language-correct).
-            if (result.taxRelevant()) {
-                repo.applyTag(targetId, taxTagFor(result.language(), props.getLanguage()));
-            }
-
-            // Set the cell's valid_from from the document's own date, if the LLM gave a usable one.
-            result.facts().stream()
+            // Consolidated, op-logged metadata update so the enrichment reaches peers (the
+            // former direct SummarizerRepository UPDATEs bypassed the op log entirely):
+            //  - document_type on the (new) cell row
+            //  - the short LLM title in topic (the document's display name)
+            //  - valid_from from the document's own date, if the LLM gave a usable one
+            //  - the language-correct tax-relevance tag
+            //  - 'tax_scanned' to decouple the cell from the one-shot backfill
+            String docType = result.documentType() != null
+                    ? result.documentType() : extractionProps.getDefaultFallbackType();
+            String title = (result.title() != null && !result.title().isBlank())
+                    ? result.title().trim() : null;
+            OffsetDateTime validFrom = result.facts().stream()
                     .filter(f -> "document_date".equals(f.predicate()))
                     .max(Comparator.comparingDouble(FactSpec::confidence))
                     .flatMap(f -> DocumentDateParser.parse(f.object()))
-                    .ifPresent(d -> repo.setValidFrom(
-                            targetId, d.atStartOfDay().atOffset(ZoneOffset.UTC)));
-
-            // The new-doc path already performed tax tagging + valid_from above, so mark the cell
-            // as scanned — this decouples it from the one-shot backfill (no redundant re-classify).
-            repo.applyTag(targetId, "tax_scanned");
+                    .map(d -> d.atStartOfDay().atOffset(ZoneOffset.UTC))
+                    .orElse(null);
+            List<String> metaTags = new java.util.ArrayList<>();
+            if (result.taxRelevant()) {
+                metaTags.add(taxTagFor(result.language(), props.getLanguage()));
+            }
+            metaTags.add("tax_scanned");
+            writeService.updateCellMeta(SYSTEM_PRINCIPAL, targetId, docType, title, validFrom, metaTags);
 
             repo.removeNeedsSummaryTag(cellId);
             if (newId != null) repo.removeNeedsSummaryTag(newId);
@@ -207,9 +217,12 @@ public class SummarizerService {
             try {
                 String summary = repo.findSummary(id);
                 if (summary == null || summary.isBlank()) continue;
-                String title = anthropic.generateTitle(summary);
-                if (title != null && !title.isBlank()) {
-                    repo.setTopic(id, title.trim());
+                AnthropicSummarizer.TitleResult title = anthropic.generateTitle(summary);
+                // Charge the call to the daily budget — even when the title comes back blank —
+                // so the canSpend() gate actually bounds the backfill.
+                budget.recordCall(title.inputTokens(), title.outputTokens());
+                if (title.title() != null && !title.title().isBlank()) {
+                    writeService.updateCellMeta(SYSTEM_PRINCIPAL, id, null, title.title().trim(), null, null);
                     titled++;
                 }
             } catch (Exception e) {
@@ -234,19 +247,25 @@ public class SummarizerService {
                 break;
             }
             try {
+                OffsetDateTime validFrom = null;
                 String dateFact = repo.findDocumentDateFact(id);
                 if (dateFact != null) {
-                    DocumentDateParser.parse(dateFact).ifPresent(d -> repo.setValidFrom(
-                            id, d.atStartOfDay().atOffset(ZoneOffset.UTC)));
+                    validFrom = DocumentDateParser.parse(dateFact)
+                            .map(d -> d.atStartOfDay().atOffset(ZoneOffset.UTC))
+                            .orElse(null);
                 }
+                List<String> metaTags = new java.util.ArrayList<>();
                 String summary = repo.findSummary(id);
                 if (summary != null && !summary.isBlank()) {
                     var c = anthropic.classifyTaxRelevance(summary);
+                    // Charge the classifier call to the daily budget (see backfillTitles).
+                    budget.recordCall(c.inputTokens(), c.outputTokens());
                     if (c.taxRelevant()) {
-                        repo.applyTag(id, taxTagFor(c.language(), props.getLanguage()));
+                        metaTags.add(taxTagFor(c.language(), props.getLanguage()));
                     }
                 }
-                repo.applyTag(id, "tax_scanned");
+                metaTags.add("tax_scanned");
+                writeService.updateCellMeta(SYSTEM_PRINCIPAL, id, null, null, validFrom, metaTags);
                 processed++;
             } catch (Exception e) {
                 log.warn("Tax/date backfill failed for cell {}: {}", id, e.getMessage());

@@ -47,8 +47,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * <ol>
  *   <li>Discovery (.well-known)</li>
  *   <li>Dynamic Client Registration (POST /oauth/register)</li>
- *   <li>Authorization (GET /oauth/authorize) — using a test-injected user_token_id
- *       to bypass the interactive login flow</li>
+ *   <li>Authorization (GET /oauth/authorize renders consent, POST issues the code) —
+ *       using a test-injected user_token_id to bypass the interactive login flow</li>
  *   <li>Token exchange (POST /oauth/token, grant_type=authorization_code, with PKCE)</li>
  *   <li>Refresh (POST /oauth/token, grant_type=refresh_token)</li>
  *   <li>Replay-detection — re-using the rotated refresh token revokes the chain</li>
@@ -142,19 +142,10 @@ class OAuthEndToEndTest {
         String clientId = json.readTree(regResult.getResponse().getContentAsString())
                 .get("client_id").asText();
 
-        // 2. Authorize — inject user_token_id directly to bypass session login
-        MvcResult authResult = mvc.perform(get("/oauth/authorize")
-                        .param("response_type", "code")
-                        .param("client_id", clientId)
-                        .param("redirect_uri", REDIRECT_URI)
-                        .param("scope", "read write")
-                        .param("state", "e2e-state")
-                        .param("code_challenge", CHALLENGE)
-                        .param("code_challenge_method", "S256")
-                        .requestAttr(AuthorizationController.TEST_USER_TOKEN_ATTR, userTokenId))
-                .andExpect(status().is3xxRedirection())
-                .andReturn();
-        URI redirect = URI.create(authResult.getResponse().getHeader("Location"));
+        // 2. Authorize — consent flow: GET renders the consent page, POST issues the code.
+        //    Inject user_token_id directly to bypass session login.
+        URI redirect = URI.create(authorizeWithConsent(
+                clientId, "read write", "e2e-state", new MockHttpSession(), userTokenId));
         assertEquals("claude.ai", redirect.getHost());
         String code  = extractParam(redirect.getQuery(), "code");
         String state = extractParam(redirect.getQuery(), "state");
@@ -283,14 +274,8 @@ class OAuthEndToEndTest {
                 .andReturn().getResponse().getContentAsString())
                 .get("client_id").asText();
 
-        URI redirect = URI.create(mvc.perform(get("/oauth/authorize")
-                        .param("response_type", "code")
-                        .param("client_id", clientId)
-                        .param("redirect_uri", REDIRECT_URI)
-                        .param("code_challenge", CHALLENGE)
-                        .param("code_challenge_method", "S256")
-                        .requestAttr(AuthorizationController.TEST_USER_TOKEN_ATTR, userTokenId))
-                .andReturn().getResponse().getHeader("Location"));
+        URI redirect = URI.create(authorizeWithConsent(
+                clientId, null, null, new MockHttpSession(), userTokenId));
         String code = extractParam(redirect.getQuery(), "code");
 
         mvc.perform(post("/oauth/token").contentType(MediaType.APPLICATION_FORM_URLENCODED)
@@ -334,17 +319,154 @@ class OAuthEndToEndTest {
         MockHttpSession session = new MockHttpSession();
         session.setAttribute(LoginController.SESSION_TOKEN_KEY, rawToken);
 
+        URI redirect = URI.create(authorizeWithConsent(
+                clientId, "read write", "sess-state", session, null));
+        assertEquals("claude.ai", redirect.getHost());   // must go to the client, NOT /login
+        assertNotNull(extractParam(redirect.getQuery(), "code"));
+    }
+
+    @Test
+    void getAuthorizeRendersConsentWithoutIssuingCode() throws Exception {
+        String clientId = registerClient("Consent Render Test");
         MvcResult res = mvc.perform(get("/oauth/authorize")
-                .param("response_type", "code").param("client_id", clientId)
-                .param("redirect_uri", REDIRECT_URI).param("scope", "read write")
-                .param("state", "sess-state")
-                .param("code_challenge", CHALLENGE).param("code_challenge_method", "S256")
-                .session(session))
+                        .param("response_type", "code").param("client_id", clientId)
+                        .param("redirect_uri", REDIRECT_URI).param("scope", "read write")
+                        .param("code_challenge", CHALLENGE).param("code_challenge_method", "S256")
+                        .session(new MockHttpSession())
+                        .requestAttr(AuthorizationController.TEST_USER_TOKEN_ATTR, userTokenId))
+                .andExpect(status().isOk())
+                .andReturn();
+        String body = res.getResponse().getContentAsString();
+        assertTrue(body.contains("name=\"csrf\""), "consent page must embed the CSRF token");
+        assertTrue(body.contains("value=\"approve\""), "consent page must offer approval");
+        assertNull(res.getResponse().getHeader("Location"), "GET must not redirect with a code");
+        Integer codeCount = dsl.fetchOne("SELECT count(*) AS c FROM oauth_authorization_codes")
+                .get("c", Integer.class);
+        assertEquals(0, codeCount.intValue(), "GET must not issue an authorization code");
+    }
+
+    @Test
+    void consentPostWithoutCsrfIsRejected() throws Exception {
+        String clientId = registerClient("CSRF Reject Test");
+        // Render consent so a CSRF token exists in the session — then POST with a wrong one.
+        MockHttpSession session = new MockHttpSession();
+        mvc.perform(get("/oauth/authorize")
+                        .param("response_type", "code").param("client_id", clientId)
+                        .param("redirect_uri", REDIRECT_URI)
+                        .param("code_challenge", CHALLENGE).param("code_challenge_method", "S256")
+                        .session(session)
+                        .requestAttr(AuthorizationController.TEST_USER_TOKEN_ATTR, userTokenId))
+                .andExpect(status().isOk());
+
+        MvcResult res = mvc.perform(post("/oauth/authorize")
+                        .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                        .param("response_type", "code").param("client_id", clientId)
+                        .param("redirect_uri", REDIRECT_URI)
+                        .param("code_challenge", CHALLENGE).param("code_challenge_method", "S256")
+                        .param("csrf", "wrong-token").param("action", "approve")
+                        .session(session)
+                        .requestAttr(AuthorizationController.TEST_USER_TOKEN_ATTR, userTokenId))
                 .andExpect(status().is3xxRedirection())
                 .andReturn();
         URI redirect = URI.create(res.getResponse().getHeader("Location"));
-        assertEquals("claude.ai", redirect.getHost());   // must go to the client, NOT /login
-        assertNotNull(extractParam(redirect.getQuery(), "code"));
+        assertEquals("access_denied", extractParam(redirect.getQuery(), "error"));
+        assertNull(extractParam(redirect.getQuery(), "code"));
+    }
+
+    @Test
+    void consentDenyRedirectsWithAccessDenied() throws Exception {
+        String clientId = registerClient("Deny Test");
+        MockHttpSession session = new MockHttpSession();
+        mvc.perform(get("/oauth/authorize")
+                        .param("response_type", "code").param("client_id", clientId)
+                        .param("redirect_uri", REDIRECT_URI)
+                        .param("code_challenge", CHALLENGE).param("code_challenge_method", "S256")
+                        .session(session)
+                        .requestAttr(AuthorizationController.TEST_USER_TOKEN_ATTR, userTokenId))
+                .andExpect(status().isOk());
+        String csrf = (String) session.getAttribute(AuthorizationController.CSRF_SESSION_ATTR);
+
+        MvcResult res = mvc.perform(post("/oauth/authorize")
+                        .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                        .param("response_type", "code").param("client_id", clientId)
+                        .param("redirect_uri", REDIRECT_URI)
+                        .param("code_challenge", CHALLENGE).param("code_challenge_method", "S256")
+                        .param("csrf", csrf).param("action", "deny")
+                        .session(session)
+                        .requestAttr(AuthorizationController.TEST_USER_TOKEN_ATTR, userTokenId))
+                .andExpect(status().is3xxRedirection())
+                .andReturn();
+        URI redirect = URI.create(res.getResponse().getHeader("Location"));
+        assertEquals("access_denied", extractParam(redirect.getQuery(), "error"));
+        assertNull(extractParam(redirect.getQuery(), "code"));
+    }
+
+    @Test
+    void readerTokenCannotEscalateToWriteScope() throws Exception {
+        String clientId = registerClient("Reader Scope Test");
+        UUID readerTokenId = dsl.fetchOne("""
+                INSERT INTO api_tokens (token_hash, name, role)
+                VALUES (?, ?, 'reader')
+                RETURNING id
+                """, "test-hash-" + UUID.randomUUID(), "oauth-e2e-reader-" + UUID.randomUUID())
+                .get("id", UUID.class);
+
+        // Requesting "read write" with a reader-backed identity must grant "read" only.
+        URI redirect = URI.create(authorizeWithConsent(
+                clientId, "read write", "reader-state", new MockHttpSession(), readerTokenId));
+        String code = extractParam(redirect.getQuery(), "code");
+        assertNotNull(code);
+
+        MvcResult tokenResult = mvc.perform(post("/oauth/token").contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                        .param("grant_type", "authorization_code")
+                        .param("code", code)
+                        .param("client_id", clientId)
+                        .param("redirect_uri", REDIRECT_URI)
+                        .param("code_verifier", VERIFIER))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode tokens = json.readTree(tokenResult.getResponse().getContentAsString());
+        assertEquals("read", tokens.get("scope").asText(),
+                "granted scope must be constrained to the reader role");
+    }
+
+    /**
+     * Drives the two-step consent flow: GET /oauth/authorize (renders the consent page
+     * and seeds the session CSRF token), then POST /oauth/authorize with
+     * {@code action=approve}. Returns the redirect Location containing the code.
+     */
+    private String authorizeWithConsent(String clientId, String scope, String state,
+                                        MockHttpSession session, UUID injectedTokenId) throws Exception {
+        var getReq = get("/oauth/authorize")
+                .param("response_type", "code").param("client_id", clientId)
+                .param("redirect_uri", REDIRECT_URI)
+                .param("code_challenge", CHALLENGE).param("code_challenge_method", "S256")
+                .session(session);
+        if (scope != null) getReq = getReq.param("scope", scope);
+        if (state != null) getReq = getReq.param("state", state);
+        if (injectedTokenId != null) {
+            getReq = getReq.requestAttr(AuthorizationController.TEST_USER_TOKEN_ATTR, injectedTokenId);
+        }
+        mvc.perform(getReq).andExpect(status().isOk()).andReturn();
+        String csrf = (String) session.getAttribute(AuthorizationController.CSRF_SESSION_ATTR);
+        assertNotNull(csrf, "consent page must seed a session CSRF token");
+
+        var postReq = post("/oauth/authorize")
+                .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                .param("response_type", "code").param("client_id", clientId)
+                .param("redirect_uri", REDIRECT_URI)
+                .param("code_challenge", CHALLENGE).param("code_challenge_method", "S256")
+                .param("csrf", csrf).param("action", "approve")
+                .session(session);
+        if (scope != null) postReq = postReq.param("scope", scope);
+        if (state != null) postReq = postReq.param("state", state);
+        if (injectedTokenId != null) {
+            postReq = postReq.requestAttr(AuthorizationController.TEST_USER_TOKEN_ATTR, injectedTokenId);
+        }
+        MvcResult res = mvc.perform(postReq)
+                .andExpect(status().is3xxRedirection())
+                .andReturn();
+        return res.getResponse().getHeader("Location");
     }
 
     @Test

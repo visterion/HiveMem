@@ -40,11 +40,19 @@ public class PageOrienter {
     /** Decide orientation of one rasterized page. Never throws: after one retry it falls back to
      *  rotation 0 / not blank / confidence 0.0 so a single bad page cannot sink the batch. */
     public PageOrientation orient(String realm, int page, byte[] png) {
+        // Build the rotated render + both base64 payloads ONCE per page, not once per attempt —
+        // the rotate/encode of a full-page render is the expensive part of a retry.
+        List<VisionMultiClient.Image> images;
+        try {
+            images = List.of(
+                    new VisionMultiClient.Image("image/png", Base64.getEncoder().encodeToString(png)),
+                    new VisionMultiClient.Image("image/png", Base64.getEncoder().encodeToString(rotate180Png(png))));
+        } catch (Exception e) {
+            log.warn("Orientation image prep failed for page {}: {}", page, e.toString());
+            return new PageOrientation(page, 0, false, 0.0);
+        }
         for (int attempt = 1; attempt <= 2; attempt++) {
             try {
-                List<VisionMultiClient.Image> images = List.of(
-                        new VisionMultiClient.Image("image/png", Base64.getEncoder().encodeToString(png)),
-                        new VisionMultiClient.Image("image/png", Base64.getEncoder().encodeToString(rotate180Png(png))));
                 JsonNode n = LlmJson.parseObject(vision.group(realm, PROMPT, images));
                 int rotation = "B".equalsIgnoreCase(n.path("upright").asString("A")) ? 180 : 0;
                 return new PageOrientation(page, rotation, n.path("blank").asBoolean(false),

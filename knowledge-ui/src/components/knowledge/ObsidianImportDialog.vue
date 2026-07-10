@@ -35,12 +35,17 @@ async function onFile(e: Event) {
   empty.value = false
   done.value = null
   error.value = false
-  const zip = await JSZip.loadAsync(file)
-  const files: { name: string; text: string }[] = []
-  const entries = Object.values(zip.files).filter(f => !f.dir && /\.md$/i.test(f.name))
-  for (const entry of entries) files.push({ name: entry.name, text: await entry.async('string') })
-  if (!files.length) { empty.value = true; return }
-  plan.value = buildPlan(files)
+  try {
+    const zip = await JSZip.loadAsync(file)
+    const files: { name: string; text: string }[] = []
+    const entries = Object.values(zip.files).filter(f => !f.dir && /\.md$/i.test(f.name))
+    for (const entry of entries) files.push({ name: entry.name, text: await entry.async('string') })
+    if (!files.length) { empty.value = true; return }
+    plan.value = buildPlan(files)
+  } catch {
+    // Corrupt / unreadable zip: surface the error instead of freezing the dialog.
+    error.value = true
+  }
 }
 
 async function runImport() {

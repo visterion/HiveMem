@@ -520,13 +520,151 @@ class OpReplayerIntegrationTest {
     }
 
     @Test
-    void replayReturnsSkippedWhenExecutionThrows() {
-        // Malformed UUID in cell_id triggers IllegalArgumentException, caught and downgraded to SKIPPED
+    void replayReturnsFailedWhenExecutionThrows() {
+        // Malformed UUID in cell_id triggers IllegalArgumentException → FAILED (not SKIPPED):
+        // callers must not advance last_seen_seq past it.
         ObjectNode payload = objectMapper.createObjectNode();
         payload.put("cell_id", "not-a-uuid");
         payload.put("content", "x");
         OpDto op = new OpDto(90L, UUID.randomUUID(), "add_cell", payload, OffsetDateTime.now());
-        assertThat(replayer.replay(sourcePeer, op)).isEqualTo(OpReplayer.ReplayResult.SKIPPED);
+        assertThat(replayer.replay(sourcePeer, op)).isEqualTo(OpReplayer.ReplayResult.FAILED);
+    }
+
+    @Test
+    void addCellReplayHandlesNullEmbeddingForLongContentWithoutSummary() {
+        // encodeForCell returns null for content > 500 chars without a summary; replay must
+        // insert with NULL embedding + needs_summary instead of NPEing (and losing the op).
+        UUID cellId = UUID.randomUUID();
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.put("cell_id", cellId.toString());
+        payload.put("content", "x".repeat(600));
+        payload.put("realm", "eng");
+        payload.put("signal", "facts");
+        payload.put("topic", "t");
+        payload.put("status", "committed");
+
+        OpDto op = new OpDto(91L, UUID.randomUUID(), "add_cell", payload, OffsetDateTime.now());
+        assertThat(replayer.replay(sourcePeer, op)).isEqualTo(OpReplayer.ReplayResult.REPLAYED);
+
+        var row = dsl.fetchOne("SELECT embedding IS NULL AS no_emb, tags FROM cells WHERE id = ?", cellId);
+        assertThat(row.get("no_emb", Boolean.class)).isTrue();
+        assertThat(row.get("tags", String[].class)).contains("needs_summary");
+    }
+
+    @Test
+    void rejectCellReplaySetsStatusRejected() {
+        UUID cellId = insertMinimalCell();
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.put("cell_id", cellId.toString());
+        payload.put("reason", "wrong info");
+
+        OpDto op = new OpDto(92L, UUID.randomUUID(), "reject_cell", payload, OffsetDateTime.now());
+        assertThat(replayer.replay(sourcePeer, op)).isEqualTo(OpReplayer.ReplayResult.REPLAYED);
+        assertThat(dsl.fetchOne("SELECT status FROM cells WHERE id = ?", cellId)
+                .get("status", String.class)).isEqualTo("rejected");
+
+        // idempotent: rejecting an already-rejected cell still replays cleanly
+        OpDto op2 = new OpDto(93L, UUID.randomUUID(), "reject_cell", payload, OffsetDateTime.now());
+        assertThat(replayer.replay(sourcePeer, op2)).isEqualTo(OpReplayer.ReplayResult.REPLAYED);
+    }
+
+    @Test
+    void addTagsReplayUnionsTags() {
+        UUID cellId = insertMinimalCell();
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.put("cell_id", cellId.toString());
+        payload.putArray("tags").add("alpha").add("beta");
+
+        OpDto op = new OpDto(94L, UUID.randomUUID(), "add_tags", payload, OffsetDateTime.now());
+        assertThat(replayer.replay(sourcePeer, op)).isEqualTo(OpReplayer.ReplayResult.REPLAYED);
+
+        assertThat(dsl.fetchOne("SELECT tags FROM cells WHERE id = ?", cellId)
+                .get("tags", String[].class)).contains("alpha", "beta");
+    }
+
+    @Test
+    void removeTagsReplayRemovesTags() {
+        UUID cellId = insertMinimalCell();
+        dsl.execute("UPDATE cells SET tags = ARRAY['alpha','beta'] WHERE id = ?", cellId);
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.put("cell_id", cellId.toString());
+        payload.putArray("tags").add("alpha");
+
+        OpDto op = new OpDto(95L, UUID.randomUUID(), "remove_tags", payload, OffsetDateTime.now());
+        assertThat(replayer.replay(sourcePeer, op)).isEqualTo(OpReplayer.ReplayResult.REPLAYED);
+
+        String[] tags = dsl.fetchOne("SELECT tags FROM cells WHERE id = ?", cellId)
+                .get("tags", String[].class);
+        assertThat(tags).containsExactly("beta");
+    }
+
+    @Test
+    void bulkTagReplayAppliesAddAndRemoveToAllCells() {
+        UUID cellA = insertMinimalCell();
+        UUID cellB = insertMinimalCell();
+        dsl.execute("UPDATE cells SET tags = ARRAY['old'] WHERE id IN (?, ?)", cellA, cellB);
+
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.putArray("cell_ids").add(cellA.toString()).add(cellB.toString());
+        payload.putArray("add_tags").add("fresh");
+        payload.putArray("remove_tags").add("old");
+
+        OpDto op = new OpDto(96L, UUID.randomUUID(), "bulk_tag", payload, OffsetDateTime.now());
+        assertThat(replayer.replay(sourcePeer, op)).isEqualTo(OpReplayer.ReplayResult.REPLAYED);
+
+        for (UUID id : new UUID[] {cellA, cellB}) {
+            String[] tags = dsl.fetchOne("SELECT tags FROM cells WHERE id = ?", id)
+                    .get("tags", String[].class);
+            assertThat(tags).contains("fresh").doesNotContain("old");
+        }
+    }
+
+    @Test
+    void updateCellMetaReplayUpdatesFieldsAndTags() {
+        UUID cellId = insertMinimalCell();
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.put("cell_id", cellId.toString());
+        payload.put("document_type", "invoice");
+        payload.put("topic", "Stadtwerke Rechnung 2026");
+        payload.put("valid_from", "2026-01-15T00:00:00Z");
+        payload.putArray("add_tags").add("steuerrelevant").add("tax_scanned");
+
+        OpDto op = new OpDto(97L, UUID.randomUUID(), "update_cell_meta", payload, OffsetDateTime.now());
+        assertThat(replayer.replay(sourcePeer, op)).isEqualTo(OpReplayer.ReplayResult.REPLAYED);
+
+        var row = dsl.fetchOne("SELECT document_type, topic, valid_from, tags FROM cells WHERE id = ?", cellId);
+        assertThat(row.get("document_type", String.class)).isEqualTo("invoice");
+        assertThat(row.get("topic", String.class)).isEqualTo("Stadtwerke Rechnung 2026");
+        assertThat(row.get("valid_from", OffsetDateTime.class).toInstant())
+                .isEqualTo(OffsetDateTime.parse("2026-01-15T00:00:00Z").toInstant());
+        assertThat(row.get("tags", String[].class)).contains("steuerrelevant", "tax_scanned");
+    }
+
+    @Test
+    void reviseCellReplayPrefersPayloadMetadataOverOldRevision() {
+        UUID oldId = insertMinimalCell();
+        dsl.execute("UPDATE cells SET tags = ARRAY['keep-me'], insight = 'old insight', "
+                + "key_points = ARRAY['old kp'] WHERE id = ?", oldId);
+        UUID newId = UUID.randomUUID();
+
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.put("cell_id", oldId.toString());
+        payload.put("new_cell_id", newId.toString());
+        payload.put("new_content", "revised content");
+        payload.put("new_summary", "revised summary");
+        payload.put("new_insight", "llm insight");
+        payload.putArray("new_key_points").add("llm kp1").add("llm kp2");
+        payload.putArray("new_tags").add("llm-tag");
+        payload.put("status", "committed");
+
+        OpDto op = new OpDto(98L, UUID.randomUUID(), "revise_cell", payload, OffsetDateTime.now());
+        assertThat(replayer.replay(sourcePeer, op)).isEqualTo(OpReplayer.ReplayResult.REPLAYED);
+
+        var row = dsl.fetchOne("SELECT insight, key_points, tags FROM cells WHERE id = ?", newId);
+        assertThat(row.get("insight", String.class)).isEqualTo("llm insight");
+        assertThat(row.get("key_points", String[].class)).containsExactly("llm kp1", "llm kp2");
+        // new_tags are merged (union) with the old revision's tags
+        assertThat(row.get("tags", String[].class)).contains("keep-me", "llm-tag");
     }
 
     @Test

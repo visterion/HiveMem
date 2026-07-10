@@ -89,6 +89,47 @@ public class WriteToolRepository {
         return result;
     }
 
+    /**
+     * Run {@code work} inside a single database transaction. Used by bulk KG operations that
+     * precompute their embeddings BEFORE the transaction opens (so up to ~1000 embedding HTTP
+     * calls never hold a pooled connection or row locks) and then apply all mutations atomically.
+     */
+    public <T> T inTransaction(java.util.function.Supplier<T> work) {
+        return dslContext.transactionResult(configuration -> work.get());
+    }
+
+    /**
+     * Transaction-scoped advisory lock (released automatically at commit/rollback), keyed by an
+     * arbitrary string. Serializes check-then-insert sections (cell dedupe, kg_add supersede)
+     * against concurrent identical writes — the same pattern {@link #updateBlueprint} uses.
+     * Must be called inside a transaction; outside one it is a harmless no-op (the implicit
+     * single-statement transaction releases it immediately).
+     */
+    public void advisoryXactLock(String key) {
+        dslContext.execute("SELECT pg_advisory_xact_lock(hashtext(?))", key);
+    }
+
+    /**
+     * Update derived metadata on the current revision of a cell. Null arguments leave the
+     * corresponding column unchanged; {@code addTagsList} entries are unioned into tags.
+     * Returns the number of cells touched (0 or 1).
+     */
+    public int updateCellMeta(UUID cellId, String documentType, String topic,
+            OffsetDateTime validFrom, List<String> addTagsList) {
+        int updated = dslContext.execute("""
+                UPDATE cells
+                SET document_type = COALESCE(?, document_type),
+                    topic = COALESCE(?, topic),
+                    valid_from = COALESCE(?::timestamptz, valid_from)
+                WHERE id = ?
+                  AND valid_until IS NULL
+                """, documentType, topic, validFrom, cellId);
+        if (addTagsList != null && !addTagsList.isEmpty()) {
+            updated = Math.max(updated, addTags(cellId, addTagsList));
+        }
+        return updated;
+    }
+
     public int addTags(UUID id, List<String> tags) {
         String[] tagArray = tags == null ? new String[0] : tags.toArray(String[]::new);
         return dslContext.execute("""

@@ -70,6 +70,10 @@ services:
       HIVEMEM_DB_USER: hivemem
       HIVEMEM_DB_PASSWORD: ${HIVEMEM_DB_PASSWORD:-changeme}
       HIVEMEM_EMBEDDING_URL: http://hivemem-embeddings:80
+      # The session cookie is Secure (HTTPS-only) by default; this quick start
+      # serves plain HTTP on localhost, so relax it here. Remove this line (or
+      # set "true") when running behind HTTPS.
+      SESSION_COOKIE_SECURE: "false"
     depends_on:
       - hivemem-db
       - hivemem-embeddings
@@ -128,7 +132,7 @@ Wait for the Spring Boot startup log and a successful `/mcp` response before pro
 | `HIVEMEM_DB_USER` | PostgreSQL username |
 | `HIVEMEM_DB_PASSWORD` | PostgreSQL password |
 | `HIVEMEM_EMBEDDING_URL` | URL of the external embeddings service |
-| `HIVEMEM_API_TOKEN` | Used by `deploy.sh` for the health-check smoke test |
+| `SESSION_COOKIE_SECURE` | Session cookie `Secure` flag — defaults to `true`; set `false` for plain-HTTP local setups |
 
 ## Create an API Token
 

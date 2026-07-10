@@ -39,6 +39,24 @@ class ConsumptionFileMoverTest {
     }
 
     @Test
+    void neverOverwritesExistingDestination(@TempDir Path root) throws Exception {
+        // A file already sitting under failed/ (e.g. an earlier failed scan) must never be
+        // silently replaced by a same-named move (ATOMIC_MOVE = rename(2) would overwrite).
+        ConsumptionFileMover mover = new ConsumptionFileMover(root);
+        Path failedDir = root.resolve("failed");
+        Files.createDirectories(failedDir);
+        Files.writeString(failedDir.resolve("scan.pdf"), "original");
+
+        Path src = Files.writeString(root.resolve("scan.pdf"), "new");
+        Path dest = mover.moveToFailed(src);
+
+        assertNotEquals("scan.pdf", dest.getFileName().toString(), "collision must be suffixed");
+        assertEquals("original", Files.readString(failedDir.resolve("scan.pdf")),
+                "pre-existing file must be untouched");
+        assertEquals("new", Files.readString(dest));
+    }
+
+    @Test
     void suffixesOnCollision(@TempDir Path root) throws Exception {
         ConsumptionFileMover mover = new ConsumptionFileMover(root);
         Path a = Files.writeString(root.resolve("scan.pdf"), "a");

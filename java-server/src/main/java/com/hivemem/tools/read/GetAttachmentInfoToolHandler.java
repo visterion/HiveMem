@@ -5,6 +5,7 @@ import com.hivemem.attachment.AttachmentRepository;
 import com.hivemem.auth.AuthPrincipal;
 import com.hivemem.mcp.ToolHandler;
 import com.hivemem.mcp.ToolInputSchema;
+import com.hivemem.write.WriteArgumentParser;
 import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.springframework.core.annotation.Order;
@@ -44,7 +45,7 @@ public class GetAttachmentInfoToolHandler implements ToolHandler {
 
     @Override
     public Object call(AuthPrincipal principal, JsonNode arguments) {
-        UUID id = UUID.fromString(arguments.get("attachment_id").asText());
+        UUID id = WriteArgumentParser.requiredUuid(arguments, "attachment_id");
         Map<String, Object> row = repo.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Attachment not found: " + id));
 

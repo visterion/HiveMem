@@ -1,5 +1,7 @@
-import { describe, it, expect } from 'vitest'
-import { filterResults, sortResults } from '../../src/composables/useKnowledgeSearch'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { filterResults, sortResults, useKnowledgeSearch } from '../../src/composables/useKnowledgeSearch'
+import { resetApi } from '../../src/api/useApi'
+import { MockApiClient } from '../../src/api/mockClient'
 import type { SearchResult } from '../../src/api/types'
 
 function r(p: Partial<SearchResult> & { summary?: string | null }): SearchResult {
@@ -55,5 +57,67 @@ describe('sortResults', () => {
     const copy = [...rows]
     sortResults(rows, 'newest')
     expect(rows).toEqual(copy)
+  })
+})
+
+describe('run()', () => {
+  beforeEach(() => {
+    localStorage.setItem('hivemem_mock', 'true')
+    resetApi()
+  })
+  afterEach(() => vi.restoreAllMocks())
+
+  it('requests the full field set so opened results are never cached partial (C3)', async () => {
+    let include: string[] | undefined
+    vi.spyOn(MockApiClient.prototype, 'call').mockImplementation(async (tool: string, args?: Record<string, unknown>) => {
+      if (tool === 'search') { include = args?.include as string[]; return [] }
+      return {}
+    })
+    const s = useKnowledgeSearch()
+    s.query.value = 'x'
+    await s.run()
+    expect(include).toEqual(expect.arrayContaining(
+      ['content', 'tags', 'key_points', 'insight', 'importance', 'summary', 'created_at', 'scores'],
+    ))
+  })
+
+  it('ignores stale responses from an older run (M53)', async () => {
+    let resolveFirst!: (rows: SearchResult[]) => void
+    let searchCalls = 0
+    vi.spyOn(MockApiClient.prototype, 'call').mockImplementation((tool: string) => {
+      if (tool === 'facet_count') return Promise.resolve({})
+      searchCalls++
+      if (searchCalls === 1) return new Promise(res => { resolveFirst = res })
+      return Promise.resolve([r({ id: 'new' })])
+    })
+    const s = useKnowledgeSearch()
+    s.query.value = 'first'
+    const p1 = s.run()
+    s.query.value = 'second'
+    const p2 = s.run()
+    await p2
+    expect(s.results.value.map(x => x.id)).toEqual(['new'])
+    expect(s.loading.value).toBe(false)
+    resolveFirst([r({ id: 'old' })]) // stale response arrives late
+    await p1
+    expect(s.results.value.map(x => x.id)).toEqual(['new'])
+    expect(s.loading.value).toBe(false)
+  })
+
+  it('clearing all filters invalidates in-flight responses (M53)', async () => {
+    let resolveFirst!: (rows: SearchResult[]) => void
+    vi.spyOn(MockApiClient.prototype, 'call').mockImplementation((tool: string) => {
+      if (tool === 'facet_count') return Promise.resolve({})
+      return new Promise(res => { resolveFirst = res })
+    })
+    const s = useKnowledgeSearch()
+    s.query.value = 'x'
+    const p1 = s.run()
+    s.query.value = ''
+    await s.run() // clear branch
+    resolveFirst([r({ id: 'late' })])
+    await p1
+    expect(s.results.value).toEqual([])
+    expect(s.loading.value).toBe(false)
   })
 })

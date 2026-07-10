@@ -67,6 +67,7 @@ LANGUAGE SQL STABLE AS $$
           AND (p_signal IS NULL OR c.signal = p_signal)
           AND (p_topic IS NULL OR c.topic = p_topic)
           AND (p_tags IS NULL OR c.tags && p_tags)
+        ORDER BY ts_rank_cd(c.tsv, q.tsq, 32) DESC
         LIMIT 200
     ),
     candidates AS (
@@ -103,8 +104,8 @@ LANGUAGE SQL STABLE AS $$
                  ELSE 0::REAL END AS kw,
             EXP(-0.693 * EXTRACT(EPOCH FROM (now() - c.created_at)) / (90 * 86400))::REAL AS rec,
             (CASE c.importance
-                WHEN 1 THEN 1.0 WHEN 2 THEN 0.8 WHEN 3 THEN 0.6
-                WHEN 4 THEN 0.4 WHEN 5 THEN 0.2 ELSE 0.6 END)::REAL AS imp,
+                WHEN 5 THEN 1.0 WHEN 4 THEN 0.8 WHEN 3 THEN 0.6
+                WHEN 2 THEN 0.4 WHEN 1 THEN 0.2 ELSE 0.6 END)::REAL AS imp,
             COALESCE(cp.recent_access_count::REAL / (SELECT val FROM max_pop), 0)::REAL AS pop,
             COALESCE(g.score, 0)::REAL AS gp
         FROM cells c

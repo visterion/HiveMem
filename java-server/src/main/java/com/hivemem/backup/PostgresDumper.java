@@ -1,5 +1,6 @@
 package com.hivemem.backup;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 
@@ -27,13 +28,28 @@ public class PostgresDumper {
         pb.environment().put("PGPASSWORD", password);
         pb.redirectErrorStream(false);
         Process p = pb.start();
-        try (var in = p.getInputStream()) {
-            in.transferTo(out);
-        }
-        int code = p.waitFor();
-        if (code != 0) {
-            String err = new String(p.getErrorStream().readAllBytes());
-            throw new IOException("pg_dump failed (exit " + code + "): " + err);
+        // Drain stderr on a separate thread WHILE we read stdout: a verbose pg_dump can fill
+        // the 64KB stderr pipe and block, which in turn stalls the stdout read forever.
+        ByteArrayOutputStream errBuffer = new ByteArrayOutputStream();
+        Thread errDrainer = new Thread(() -> {
+            try {
+                p.getErrorStream().transferTo(errBuffer);
+            } catch (IOException ignored) {
+                // process died; waitFor() below surfaces the failure
+            }
+        }, "pg-dump-stderr-drain");
+        errDrainer.start();
+        try {
+            try (var in = p.getInputStream()) {
+                in.transferTo(out);
+            }
+            errDrainer.join();
+            int code = p.waitFor();
+            if (code != 0) {
+                throw new IOException("pg_dump failed (exit " + code + "): " + errBuffer.toString());
+            }
+        } finally {
+            p.destroyForcibly();
         }
     }
 

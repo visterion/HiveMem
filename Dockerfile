@@ -1,4 +1,6 @@
-FROM node:25-alpine AS ui-build
+# Pinned to the toolchain versions CI tests against (Node 20, JDK 25) — keep in
+# sync with .github/workflows/ci.yml when bumping.
+FROM node:20-alpine AS ui-build
 
 WORKDIR /ui
 COPY knowledge-ui/package.json knowledge-ui/package-lock.json ./
@@ -6,15 +8,18 @@ RUN npm ci
 COPY knowledge-ui/ ./
 RUN npm run build
 
-FROM maven:3-eclipse-temurin-26 AS build
+FROM maven:3.9.13-eclipse-temurin-25 AS build
 
 WORKDIR /workspace
 COPY java-server/pom.xml java-server/mvnw java-server/mvnw.cmd ./
 COPY java-server/.mvn .mvn
+# Resolve dependencies in their own layer so source changes don't re-download
+# the whole Maven tree (go-offline misses a few plugin deps; package fetches those).
+RUN chmod +x mvnw && ./mvnw -q -B dependency:go-offline
 COPY java-server/src src
 COPY --from=ui-build /ui/dist src/main/resources/static
 
-RUN chmod +x mvnw && ./mvnw -q -DskipTests package
+RUN ./mvnw -q -B -DskipTests package
 
 FROM eclipse-temurin:25-jre
 

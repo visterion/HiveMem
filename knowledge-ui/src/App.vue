@@ -29,7 +29,13 @@ onMounted(async () => {
       <AppShell v-if="auth.isAuthenticated" />
       <div v-else class="splash">{{ t('common.connecting') }}</div>
     </v-main>
-    <v-snackbar v-if="ui.toast" :color="ui.toast.kind" :model-value="!!ui.toast" timeout="8000">
+    <v-snackbar
+      v-if="ui.toast"
+      :color="ui.toast.kind"
+      :model-value="!!ui.toast"
+      timeout="8000"
+      @update:model-value="(v: boolean) => { if (!v) ui.toast = null }"
+    >
       {{ ui.toast.text }}
       <template #actions>
         <v-btn variant="text" @click="canvas.loadTopLevel(); ui.toast = null">{{ t('common.reload') }}</v-btn>

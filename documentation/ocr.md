@@ -56,7 +56,7 @@ experience.
 | `hivemem.ocr.scan-detection-threshold` | `50` | Min avg chars/page to be "not a scan" |
 | `hivemem.ocr.render-dpi` | `300` | DPI for page rasterization |
 | `hivemem.ocr.call-timeout-seconds` | `60` | Per-page tesseract timeout |
-| `hivemem.ocr.backfill-interval` | `PT1H` | Documentation only — see note below |
+| `hivemem.ocr.backfill-interval` | `PT1H` | Backfill scheduler interval (ISO-8601, env: `HIVEMEM_OCR_BACKFILL_INTERVAL`) |
 | `hivemem.ocr.backfill-batch-size` | `5` | Cells per backfill run |
 | `hivemem.ocr.max-pages` | `50` | Hard cap on pages OCR'd per PDF |
 | `hivemem.ocr.vision-fallback-enabled` | `false` | Use Claude Haiku 4.5 to re-OCR pages where Tesseract output is sparse |
@@ -65,8 +65,9 @@ experience.
 | `hivemem.ocr.drop-blank-pages` | `true` | Drop a page when it is BOTH near-white AND produced no text (combo signal) |
 | `hivemem.ocr.blank-white-fraction` | `0.995` | Page is "near-white" when this fraction of sampled pixels is white |
 
-The actual scheduler interval is set via `HIVEMEM_OCR_BACKFILL_INTERVAL_MS`
-(milliseconds). Default is `3600000` (1 hour).
+Failed documents are retried at most 3 times (`ocr_failed` → `ocr_failed_2` →
+`ocr_failed_permanent`); fresh `ocr_pending` cells are always processed before
+retries so failures cannot starve the queue.
 
 ## Adding more languages
 
@@ -93,7 +94,8 @@ Cells where OCR failed:
 
     SELECT count(*) FROM cells WHERE 'ocr_failed' = ANY(tags);
 
-The backfill retries `ocr_failed` cells older than 1 hour automatically.
+The backfill retries `ocr_failed` cells older than 1 hour automatically, at most
+3 attempts total; after that the cell is tagged `ocr_failed_permanent` and skipped.
 
 ## Troubleshooting
 

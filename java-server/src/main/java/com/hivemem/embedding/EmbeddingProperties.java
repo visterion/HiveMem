@@ -14,6 +14,10 @@ public class EmbeddingProperties {
     private Duration timeout = Duration.ofSeconds(30);
     private int maxRetries = 3;
     private long retryBackoffMs = 500;
+    /** Bounded content-hash → vector cache in {@link HttpEmbeddingClient}; identical texts
+     *  (repeated queries, dedupe checks, hook lookups) skip the HTTP hop for a few minutes. */
+    private int cacheMaxEntries = 500;
+    private Duration cacheTtl = Duration.ofMinutes(10);
 
     public EmbeddingProperties() {
     }
@@ -53,5 +57,21 @@ public class EmbeddingProperties {
 
     public void setRetryBackoffMs(long v) {
         this.retryBackoffMs = v;
+    }
+
+    public int getCacheMaxEntries() {
+        return cacheMaxEntries;
+    }
+
+    public void setCacheMaxEntries(int v) {
+        this.cacheMaxEntries = v;
+    }
+
+    public Duration getCacheTtl() {
+        return cacheTtl;
+    }
+
+    public void setCacheTtl(Duration v) {
+        this.cacheTtl = v;
     }
 }

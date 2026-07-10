@@ -59,7 +59,8 @@ public class CellSelectorRepository {
 
     private static String buildWhere(CellSelector sel, List<Object> binds) {
         List<String> conds = new ArrayList<>();
-        conds.add("valid_until IS NULL");
+        // Active predicate matches the active_cells view semantics.
+        conds.add("(valid_until IS NULL OR valid_until > now())");
         conds.add("status = ?");
         binds.add(sel.status() == null ? "committed" : sel.status());
         if (sel.realm() != null) {

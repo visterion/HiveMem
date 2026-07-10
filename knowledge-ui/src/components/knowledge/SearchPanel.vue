@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, watch, onMounted } from 'vue'
+import { computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useKnowledgeSearch, type KnowledgeFacetKey, type KnowledgeSort } from '../../composables/useKnowledgeSearch'
@@ -34,8 +34,9 @@ onMounted(() => {
 let timer: number | null = null
 watch(query, () => {
   if (timer) clearTimeout(timer)
-  timer = setTimeout(() => run(), 180) as unknown as number
+  timer = setTimeout(() => { timer = null; run() }, 180) as unknown as number
 })
+onUnmounted(() => { if (timer) { clearTimeout(timer); timer = null } })
 
 const activeFilterCount = computed(() => facets.realm.size + facets.signal.size + facets.tag.size)
 const onSort = (v: string) => setSort(v as KnowledgeSort)

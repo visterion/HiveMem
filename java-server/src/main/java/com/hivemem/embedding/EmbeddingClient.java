@@ -33,4 +33,17 @@ public interface EmbeddingClient {
     }
 
     EmbeddingInfo getInfo();
+
+    /**
+     * The embedding dimension. Implementations may serve this from a local cache (see
+     * {@link HttpEmbeddingClient}) so per-request callers (search_kg, entity_overview, …)
+     * don't pay an HTTP hop; the default resolves it via {@link #getInfo()}.
+     */
+    default int dimension() {
+        return getInfo().dimension();
+    }
+
+    /** Drop any cached vectors/model info (e.g. after an embedding-model migration). */
+    default void invalidateCaches() {
+    }
 }

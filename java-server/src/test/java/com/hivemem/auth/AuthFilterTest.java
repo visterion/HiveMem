@@ -106,13 +106,56 @@ class AuthFilterTest {
     }
 
     @Test
-    void admin401WithOAuthEnabledHasNoMcpHeader() throws Exception {
+    void nonMcp401WithOAuthEnabledHasNoMcpHeader() throws Exception {
         AuthFilter filter = new AuthFilter(Optional.empty(), new RateLimiter(), Optional.empty(),
                 Optional.of(oauthProps(true, "https://hivemem.example.com")));
         MockHttpServletResponse res = new MockHttpServletResponse();
-        int status = invokeUnauthenticated(filter, "/admin/whatever", res);
+        int status = invokeUnauthenticated(filter, "/sync/ops", res);
         assertThat(status).isEqualTo(401);
         assertThat(res.getHeader("WWW-Authenticate")).isNull();
+    }
+
+    @Test
+    void syncPathIsBearerGuarded() {
+        // Peer sync authenticates with a bearer token; AuthFilter must filter it.
+        AuthFilter filter = new AuthFilter(Optional.empty(), new RateLimiter(), Optional.empty(), Optional.empty());
+        MockHttpServletRequest req = new MockHttpServletRequest();
+        req.setRequestURI("/sync/ops");
+        assertThat(filter.shouldNotFilter(req)).isFalse();
+    }
+
+    @Test
+    void adminIsBearerGuardedButApiAttachmentsIsSessionOnly() {
+        AuthFilter filter = new AuthFilter(Optional.empty(), new RateLimiter(), Optional.empty(), Optional.empty());
+        // /admin stays bearer-guarded — used by CLI/scripts (connect-peers.sh -> /admin/peers).
+        MockHttpServletRequest admin = new MockHttpServletRequest();
+        admin.setRequestURI("/admin/tokens");
+        assertThat(filter.shouldNotFilter(admin)).isFalse();
+        // /api/** is session-cookie-only: SessionAuthFilter rejects it before this filter
+        // could ever see a bearer, so it must not be in the bearer set (dead config).
+        MockHttpServletRequest attachments = new MockHttpServletRequest();
+        attachments.setRequestURI("/api/attachments/abc/thumbnail");
+        assertThat(filter.shouldNotFilter(attachments)).isTrue();
+    }
+
+    @Test
+    void oauthEffectiveRoleIsMinimumOfScopeAndBackingRole() {
+        // A reader-backed token can never escalate via scope=write.
+        assertThat(AuthFilter.effectiveOauthRole(AuthRole.READER, "write")).isEqualTo(AuthRole.READER);
+        assertThat(AuthFilter.effectiveOauthRole(AuthRole.READER, "read write")).isEqualTo(AuthRole.READER);
+        assertThat(AuthFilter.effectiveOauthRole(AuthRole.READER, "read")).isEqualTo(AuthRole.READER);
+        // Scope can narrow a writer/admin to read-only.
+        assertThat(AuthFilter.effectiveOauthRole(AuthRole.WRITER, "read")).isEqualTo(AuthRole.READER);
+        assertThat(AuthFilter.effectiveOauthRole(AuthRole.WRITER, "read write")).isEqualTo(AuthRole.WRITER);
+        // ADMIN is capped at WRITER — OAuth sessions never get admin powers.
+        assertThat(AuthFilter.effectiveOauthRole(AuthRole.ADMIN, "read write")).isEqualTo(AuthRole.WRITER);
+        assertThat(AuthFilter.effectiveOauthRole(AuthRole.ADMIN, "read")).isEqualTo(AuthRole.READER);
+        // AGENT keeps its pending-write semantics; it is never widened to WRITER.
+        assertThat(AuthFilter.effectiveOauthRole(AuthRole.AGENT, "read write")).isEqualTo(AuthRole.AGENT);
+        assertThat(AuthFilter.effectiveOauthRole(AuthRole.AGENT, "read")).isEqualTo(AuthRole.READER);
+        // Absent/blank scope defaults to read-only.
+        assertThat(AuthFilter.effectiveOauthRole(AuthRole.ADMIN, null)).isEqualTo(AuthRole.READER);
+        assertThat(AuthFilter.effectiveOauthRole(AuthRole.WRITER, "")).isEqualTo(AuthRole.READER);
     }
 
     @Test

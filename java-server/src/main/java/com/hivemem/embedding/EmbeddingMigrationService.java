@@ -117,6 +117,14 @@ public class EmbeddingMigrationService implements ApplicationRunner {
                 }
                 for (EmbeddingStateRepository.CellRow row : batch) {
                     List<Float> embedding = embeddingClient.encodeForCell(row.content(), row.summary());
+                    if (embedding == null) {
+                        // encodeForCell returns null by contract for long content without a
+                        // summary. Clear the old-model vector (it would break the new HNSW index
+                        // cast) and keep needs_summary so the summarizer fills it in later —
+                        // do NOT abort the whole migration and brick the startup.
+                        stateRepository.clearEmbeddingAndTagNeedsSummary(row.id());
+                        continue;
+                    }
                     stateRepository.updateEmbedding(row.id(), embedding);
                 }
                 done += batch.size();
@@ -155,6 +163,7 @@ public class EmbeddingMigrationService implements ApplicationRunner {
 
             stateRepository.saveInfo(to);
             stateRepository.clearProgress();
+            embeddingClient.invalidateCaches();
             log.info("Reencoding complete. Model updated to: {} ({}d)", to.model(), to.dimension());
         } finally {
             stateRepository.releaseAdvisoryLock(ADVISORY_LOCK_ID);
@@ -172,8 +181,10 @@ public class EmbeddingMigrationService implements ApplicationRunner {
                 throw new IllegalStateException("Backup failed with exit code " + exitCode);
             }
             log.info("Backup completed successfully");
-        } catch (IOException | InterruptedException e) {
-            Thread.currentThread().interrupt();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt(); // only re-interrupt when actually interrupted
+            throw new IllegalStateException("Backup interrupted", e);
+        } catch (IOException e) {
             throw new IllegalStateException("Backup failed", e);
         }
     }

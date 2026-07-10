@@ -1,5 +1,7 @@
 package com.hivemem.auth;
 
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import com.hivemem.oauth.OAuthProperties;
 import com.hivemem.oauth.OAuthRepository;
 import com.hivemem.oauth.TokenHasher;
@@ -15,6 +17,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
@@ -26,10 +29,24 @@ public class AuthFilter extends OncePerRequestFilter {
     public static final String PRINCIPAL_ATTRIBUTE = AuthPrincipal.class.getName();
     private static final String BEARER_PREFIX = "Bearer ";
 
+    private static final Duration OAUTH_CACHE_TTL = Duration.ofSeconds(60);
+    private static final int OAUTH_CACHE_MAX_SIZE = 1000;
+
     private final Optional<TokenService> tokenService;
     private final RateLimiter rateLimiter;
     private final Optional<OAuthRepository> oauthRepository;
     private final Optional<OAuthProperties> oauthProperties;
+
+    /**
+     * Short-TTL cache for OAuth bearer resolution, keyed by the token's SHA-256 hash
+     * (never the plaintext). Avoids the two DB lookups (oauth_tokens + api_tokens) on
+     * every request. Mirrors {@link CachedTokenService}: revocation/expiry take effect
+     * within {@link #OAUTH_CACHE_TTL} at the latest.
+     */
+    private final Cache<String, Optional<AuthPrincipal>> oauthPrincipalCache = Caffeine.newBuilder()
+            .expireAfterWrite(OAUTH_CACHE_TTL)
+            .maximumSize(OAUTH_CACHE_MAX_SIZE)
+            .build();
 
     public AuthFilter(Optional<TokenService> tokenService,
                       RateLimiter rateLimiter,
@@ -51,9 +68,14 @@ public class AuthFilter extends OncePerRequestFilter {
         // Vistierie webhooks present their own webhook_token (not an api_tokens bearer);
         // VistierieWebhookController does its own constant-time token check.
         if (requestPath.startsWith("/vistierie")) return true;
+        // /mcp, /hooks, /sync and /admin are bearer-authenticated here (/admin only when
+        // the request carries an Authorization header — browser sessions are handled by
+        // SessionAuthFilter, which runs first and redirects sessionless /admin requests
+        // without a bearer to /login). /api/** is session-cookie-only: SessionAuthFilter
+        // rejects it before this filter could ever see a bearer token, so it must not
+        // be listed here.
         return !requestPath.startsWith("/mcp") && !requestPath.startsWith("/hooks")
-                && !requestPath.startsWith("/sync") && !requestPath.startsWith("/admin")
-                && !requestPath.startsWith("/api/attachments");
+                && !requestPath.startsWith("/sync") && !requestPath.startsWith("/admin");
     }
 
     @Override
@@ -144,8 +166,11 @@ public class AuthFilter extends OncePerRequestFilter {
      * {@code getRemoteAddr()} to the X-Forwarded-For value). The unwrapped underlying
      * request returns the real socket peer IP, which we use for rate-limit bucketing
      * so that attackers cannot evade per-IP limits by rotating XFF headers.
+     *
+     * <p>Public so other rate-limited entry points (e.g. {@link LoginController})
+     * bucket on the same unspoofable address.
      */
-    private static String tcpPeerAddress(HttpServletRequest request) {
+    public static String tcpPeerAddress(HttpServletRequest request) {
         ServletRequest underlying = request;
         while (underlying instanceof HttpServletRequestWrapper w) {
             underlying = w.getRequest();
@@ -156,18 +181,18 @@ public class AuthFilter extends OncePerRequestFilter {
     /**
      * Resolve a bearer string against the {@code oauth_tokens} table. If the token is a
      * valid (active, non-revoked, non-expired) {@code access} token, look up the
-     * underlying api_tokens row and return a principal whose role is the OAuth scope
-     * mapped down to {@link AuthRole}.
+     * underlying api_tokens row and return a principal whose effective role is the
+     * <em>minimum</em> of the granted OAuth scope and the backing token's own role
+     * (see {@link #effectiveOauthRole}).
      *
-     * <p><b>Role capping:</b> OAuth-issued tokens are intentionally capped at
-     * {@link AuthRole#WRITER} — they cannot perform admin operations even when the
-     * underlying api_tokens row has role {@code admin}. This limits blast radius if a
-     * connector session is compromised: an attacker with a stolen access token can
-     * still read/write knowledge but cannot create new tokens, manage agents, or
-     * touch admin-only endpoints.
+     * <p>Results are cached for {@link #OAUTH_CACHE_TTL}, keyed by token hash.
      */
     private Optional<AuthPrincipal> resolveOauthPrincipal(String token) {
         String tokenHash = TokenHasher.sha256(token);
+        return oauthPrincipalCache.get(tokenHash, this::lookupOauthPrincipal);
+    }
+
+    private Optional<AuthPrincipal> lookupOauthPrincipal(String tokenHash) {
         Optional<OAuthRepository.TokenLookup> lookup = oauthRepository.get().lookupActiveToken(tokenHash);
         if (lookup.isEmpty()) return Optional.empty();
         OAuthRepository.TokenLookup t = lookup.get();
@@ -176,8 +201,7 @@ public class AuthFilter extends OncePerRequestFilter {
         Optional<AuthPrincipal> backing = tokenService.get().findById(t.userTokenId());
         if (backing.isEmpty()) return Optional.empty();
 
-        AuthRole scopeRole = scopeToRole(t.scope());
-        AuthRole effective = capAtWriter(scopeRole);
+        AuthRole effective = effectiveOauthRole(backing.get().role(), t.scope());
         return Optional.of(new AuthPrincipal(backing.get().name(), effective, backing.get().tokenId()));
     }
 
@@ -189,11 +213,24 @@ public class AuthFilter extends OncePerRequestFilter {
         return AuthRole.READER;
     }
 
-    private static AuthRole capAtWriter(AuthRole role) {
-        // ADMIN and AGENT are administrative roles — never grant via OAuth.
-        return switch (role) {
-            case ADMIN, AGENT -> AuthRole.WRITER;
-            default -> role;
+    /**
+     * Effective role of an OAuth-issued access token: the minimum of the scope-derived
+     * role and the backing {@code api_tokens} row's role. The scope can only ever
+     * <em>narrow</em> the backing role — a {@code reader} token cannot escalate to
+     * WRITER by requesting {@code scope=write}.
+     *
+     * <p><b>Role capping:</b> ADMIN is additionally capped at {@link AuthRole#WRITER} —
+     * OAuth sessions can never perform admin operations (create tokens, manage agents,
+     * admin endpoints), limiting blast radius if a connector session is compromised.
+     * An AGENT backing token keeps its pending-write semantics (AGENT, never WRITER),
+     * and a read-only scope narrows it to READER.
+     */
+    static AuthRole effectiveOauthRole(AuthRole backingRole, String scope) {
+        AuthRole scopeRole = scopeToRole(scope); // READER or WRITER
+        return switch (backingRole) {
+            case READER -> AuthRole.READER;
+            case AGENT -> scopeRole == AuthRole.WRITER ? AuthRole.AGENT : AuthRole.READER;
+            case ADMIN, WRITER -> scopeRole;
         };
     }
 }

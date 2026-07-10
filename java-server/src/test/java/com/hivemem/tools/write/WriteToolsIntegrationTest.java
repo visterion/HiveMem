@@ -325,7 +325,8 @@ class WriteToolsIntegrationTest {
                                 }
                                 """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.error.message").value("kg_add rejected: conflicting active fact exists"));
+                .andExpect(jsonPath("$.result.isError").value(true))
+                .andExpect(jsonPath("$.result.content[0].text").value("kg_add rejected: conflicting active fact exists"));
     }
 
     @Test
@@ -362,7 +363,8 @@ class WriteToolsIntegrationTest {
                                   }
                                 }
                                 """))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.error.code").value(-32602));
     }
 
     @Test
@@ -876,7 +878,7 @@ class WriteToolsIntegrationTest {
                                   }
                                 }
                                 """))
-                .andExpect(status().isBadRequest())
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.error.code").value(-32602))
                 .andExpect(jsonPath("$.error.message").value("Missing old_id"));
 
@@ -897,7 +899,7 @@ class WriteToolsIntegrationTest {
                                   }
                                 }
                                 """))
-                .andExpect(status().isBadRequest())
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.error.code").value(-32602))
                 .andExpect(jsonPath("$.error.message").value("Fact 00000000-0000-0000-0000-000000000499 not found or already revised"));
     }
@@ -991,7 +993,7 @@ class WriteToolsIntegrationTest {
                                   }
                                 }
                                 """))
-                .andExpect(status().isBadRequest())
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.error.code").value(-32602))
                 .andExpect(jsonPath("$.error.message").value("Invalid decision 'maybe'. Must be 'committed' or 'rejected'."));
     }
@@ -1015,7 +1017,7 @@ class WriteToolsIntegrationTest {
                                   }
                                 }
                                 """))
-                .andExpect(status().isBadRequest())
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.error.code").value(-32602))
                 .andExpect(jsonPath("$.error.message").value("Missing subject"));
 
@@ -1038,7 +1040,7 @@ class WriteToolsIntegrationTest {
                                   }
                                 }
                                 """))
-                .andExpect(status().isBadRequest())
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.error.code").value(-32602))
                 .andExpect(jsonPath("$.error.message").value("Missing subject"));
     }
@@ -1151,7 +1153,7 @@ class WriteToolsIntegrationTest {
                                   }
                                 }
                                 """))
-                .andExpect(status().isBadRequest())
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.error.code").value(-32602))
                 .andExpect(jsonPath("$.error.message").value("cell not found"));
     }
@@ -1180,7 +1182,7 @@ class WriteToolsIntegrationTest {
                                   }
                                 }
                                 """))
-                .andExpect(status().isBadRequest())
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.error.code").value(-32602))
                 .andExpect(jsonPath("$.error.message").value(
                         "cell version is not current — target the live version"));
@@ -1210,7 +1212,7 @@ class WriteToolsIntegrationTest {
                                   }
                                 }
                                 """))
-                .andExpect(status().isBadRequest())
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.error.code").value(-32602))
                 .andExpect(jsonPath("$.error.message").value("cannot reclassify rejected cell"));
     }
@@ -1238,7 +1240,7 @@ class WriteToolsIntegrationTest {
                                   }
                                 }
                                 """))
-                .andExpect(status().isBadRequest())
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.error.code").value(-32602))
                 .andExpect(jsonPath("$.error.message").value(
                         "at least one of realm/signal/topic required"));
@@ -1268,7 +1270,7 @@ class WriteToolsIntegrationTest {
                                   }
                                 }
                                 """))
-                .andExpect(status().isBadRequest())
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.error.code").value(-32602))
                 .andExpect(jsonPath("$.error.message").value(
                         "signal must be one of facts/events/discoveries/preferences/advice"));
@@ -1393,7 +1395,7 @@ class WriteToolsIntegrationTest {
                                   }
                                 }
                                 """))
-                .andExpect(status().isBadRequest())
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.error.code").value(-32602))
                 .andExpect(jsonPath("$.error.message").value("cell not found"));
     }
@@ -1429,7 +1431,7 @@ class WriteToolsIntegrationTest {
                                   }
                                 }
                                 """))
-                .andExpect(status().isBadRequest())
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.error.code").value(-32602))
                 .andExpect(jsonPath("$.error.message").value(
                         "cell version is not current — target the live version"));

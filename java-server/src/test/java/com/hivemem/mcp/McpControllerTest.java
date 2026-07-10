@@ -129,9 +129,78 @@ class McpControllerTest {
                                   "params":{"name":"search","arguments":{}}
                                 }
                                 """))
-                .andExpect(status().isBadRequest())
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.error.code").value(-32602))
                 .andExpect(jsonPath("$.error.message").value("Missing query"));
+    }
+
+    @Test
+    void postMcpToolsCallExecutionFailureReturnsIsErrorToolResult() throws Exception {
+        mockMvc.perform(post("/mcp")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer good-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "jsonrpc":"2.0",
+                                  "id":30,
+                                  "method":"tools/call",
+                                  "params":{"name":"add_cell","arguments":{"msg":"boom"}}
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.error").doesNotExist())
+                .andExpect(jsonPath("$.result.isError").value(true))
+                .andExpect(jsonPath("$.result.content[0].text").value("boom"));
+    }
+
+    @Test
+    void postMcpToolsCallExecutionFailureWithoutMessageFallsBackToClassName() throws Exception {
+        mockMvc.perform(post("/mcp")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer good-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "jsonrpc":"2.0",
+                                  "id":31,
+                                  "method":"tools/call",
+                                  "params":{"name":"add_cell","arguments":{}}
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.result.isError").value(true))
+                .andExpect(jsonPath("$.result.content[0].text").value("IllegalStateException"));
+    }
+
+    @Test
+    void postMcpToolsCallWithUnregisteredToolReturnsInvalidParams() throws Exception {
+        // get_cell is permitted for the writer role but has no handler in this test config.
+        mockMvc.perform(post("/mcp")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer good-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "jsonrpc":"2.0",
+                                  "id":32,
+                                  "method":"tools/call",
+                                  "params":{"name":"get_cell","arguments":{}}
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.error.code").value(-32602))
+                .andExpect(jsonPath("$.error.message").value("Unknown tool: get_cell"));
+    }
+
+    @Test
+    void responseSerializesIdEvenWhenNull() throws Exception {
+        mockMvc.perform(post("/mcp")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer good-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"jsonrpc":"2.0","id":null,"method":"foo/bar"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("\"id\":null")))
+                .andExpect(jsonPath("$.error.code").value(-32601));
     }
 
     @Test
@@ -165,7 +234,7 @@ class McpControllerTest {
                                   "params":{"name":"   ","arguments":{}}
                                 }
                                 """))
-                .andExpect(status().isBadRequest())
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.error.code").value(-32602))
                 .andExpect(jsonPath("$.error.message").value("Missing tool name"));
     }
@@ -178,10 +247,10 @@ class McpControllerTest {
                         .header(HttpHeaders.AUTHORIZATION, "Bearer good-token")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"jsonrpc":"2.0","id":10,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}
+                                {"jsonrpc":"2.0","id":10,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}
                                 """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.result.protocolVersion").value("2025-03-26"))
+                .andExpect(jsonPath("$.result.protocolVersion").value("2025-06-18"))
                 .andExpect(jsonPath("$.result.capabilities.tools").exists())
                 .andExpect(jsonPath("$.result.serverInfo.name").value("hivemem"))
                 .andExpect(header().exists("Mcp-Session-Id"))
@@ -330,6 +399,30 @@ class McpControllerTest {
                             "status", "ok",
                             "principal", principal.name()
                     );
+                }
+            };
+        }
+
+        @Bean
+        @Order(3)
+        ToolHandler failingToolHandler() {
+            return new ToolHandler() {
+                @Override
+                public String name() {
+                    return "add_cell";
+                }
+
+                @Override
+                public String description() {
+                    return "Always fails; exercises the isError tool-result path.";
+                }
+
+                @Override
+                public Object call(AuthPrincipal principal, JsonNode arguments) {
+                    if (arguments != null && arguments.hasNonNull("msg")) {
+                        throw new RuntimeException(arguments.get("msg").asText());
+                    }
+                    throw new IllegalStateException();
                 }
             };
         }

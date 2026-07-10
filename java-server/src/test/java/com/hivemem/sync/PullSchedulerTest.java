@@ -96,6 +96,49 @@ class PullSchedulerTest {
     }
 
     @Test
+    void pullAllStopsAdvancingSeqAtFirstFailedOp() {
+        UUID peerUuid = UUID.randomUUID();
+        var ok = new OpDto(10L, UUID.randomUUID(), "add_cell",
+                new ObjectMapper().createObjectNode(), OffsetDateTime.now());
+        var failing = new OpDto(11L, UUID.randomUUID(), "add_cell",
+                new ObjectMapper().createObjectNode(), OffsetDateTime.now());
+        var afterFailure = new OpDto(12L, UUID.randomUUID(), "add_cell",
+                new ObjectMapper().createObjectNode(), OffsetDateTime.now());
+
+        when(instanceConfig.instanceId()).thenReturn(UUID.randomUUID());
+        when(peerRepository.findAllPeers()).thenReturn(List.of(
+                new SyncPeer(peerUuid, "http://peer:8421", 0L, "tok")));
+        when(peerClient.fetchOps("http://peer:8421", 0L, "tok"))
+                .thenReturn(List.of(ok, failing, afterFailure));
+        when(opReplayer.replay(eq(peerUuid), eq(ok))).thenReturn(OpReplayer.ReplayResult.REPLAYED);
+        when(opReplayer.replay(eq(peerUuid), eq(failing))).thenReturn(OpReplayer.ReplayResult.FAILED);
+
+        scheduler.pullAll();
+
+        // seq stops at the last op BEFORE the failure — the failed op is retried next pull
+        verify(peerRepository).updateLastSeenSeq(peerUuid, 10L);
+        // ops after the failure are not replayed out of order
+        verify(opReplayer, never()).replay(eq(peerUuid), eq(afterFailure));
+    }
+
+    @Test
+    void pullAllDoesNotAdvanceSeqWhenFirstOpFails() {
+        UUID peerUuid = UUID.randomUUID();
+        var failing = new OpDto(5L, UUID.randomUUID(), "add_cell",
+                new ObjectMapper().createObjectNode(), OffsetDateTime.now());
+
+        when(instanceConfig.instanceId()).thenReturn(UUID.randomUUID());
+        when(peerRepository.findAllPeers()).thenReturn(List.of(
+                new SyncPeer(peerUuid, "http://peer:8421", 4L, "tok")));
+        when(peerClient.fetchOps("http://peer:8421", 4L, "tok")).thenReturn(List.of(failing));
+        when(opReplayer.replay(eq(peerUuid), eq(failing))).thenReturn(OpReplayer.ReplayResult.FAILED);
+
+        scheduler.pullAll();
+
+        verify(peerRepository, never()).updateLastSeenSeq(any(), anyLong());
+    }
+
+    @Test
     void pullAllSkipsSelfPeer() {
         UUID myId = UUID.randomUUID();
         when(instanceConfig.instanceId()).thenReturn(myId);

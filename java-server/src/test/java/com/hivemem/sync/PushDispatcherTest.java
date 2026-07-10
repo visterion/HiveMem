@@ -67,6 +67,27 @@ class PushDispatcherTest {
     }
 
     @Test
+    void dispatchSyncSkipsSelfPeerRow() {
+        UUID opId = UUID.randomUUID();
+        UUID myId = UUID.randomUUID();
+        UUID otherPeer = UUID.randomUUID();
+
+        when(instanceConfig.instanceId()).thenReturn(myId);
+        OpDto op = new OpDto(1L, opId, "add_cell",
+                new ObjectMapper().createObjectNode(),
+                OffsetDateTime.now());
+        when(syncOpsRepository.findOpById(opId)).thenReturn(op);
+        when(peerRepository.findAllPeers()).thenReturn(List.of(
+                new SyncPeer(myId, "http://self:8421", 0L, "self-tok"),
+                new SyncPeer(otherPeer, "http://peer:8421", 0L, "tok")));
+
+        dispatcher.dispatchSync(opId);
+
+        verify(peerClient, never()).pushOps(eq("http://self:8421"), any(), any(), any());
+        verify(peerClient).pushOps("http://peer:8421", myId, List.of(op), "tok");
+    }
+
+    @Test
     void dispatchSkipsIfOpNotFound() {
         UUID opId = UUID.randomUUID();
         when(syncOpsRepository.findOpById(opId)).thenReturn(null);

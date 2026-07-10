@@ -5,8 +5,11 @@ export default {
     connecting: 'Verbindung…',
     loading: 'Lädt…',
     reload: 'Neu laden',
+    retry: 'Erneut versuchen',
     noResults: 'Keine Ergebnisse.',
     comingSoon: 'In Arbeit',
+    actionFailed: 'Aktion fehlgeschlagen. Bitte erneut versuchen.',
+    loadFailed: 'Daten konnten nicht geladen werden.',
   },
   nav: {
     search: 'Suche', hive: 'Hive', graph: 'Graph', realms: 'Realms', photos: 'Fotos',

@@ -147,6 +147,22 @@ class GraphProximityFunctionTest {
         assertThat(scores).doesNotContainKey(idA);
     }
 
+    @Test
+    void reverseEdgeDirectionAlsoScores() {
+        // B -builds_on-> A: with A as anchor, B must still score (V0039 made the
+        // walk bidirectional, so proximity no longer depends on edge creation direction).
+        UUID idA = createCell("Reverse anchor A");
+        UUID idB = createCell("Reverse neighbour B");
+
+        addTunnel(idB, idA, "builds_on");
+
+        Map<UUID, Float> scores = callGraphProximity(List.of(idA), DEFAULT_WEIGHTS_JSON, 2);
+
+        assertThat(scores).containsKey(idB);
+        assertThat(scores.get(idB)).isCloseTo(1.0f, within(1e-4f));
+        assertThat(scores).doesNotContainKey(idA);
+    }
+
     // ---- helpers ----
 
     private UUID createCell(String content) {

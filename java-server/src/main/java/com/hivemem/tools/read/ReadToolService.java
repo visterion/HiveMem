@@ -4,6 +4,7 @@ import com.hivemem.attachment.AttachmentRepository;
 import com.hivemem.auth.AuthPrincipal;
 import com.hivemem.cells.CellReadRepository;
 import com.hivemem.embedding.EmbeddingClient;
+import com.hivemem.embedding.EmbeddingUnavailableException;
 import com.hivemem.kg.KgEntityRepository;
 import com.hivemem.search.CellSearchRepository;
 import com.hivemem.search.CellSelector;
@@ -39,6 +40,12 @@ public class ReadToolService {
 
     /** Backstop on the number of edges fetched from the recursive traversal SQL. */
     private static final int HARD_EDGE_LIMIT = 5000;
+
+    /** Backstop on unpaged cell listings within a topic. */
+    private static final int LIST_CELLS_LIMIT = 500;
+
+    /** Backstop on facts returned for a single entity lookup. */
+    private static final int QUICK_FACTS_LIMIT = 100;
 
     private final CellReadRepository cellReadRepository;
     private final KgSearchRepository kgSearchRepository;
@@ -126,7 +133,7 @@ public class ReadToolService {
             result.put("disconnected", dataQualityRepository.disconnected());
         }
         if (include.contains("duplicate_clusters")) {
-            int dimension = embeddingClient.getInfo().dimension();
+            int dimension = embeddingClient.dimension();
             if (dimension <= 0) {
                 Map<String, Object> note = new LinkedHashMap<>();
                 note.put("note", "embeddings unavailable");
@@ -146,7 +153,7 @@ public class ReadToolService {
     }
 
     public List<Map<String, Object>> listCellsInTopic(String realm, String signal, String topic) {
-        return cellReadRepository.listCellsInTopic(realm, signal, topic);
+        return cellReadRepository.listCellsInTopic(realm, signal, topic, LIST_CELLS_LIMIT);
     }
 
     public List<Map<String, Object>> search(
@@ -167,7 +174,13 @@ public class ReadToolService {
             List<String> realmIn,
             boolean includeScores
     ) {
-        List<Float> queryVector = embeddingClient.encodeQuery(query);
+        List<Float> queryVector;
+        try {
+            queryVector = embeddingClient.encodeQuery(query);
+        } catch (EmbeddingUnavailableException e) {
+            log.warn("search semantic path unavailable, falling back to keyword-only ranking", e);
+            queryVector = null;
+        }
         List<CellSearchRepository.RankedRow> rows = cellSearchRepository.rankedSearch(
                 queryVector, query, realm, signal, topic, limit,
                 weightSemantic, weightKeyword, weightRecency, weightImportance, weightPopularity,
@@ -186,7 +199,7 @@ public class ReadToolService {
             try {
                 List<Float> vec = embeddingClient.encodeQuery(query);
                 if (vec != null) {
-                    int dimension = embeddingClient.getInfo().dimension();
+                    int dimension = embeddingClient.dimension();
                     return kgSearchRepository.semanticSearch(vec, subject, predicate, object_, limit, dimension);
                 }
             } catch (RuntimeException e) {
@@ -264,7 +277,7 @@ public class ReadToolService {
 
     public List<Map<String, Object>> quickFacts(String entity) {
         entity = kgEntityRepository.resolve(entity);
-        return cellReadRepository.quickFacts(entity);
+        return cellReadRepository.quickFacts(entity, QUICK_FACTS_LIMIT);
     }
 
     public Map<String, Object> entityOverview(String subject, int limit) {
@@ -276,14 +289,14 @@ public class ReadToolService {
         if (quick) {
             Map<String, Object> quickResult = new LinkedHashMap<>();
             quickResult.put("cells", List.of());
-            quickResult.put("facts", cellReadRepository.quickFacts(subject));
+            quickResult.put("facts", cellReadRepository.quickFacts(subject, limit));
             quickResult.put("tunnels", List.of());
             return quickResult;
         }
         List<Map<String, Object>> cells = search(subject, limit, null, null, null,
                 CellFieldSelection.forSearch(null),
                 0.30d, 0.15d, 0.15d, 0.15d, 0.15d, 0.10d, null, null, null, false);
-        List<Map<String, Object>> facts = new ArrayList<>(cellReadRepository.quickFacts(subject));
+        List<Map<String, Object>> facts = new ArrayList<>(cellReadRepository.quickFacts(subject, limit));
         if (facts.size() < limit) {
             Set<Object> seen = facts.stream().map(f -> f.get("id")).collect(java.util.stream.Collectors.toSet());
             for (Map<String, Object> f : kgSearchRepository.search(subject, null, null, limit)) {
@@ -415,6 +428,7 @@ public class ReadToolService {
             projected.put("score_recency", rounded(row.scoreRecency()));
             projected.put("score_importance", rounded(row.scoreImportance()));
             projected.put("score_popularity", rounded(row.scorePopularity()));
+            projected.put("score_graph_proximity", rounded(row.scoreGraphProximity()));
         }
         projected.put("score_total", rounded(row.scoreTotal()));
         projected.put("confidence_level", confidenceLevel.name());

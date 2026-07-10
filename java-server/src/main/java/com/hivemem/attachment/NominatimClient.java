@@ -22,9 +22,16 @@ public class NominatimClient {
         this.userAgent = props.getUserAgent();
     }
 
+    /**
+     * @return the resolved place, or empty when Nominatim answered but knows no place there
+     *         (a definitive negative).
+     * @throws GeocodeUnavailableException on transport/HTTP failures — callers must treat
+     *         this as transient and retry later, not as a permanent "failed".
+     */
     public Optional<String> reverse(double lat, double lon) {
+        JsonNode body;
         try {
-            JsonNode body = http.get()
+            body = http.get()
                     .uri(uri -> uri.path("/reverse")
                             .queryParam("lat", lat)
                             .queryParam("lon", lon)
@@ -34,19 +41,27 @@ public class NominatimClient {
                     .header("User-Agent", userAgent)
                     .retrieve()
                     .body(JsonNode.class);
-            if (body == null) return Optional.empty();
-            JsonNode addr = body.path("address");
-            String place = firstNonBlank(
-                    textOrNull(addr, "city"),
-                    textOrNull(addr, "town"),
-                    textOrNull(addr, "village"),
-                    textOrNull(addr, "municipality"));
-            if (place == null) return Optional.empty();
-            String cc = addr.path("country_code").asText("");
-            return Optional.of(cc.isBlank() ? place : place + ", " + cc.toUpperCase());
         } catch (Exception e) {
-            log.debug("Reverse-geocode failed for {},{}: {}", lat, lon, e.getMessage());
-            return Optional.empty();
+            log.debug("Reverse-geocode lookup failed for {},{}: {}", lat, lon, e.getMessage());
+            throw new GeocodeUnavailableException(
+                    "Reverse-geocode lookup failed for " + lat + "," + lon, e);
+        }
+        if (body == null) return Optional.empty();
+        JsonNode addr = body.path("address");
+        String place = firstNonBlank(
+                textOrNull(addr, "city"),
+                textOrNull(addr, "town"),
+                textOrNull(addr, "village"),
+                textOrNull(addr, "municipality"));
+        if (place == null) return Optional.empty();
+        String cc = addr.path("country_code").asText("");
+        return Optional.of(cc.isBlank() ? place : place + ", " + cc.toUpperCase());
+    }
+
+    /** Transient lookup failure (network/HTTP) — distinct from a definitive "no place found". */
+    public static class GeocodeUnavailableException extends RuntimeException {
+        public GeocodeUnavailableException(String message, Throwable cause) {
+            super(message, cause);
         }
     }
 

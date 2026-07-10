@@ -6,6 +6,7 @@ import com.hivemem.auth.AuthPrincipal;
 import com.hivemem.auth.AuthRole;
 import com.hivemem.mcp.ToolHandler;
 import com.hivemem.mcp.ToolInputSchema;
+import com.hivemem.write.WriteArgumentParser;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
@@ -52,13 +53,19 @@ public class UploadAttachmentToolHandler implements ToolHandler {
     @Override
     public Object call(AuthPrincipal principal, JsonNode arguments) {
         if (principal.role() == AuthRole.READER) throw new IllegalArgumentException("Reader role cannot upload");
-        String realm    = arguments.get("realm").asText();
-        String signal   = arguments.has("signal")  ? arguments.get("signal").asText()  : null;
-        String topic    = arguments.has("topic")   ? arguments.get("topic").asText()   : null;
-        UUID linkCellId = arguments.has("cell_id") ? UUID.fromString(arguments.get("cell_id").asText()) : null;
-        String filename = arguments.get("filename").asText();
-        String mimeType = arguments.get("mime_type").asText();
-        byte[] bytes    = Base64.getDecoder().decode(arguments.get("data").asText());
+        String realm    = WriteArgumentParser.requiredText(arguments, "realm");
+        String signal   = WriteArgumentParser.optionalText(arguments, "signal");
+        String topic    = WriteArgumentParser.optionalText(arguments, "topic");
+        UUID linkCellId = WriteArgumentParser.optionalUuid(arguments, "cell_id");
+        String filename = WriteArgumentParser.requiredText(arguments, "filename");
+        String mimeType = WriteArgumentParser.requiredText(arguments, "mime_type");
+        String data     = WriteArgumentParser.requiredText(arguments, "data");
+        byte[] bytes;
+        try {
+            bytes = Base64.getDecoder().decode(data);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Invalid data (not valid Base64)");
+        }
         try {
             return service.ingest(new ByteArrayInputStream(bytes), filename, mimeType,
                     realm, signal, topic, linkCellId, principal.name());

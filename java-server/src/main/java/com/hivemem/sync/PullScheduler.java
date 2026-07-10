@@ -44,6 +44,14 @@ public class PullScheduler {
         long maxReplayed = peer.lastSeenSeq();
         for (OpDto op : ops) {
             OpReplayer.ReplayResult result = opReplayer.replay(peer.peerUuid(), op);
+            if (result == OpReplayer.ReplayResult.FAILED) {
+                // Ops are sequential: do NOT advance last_seen_seq past a failed op — it would be
+                // dropped forever. Stop here; this op and everything after it is retried on the
+                // next pull.
+                log.warn("Op replay failed op={} type={} from peer={} — stopping at seq {}, will retry next pull",
+                        op.opId(), op.opType(), peer.peerUrl(), maxReplayed);
+                break;
+            }
             if (result == OpReplayer.ReplayResult.UNKNOWN_OP) {
                 log.warn("Skipping unknown op_type={} op={} from peer={}",
                         op.opType(), op.opId(), peer.peerUrl());

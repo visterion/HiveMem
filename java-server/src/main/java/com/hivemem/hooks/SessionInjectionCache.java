@@ -39,4 +39,22 @@ public class SessionInjectionCache {
         Integer recordedTurn = cache.getIfPresent(new Key(sessionId, cellId));
         return recordedTurn != null && (currentTurn - recordedTurn) < dedupWindowTurns;
     }
+
+    /**
+     * Atomically checks the dedup window and records the injection in one step,
+     * so concurrent requests for the same session cannot both pass the check.
+     *
+     * @return true if the cell was not recently injected and has now been recorded
+     */
+    public boolean tryRecordInjection(String sessionId, UUID cellId, int currentTurn) {
+        boolean[] injected = new boolean[1];
+        cache.asMap().compute(new Key(sessionId, cellId), (key, recordedTurn) -> {
+            if (recordedTurn != null && (currentTurn - recordedTurn) < dedupWindowTurns) {
+                return recordedTurn; // still within the dedup window — keep the old entry
+            }
+            injected[0] = true;
+            return currentTurn;
+        });
+        return injected[0];
+    }
 }

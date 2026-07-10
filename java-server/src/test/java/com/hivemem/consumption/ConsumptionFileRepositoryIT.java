@@ -55,6 +55,30 @@ class ConsumptionFileRepositoryIT extends ConsumptionITSupport {
     }
 
     @Test
+    void updateFilenamePersistsMovedName() {
+        repo.startProcessing("h4", "orig.pdf");
+        repo.updateFilename("h4", "orig-1.pdf");
+
+        var row = repo.findByHash("h4");
+        assertTrue(row.isPresent());
+        assertEquals("orig-1.pdf", row.get().filename(),
+                "ledger must reflect the collision-suffixed name the mover actually used");
+    }
+
+    @Test
+    void startProcessingRefreshesFilenameOnConflict() {
+        repo.startProcessing("h5", "scan.pdf");
+        // Re-staged under a collision-suffixed name (recovery sweep moveToRoot may rename)
+        repo.startProcessing("h5", "scan-1.pdf");
+
+        var row = repo.findByHash("h5");
+        assertTrue(row.isPresent());
+        assertEquals("scan-1.pdf", row.get().filename(),
+                "conflict upsert must refresh the filename, not keep the stale original");
+        assertEquals(2, row.get().attempts());
+    }
+
+    @Test
     void findRetriableFailedRespectsAttemptsLimit() {
         // Row with attempts=1, maxAttempts=3 → should appear
         repo.startProcessing("hr1", "retry.pdf");

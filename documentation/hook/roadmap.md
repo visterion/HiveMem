@@ -2,10 +2,6 @@
 
 Known limitations and planned improvements.
 
-## Search weights are tuned for ranking, not gating
-
-The default weights (`semantic: 0.30`) are designed for ranked search in the UI. For auto-inject, precision matters more than recall. Planned: a separate `hivemem.hooks.weights.*` block with `semantic: 0.70` so the hook uses a precision preset without affecting UI search.
-
 ## Realm filter is soft, not hard
 
 CWD promotion reorders results but does not exclude cells from the wrong realm. A cell tagged `tooling` and a cell tagged `personal` are both candidates when working in `/root/hivemem`. Planned: a configurable `cwd-realm-map` that passes a hard realm filter to `ranked_search`:

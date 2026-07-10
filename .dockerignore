@@ -4,3 +4,12 @@ backups/
 docs/
 .base-hash
 java-server/target/
+# Build artifacts and dependency trees are produced inside the multi-stage
+# build — never send host copies into the build context.
+**/node_modules/
+knowledge-ui/dist/
+java-server/src/main/resources/static/
+knowledge-ui/playwright-report/
+knowledge-ui/test-results/
+# Root-level screenshots (repo working notes, not build inputs).
+*.png

@@ -4,7 +4,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
+import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
+import org.yaml.snakeyaml.constructor.SafeConstructor;
 
 import java.io.InputStream;
 import java.util.LinkedHashMap;
@@ -24,11 +26,13 @@ public final class ExtractionProfileLoader {
         try {
             Resource[] resources = new PathMatchingResourcePatternResolver()
                     .getResources(pattern);
-            Yaml yaml = new Yaml();
+            // SafeConstructor: profiles are plain maps/lists/strings — never construct types from tags.
+            Yaml yaml = new Yaml(new SafeConstructor(new LoaderOptions()));
             for (Resource r : resources) {
                 String fileName = r.getFilename();
                 if (fileName == null || !fileName.endsWith(".yaml")) continue;
                 String typeFromFile = fileName.substring(0, fileName.length() - ".yaml".length());
+                // Per-file try/catch: one malformed YAML must not abort loading the rest.
                 try (InputStream in = r.getInputStream()) {
                     Map<String, Object> raw = yaml.load(in);
                     ExtractionProfile profile = parse(raw);
@@ -44,6 +48,8 @@ public final class ExtractionProfileLoader {
                                 profile.tagsToApply());
                     }
                     out.put(profile.type(), profile);
+                } catch (Exception e) {
+                    log.warn("Skipping malformed extraction profile {}: {}", fileName, e.getMessage());
                 }
             }
         } catch (Exception e) {

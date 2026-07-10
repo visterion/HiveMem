@@ -68,7 +68,15 @@ public class QueenWebhookService {
         if (cell.isEmpty()) return Map.of("candidates", List.of());
         String text = String.valueOf(cell.get().getOrDefault("content", cell.get().get("summary")));
 
-        List<Float> emb = embedding.encodeQuery(text);
+        List<Float> emb;
+        try {
+            emb = embedding.encodeQuery(text);
+        } catch (RuntimeException e) {
+            // Embedding service unavailable: fall back to keyword-only ranking (ranked_search
+            // accepts a null query vector), mirroring ReadToolService.search.
+            log.warn("Embedding unavailable for similar-cell search, using keyword-only fallback: {}", e.getMessage());
+            emb = null;
+        }
         List<RankedRow> rows = search.rankedSearch(emb, text, null, null, null, limit + 1,
                 0.30, 0.15, 0.15, 0.15, 0.15, 0.10, null, null, null);
 

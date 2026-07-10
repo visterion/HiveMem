@@ -279,7 +279,7 @@ class SecurityIntegrationTest {
                             .header(HttpHeaders.AUTHORIZATION, "Bearer admin-token")
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(body))
-                    .andExpect(status().isBadRequest())
+                    .andExpect(status().isOk())
                     .andExpect(jsonPath("$.error.code").value(-32602))
                     .andExpect(jsonPath("$.error.message").value(
                             org.hamcrest.Matchers.containsString("Invalid decision")));

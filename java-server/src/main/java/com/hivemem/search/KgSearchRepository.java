@@ -29,16 +29,16 @@ public class KgSearchRepository {
         List<String> conditions = new ArrayList<>();
 
         if (subject != null && !subject.isBlank()) {
-            conditions.add("subject ILIKE ?");
-            params.add('%' + subject + '%');
+            conditions.add("subject ILIKE ? ESCAPE '\\'");
+            params.add('%' + escapeLikePattern(subject) + '%');
         }
         if (predicate != null && !predicate.isBlank()) {
-            conditions.add("predicate ILIKE ?");
-            params.add('%' + predicate + '%');
+            conditions.add("predicate ILIKE ? ESCAPE '\\'");
+            params.add('%' + escapeLikePattern(predicate) + '%');
         }
         if (object_ != null && !object_.isBlank()) {
-            conditions.add("\"object\" ILIKE ?");
-            params.add('%' + object_ + '%');
+            conditions.add("\"object\" ILIKE ? ESCAPE '\\'");
+            params.add('%' + escapeLikePattern(object_) + '%');
         }
 
         if (!conditions.isEmpty()) {
@@ -72,16 +72,16 @@ public class KgSearchRepository {
         List<String> conditions = new ArrayList<>();
         conditions.add("embedding IS NOT NULL");
         if (subject != null && !subject.isBlank()) {
-            conditions.add("subject ILIKE ?");
-            params.add('%' + subject + '%');
+            conditions.add("subject ILIKE ? ESCAPE '\\'");
+            params.add('%' + escapeLikePattern(subject) + '%');
         }
         if (predicate != null && !predicate.isBlank()) {
-            conditions.add("predicate ILIKE ?");
-            params.add('%' + predicate + '%');
+            conditions.add("predicate ILIKE ? ESCAPE '\\'");
+            params.add('%' + escapeLikePattern(predicate) + '%');
         }
         if (object_ != null && !object_.isBlank()) {
-            conditions.add("\"object\" ILIKE ?");
-            params.add('%' + object_ + '%');
+            conditions.add("\"object\" ILIKE ? ESCAPE '\\'");
+            params.add('%' + escapeLikePattern(object_) + '%');
         }
         Float[] vec = queryVector.toArray(Float[]::new);
 
@@ -114,6 +114,11 @@ public class KgSearchRepository {
             results.add(result);
         }
         return results;
+    }
+
+    /** Escapes LIKE/ILIKE wildcards so user input matches literally (pair with {@code ESCAPE '\'}). */
+    private static String escapeLikePattern(String value) {
+        return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
     }
 
     private static double numberValue(Record row, String field) {

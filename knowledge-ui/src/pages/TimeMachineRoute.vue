@@ -28,7 +28,12 @@ function fmtDate(iso: string | null): string {
   return iso ? new Date(iso).toLocaleDateString(locale.value) : '—'
 }
 
-onMounted(() => { if (canvas.cells.length === 0) void canvas.loadTopLevel() })
+const loadError = ref(false)
+async function load() {
+  loadError.value = false
+  try { await canvas.loadTopLevel() } catch { loadError.value = true }
+}
+onMounted(() => { if (canvas.cells.length === 0) void load() })
 </script>
 
 <template>
@@ -55,6 +60,10 @@ onMounted(() => { if (canvas.cells.length === 0) void canvas.loadTopLevel() })
           <p class="prose">{{ current.summary }}</p>
         </div>
       </template>
+      <div v-else-if="loadError" class="tm-empty tm-err">
+        <span>{{ t('common.loadFailed') }}</span>
+        <button class="retry" @click="load">{{ t('common.retry') }}</button>
+      </div>
       <div v-else class="tm-empty">
         {{ canvas.loaded && !canvas.streamActive ? t('timemachine.empty') : t('common.loading') }}
       </div>
@@ -86,4 +95,8 @@ onMounted(() => { if (canvas.cells.length === 0) void canvas.loadTopLevel() })
 .chip { font-size:11px; padding:2px 8px; border-radius:6px; font-weight:500; background:var(--bg-4); color:var(--text-1);
   border:1px solid var(--line); display:inline-flex; align-items:center; gap:5px; white-space:nowrap; }
 .tm-empty { color:var(--text-2); padding:40px 0; }
+.tm-err { display:flex; align-items:center; gap:12px; }
+.retry { padding:7px 16px; border-radius:8px; border:1px solid var(--line-honey, rgba(240,180,40,.3));
+  background:var(--honey-dim, rgba(240,180,40,.08)); color:var(--honey); font-size:13px; cursor:pointer; }
+.retry:hover { background:var(--honey-dim, rgba(240,180,40,.16)); }
 </style>

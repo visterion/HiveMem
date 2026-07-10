@@ -107,9 +107,45 @@ class SessionAuthFilterTest {
                 .andExpect(status().isOk());
     }
 
+    @Test
+    void syncPathWithoutSessionContinuesChain() throws Exception {
+        // Peer sync is bearer-authed: without a session, /sync must pass through to
+        // AuthFilter (which 401s absent a Bearer token) — NOT redirect to /login.
+        // A redirect would feed the peer's RestClient the login page and silently
+        // no-op replication.
+        mockMvc.perform(get("/sync/ops"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void syncPathWithBearerTokenReachesController() throws Exception {
+        mockMvc.perform(get("/sync/ops").header("Authorization", "Bearer valid-token"))
+                .andExpect(status().isOk())
+                .andExpect(content().string("ok"));
+    }
+
+    @Test
+    void adminPathWithoutSessionOrBearerRedirectsToLogin() throws Exception {
+        mockMvc.perform(get("/admin/peers"))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(redirectedUrl("/login"));
+    }
+
+    @Test
+    void adminPathWithBearerTokenContinuesToAuthFilter() throws Exception {
+        // Bearer-authed /admin (CLI/scripts) must defer to AuthFilter, which validates
+        // the token — valid tokens reach the controller, invalid ones get 401.
+        mockMvc.perform(get("/admin/peers").header("Authorization", "Bearer valid-token"))
+                .andExpect(status().isOk())
+                .andExpect(content().string("ok"));
+        mockMvc.perform(get("/admin/peers").header("Authorization", "Bearer bad-token"))
+                .andExpect(status().isUnauthorized());
+    }
+
     @RestController
     static class TestController {
-        @GetMapping({"/some-page", "/login", "/mcp", "/vistierie/tools/find_isolated_cells"})
+        @GetMapping({"/some-page", "/login", "/mcp", "/vistierie/tools/find_isolated_cells",
+                "/sync/ops", "/admin/peers"})
         String index() { return "ok"; }
     }
 }

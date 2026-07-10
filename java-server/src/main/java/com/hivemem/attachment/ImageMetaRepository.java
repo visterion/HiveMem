@@ -66,6 +66,40 @@ public class ImageMetaRepository {
         return ids;
     }
 
+    public record PendingGeocode(UUID attachmentId, double gpsLat, double gpsLon) {}
+
+    /** Rows still awaiting reverse-geocoding — revisited by the hourly retry sweep. */
+    public List<PendingGeocode> findPendingGeocodes(int limit) {
+        List<PendingGeocode> out = new ArrayList<>();
+        for (Record r : dsl.fetch(
+                "SELECT attachment_id, gps_lat, gps_lon FROM attachment_image_meta "
+                + "WHERE geocode_status = 'pending' AND gps_lat IS NOT NULL AND gps_lon IS NOT NULL "
+                + "ORDER BY attachment_id LIMIT ?", limit)) {
+            out.add(new PendingGeocode(
+                    r.get("attachment_id", UUID.class),
+                    r.get("gps_lat", Double.class),
+                    r.get("gps_lon", Double.class)));
+        }
+        return out;
+    }
+
+    public record ResolvedPlace(double gpsLat, double gpsLon, String placeName) {}
+
+    /** Already-resolved rows — used to seed the in-memory geocode cache after a restart. */
+    public List<ResolvedPlace> findResolvedPlaces() {
+        List<ResolvedPlace> out = new ArrayList<>();
+        for (Record r : dsl.fetch(
+                "SELECT gps_lat, gps_lon, place_name FROM attachment_image_meta "
+                + "WHERE geocode_status = 'done' AND place_name IS NOT NULL "
+                + "  AND gps_lat IS NOT NULL AND gps_lon IS NOT NULL")) {
+            out.add(new ResolvedPlace(
+                    r.get("gps_lat", Double.class),
+                    r.get("gps_lon", Double.class),
+                    r.get("place_name", String.class)));
+        }
+        return out;
+    }
+
     private static ImageMetaRow toRow(Record r) {
         return new ImageMetaRow(
                 r.get("attachment_id", UUID.class),

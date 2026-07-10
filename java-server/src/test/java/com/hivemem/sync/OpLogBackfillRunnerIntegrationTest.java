@@ -100,13 +100,33 @@ class OpLogBackfillRunnerIntegrationTest {
 
         var row = dsl.fetchOne(
                 "SELECT payload::text AS p FROM ops_log "
-                + "WHERE op_type = 'add_cell' AND payload->>'id' = ?",
+                + "WHERE op_type = 'add_cell' AND payload->>'cell_id' = ?",
                 cellId.toString());
         assertThat(row).isNotNull();
         String compact = row.get("p", String.class).replaceAll("\\s+", "");
         assertThat(compact).contains("\"tags\":[\"tag1\",\"tag2\"]");
         assertThat(compact).contains("\"key_points\":[\"kp1\"]");
+        // column names are mapped to the op-payload key contract OpReplayer expects
+        assertThat(compact).contains("\"agent_id\":\"admin\"");
         dsl.execute("DELETE FROM cells WHERE id = ?", cellId);
+    }
+
+    @Test
+    void backfillSkipsClosedRevisions() {
+        dsl.execute("DELETE FROM ops_log");
+        UUID closedId = UUID.randomUUID();
+        dsl.execute(
+                "INSERT INTO cells (id, content, realm, signal, topic, created_by, status, valid_until) "
+                + "VALUES (?, 'old revision', 'eng', 'facts', 't', 'admin', 'committed', now())",
+                closedId);
+
+        runner.runBackfill();
+
+        var row = dsl.fetchOne(
+                "SELECT 1 FROM ops_log WHERE op_type = 'add_cell' AND payload->>'cell_id' = ?",
+                closedId.toString());
+        assertThat(row).isNull();
+        dsl.execute("DELETE FROM cells WHERE id = ?", closedId);
     }
 
     @Test

@@ -156,6 +156,81 @@ class AttachmentServiceUnitTest {
     }
 
     @Test
+    void thumbnailUploadFailureLeavesNullThumbnailKey() throws Exception {
+        props.setEnabled(true);
+
+        when(parsers.parse(eq("application/pdf"), any()))
+                .thenReturn(ParseResult.withThumbnailAndScan(null, new byte[]{1, 2, 3}, false, 1));
+        when(embeddingClient.encodeForCell(anyString(), any())).thenReturn(java.util.List.of(0.1f));
+        when(repo.findByHash(anyString())).thenReturn(Optional.empty());
+        org.mockito.Mockito.doThrow(new RuntimeException("s3 down"))
+                .when(seaweedFs).uploadBytes(anyString(), any(), anyString());
+
+        Map<String, Object> attRow = new LinkedHashMap<>();
+        attRow.put("id", UUID.randomUUID().toString());
+        attRow.put("file_hash", "h");
+        attRow.put("s3_key_original", "orig/f.pdf");
+        attRow.put("s3_key_thumbnail", null);
+        when(repo.insert(anyString(), anyString(), anyString(), org.mockito.ArgumentMatchers.anyLong(),
+                anyString(), org.mockito.ArgumentMatchers.nullable(String.class), anyString(),
+                org.mockito.ArgumentMatchers.nullable(Integer.class))).thenReturn(attRow);
+        Map<String, Object> cellRow = new LinkedHashMap<>();
+        cellRow.put("id", UUID.randomUUID().toString());
+        when(writeRepo.addCell(anyString(), any(), anyString(), any(), any(), anyString(),
+                any(), any(), any(), any(), any(), any(), anyString(), anyString(), any()))
+                .thenReturn(cellRow);
+
+        InputStream in = new ByteArrayInputStream(new byte[]{5});
+        service.ingest(in, "f.pdf", "application/pdf", "work", "facts", "docs", null, "user");
+
+        // The failed thumbnail upload must persist a NULL key (repairable by backfill),
+        // never a key that references a nonexistent S3 object (permanent 500s).
+        verify(repo).insert(anyString(), anyString(), anyString(), org.mockito.ArgumentMatchers.anyLong(),
+                anyString(), isNull(), anyString(), org.mockito.ArgumentMatchers.nullable(Integer.class));
+    }
+
+    @Test
+    void dedupReuploadSeedsExistingContentAndSkipsOcr() throws Exception {
+        props.setEnabled(true);
+
+        // Scan-like PDF: a fresh upload would tag ocr_pending and run the OCR pipeline.
+        when(parsers.parse(eq("application/pdf"), any()))
+                .thenReturn(ParseResult.withThumbnailAndScan(null, null, true, 2));
+        when(embeddingClient.encodeForCell(anyString(), any())).thenReturn(java.util.List.of(0.1f));
+
+        UUID attId = UUID.randomUUID();
+        Map<String, Object> existingRow = new LinkedHashMap<>();
+        existingRow.put("id", attId.toString());
+        existingRow.put("file_hash", "h");
+        existingRow.put("s3_key_original", "orig/f.pdf");
+        existingRow.put("s3_key_thumbnail", "thumb.jpg");
+        when(repo.findByHash(anyString())).thenReturn(Optional.of(existingRow));
+        when(repo.reactivate(eq(attId), any())).thenReturn(existingRow);
+        when(repo.findExtractionCellSeed(attId)).thenReturn(Optional.of(
+                new AttachmentRepository.ExtractionCellSeed(
+                        "Previously OCR'd text", java.util.List.of())));
+
+        Map<String, Object> cellRow = new LinkedHashMap<>();
+        cellRow.put("id", UUID.randomUUID().toString());
+        when(writeRepo.addCell(anyString(), any(), anyString(), any(), any(), anyString(),
+                any(), any(), any(), any(), any(), any(), anyString(), anyString(), any()))
+                .thenReturn(cellRow);
+
+        InputStream in = new ByteArrayInputStream(new byte[]{5});
+        Map<String, Object> result = service.ingest(
+                in, "f.pdf", "application/pdf", "work", "facts", "docs", null, "user");
+
+        // Content is seeded from the prior extraction cell — OCR is NOT re-run.
+        ArgumentCaptor<String> content = ArgumentCaptor.forClass(String.class);
+        verify(writeRepo).addCell(content.capture(), any(), anyString(), any(), any(), anyString(),
+                any(), any(), any(), any(), any(), any(), anyString(), anyString(), any());
+        assertThat(content.getValue()).isEqualTo("Previously OCR'd text");
+        verify(writeRepo, never()).tagOcrPending(any());
+        verify(seaweedFs, never()).upload(anyString(), any(java.nio.file.Path.class), anyString());
+        assertThat(result.get("deduplicated")).isEqualTo(true);
+    }
+
+    @Test
     void imageIngestExtractsExifUpsertsMetaAndPublishesGeocodeWhenGps() throws Exception {
         props.setEnabled(true);
 

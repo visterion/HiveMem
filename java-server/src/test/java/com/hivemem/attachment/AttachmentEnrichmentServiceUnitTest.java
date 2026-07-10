@@ -304,6 +304,32 @@ class AttachmentEnrichmentServiceUnitTest {
     }
 
     @Test
+    void describeAndRevise_targetsNewRevisionIdFromReviseResult() {
+        UUID oldCell = UUID.randomUUID();
+        UUID newCell = UUID.randomUUID();
+        stubDownload();
+        when(visionClient.describeImage(any(), eq("image/png")))
+                .thenReturn(new VisionClient.ImageDescriptionResult("photo_general", "A photo", 10, 5));
+        when(writeService.reviseCell(any(), eq(oldCell), eq("A photo"), eq(null)))
+                .thenReturn(java.util.Map.<String, Object>of("new_id", newCell));
+        ExtractionProfile profile = new ExtractionProfile("image", "p", null, null, null, List.of());
+        when(profileRegistry.resolveImageSubType("photo_general")).thenReturn(profile);
+
+        svc.describeAndRevise(UUID.randomUUID(), oldCell, "k", "image/png");
+
+        // Subtype tag work must land on the NEW revision, not the superseded (dead) cell.
+        verify(dsl).execute(anyString(),
+                eq("subtype_whiteboard_photo"), eq("subtype_document_scan"),
+                eq("subtype_photo_general"), eq(newCell));
+        verify(dsl).execute(anyString(),
+                eq("subtype_photo_general"), eq("subtype_photo_general"), eq(newCell));
+        // vision_pending removed from BOTH the old cell and the new revision, or the
+        // hourly backfill re-describes the live revision forever.
+        verify(dsl).execute(anyString(), eq("vision_pending"), eq(oldCell));
+        verify(dsl).execute(anyString(), eq("vision_pending"), eq(newCell));
+    }
+
+    @Test
     void describeAndRevise_swallows429ToRetryLater() {
         UUID cell = UUID.randomUUID();
         stubDownload();

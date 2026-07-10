@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, shallowRef } from 'vue'
+import { computed, onMounted, shallowRef, watch } from 'vue'
 import { buildGoldbergCells, assignRealms } from '../../composables/goldbergMath'
 import type { GoldbergCell } from '../../composables/goldbergMath'
 import { paletteForRealm, type RealmPalette } from '../../composables/realmPalette'
@@ -30,6 +30,8 @@ function rebuild() {
 }
 
 onMounted(rebuild)
+// Rebuild when data arrives after mount (realms/cells stream in progressively).
+watch(() => [props.realms, props.cells], rebuild)
 
 const cellList = computed(() => {
   return goldbergCells.value.map((c) => {

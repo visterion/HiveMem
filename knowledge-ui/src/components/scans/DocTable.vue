@@ -53,7 +53,7 @@ function formatDate(iso: string): string {
 
       <!-- Tags -->
       <span class="dtbl-tags">
-        <span v-for="tag in d.tags.slice(0, 3)" :key="tag" class="mini-tag">{{ tag }}</span>
+        <span v-for="tag in (d.tags ?? []).slice(0, 3)" :key="tag" class="mini-tag">{{ tag }}</span>
       </span>
 
       <!-- Date -->

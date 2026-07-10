@@ -295,7 +295,7 @@ class SearchParityIntegrationTest {
                                         )
                                 )
                         ))))
-                .andExpect(status().isBadRequest())
+                .andExpect(status().isOk())
                 .andReturn();
 
         JsonNode body = objectMapper.readTree(result.getResponse().getContentAsString());

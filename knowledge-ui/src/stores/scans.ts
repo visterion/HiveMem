@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { useApi } from '../api/useApi'
 import { useCellStore } from './cell'
 import { useReaderStore } from './reader'
+import { useUiStore } from './ui'
 import type { Cell, DocumentRow, FacetCounts, SavedSearch } from '../api/types'
 
 export type FacetKey = 'tag' | 'status' | 'realm' | 'year' | 'signal' | 'correspondent'
@@ -10,6 +11,8 @@ export interface SavedView { id: string; name: string; icon?: string; filter: Pa
 const REALM = 'documents'
 /** Standard server-side facet fields (no correspondent — that's derived client-side) */
 const SERVER_FACET_FIELDS = ['tag', 'status', 'realm', 'year', 'signal'] as const
+/** Page size for both browse (list_documents, paginated) and search (capped). */
+const PAGE_SIZE = 100
 
 function emptyFacets(): Record<FacetKey, Set<string>> {
   return { tag: new Set(), status: new Set(), realm: new Set(), year: new Set(), signal: new Set(), correspondent: new Set() }
@@ -28,6 +31,11 @@ export const useScansStore = defineStore('scans', {
     openId: null as string | null,
     loading: false,
     offset: 0,
+    /** True when the last list_documents page was full — more docs may exist (M54). */
+    hasMore: false,
+    // Monotonic token: only the latest load()/loadMore() commits results, so an
+    // older, slower response can't overwrite a newer one (M53).
+    loadSeq: 0,
     savedViews: [] as SavedView[],
   }),
   getters: {
@@ -49,6 +57,10 @@ export const useScansStore = defineStore('scans', {
       const keys: FacetKey[] = ['tag', 'status', 'realm', 'year', 'signal', 'correspondent']
       return keys.reduce((n, k) => n + s.facets[k].size, 0)
     },
+    /** Search results are capped at PAGE_SIZE (no server pagination) — a full page means truncation (M54). */
+    searchTruncated(s): boolean {
+      return !!s.query.trim() && s.results.length >= PAGE_SIZE
+    },
   },
   actions: {
     serverArgs(): Record<string, unknown> {
@@ -60,20 +72,49 @@ export const useScansStore = defineStore('scans', {
       return args
     },
     async load() {
+      const seq = ++this.loadSeq
       this.loading = true
       try {
         const api = useApi()
         if (this.query.trim()) {
-          this.results = await api.call<DocumentRow[]>('search', {
+          const rows = await api.call<DocumentRow[]>('search', {
             query: this.query, realm: REALM, ...this.serverArgs(),
-            include: ['content', 'tags', 'created_at'], limit: 100,
-          })
+            include: ['content', 'tags', 'created_at'], limit: PAGE_SIZE,
+          }) ?? []
+          if (seq !== this.loadSeq) return // stale — a newer load() owns the state (M53)
+          this.results = rows
+          this.offset = rows.length
+          this.hasMore = false // search has no pagination; see searchTruncated getter
         } else {
-          this.results = await api.call<DocumentRow[]>('list_documents', {
-            ...this.serverArgs(), sort: this.sort, limit: 100, offset: this.offset,
-          })
+          const rows = await api.call<DocumentRow[]>('list_documents', {
+            ...this.serverArgs(), sort: this.sort, limit: PAGE_SIZE, offset: 0,
+          }) ?? []
+          if (seq !== this.loadSeq) return
+          this.results = rows
+          this.offset = rows.length
+          this.hasMore = rows.length >= PAGE_SIZE
         }
-      } finally { this.loading = false }
+      } finally {
+        if (seq === this.loadSeq) this.loading = false
+      }
+    },
+    // Fetch the next list_documents page and append it (browse mode only) — before
+    // this, `offset` never advanced and the collection was silently capped at 100 (M54).
+    async loadMore() {
+      if (this.loading || !this.hasMore || this.query.trim()) return
+      const seq = ++this.loadSeq
+      this.loading = true
+      try {
+        const rows = await useApi().call<DocumentRow[]>('list_documents', {
+          ...this.serverArgs(), sort: this.sort, limit: PAGE_SIZE, offset: this.offset,
+        }) ?? []
+        if (seq !== this.loadSeq) return
+        this.results = [...this.results, ...rows]
+        this.offset += rows.length
+        this.hasMore = rows.length >= PAGE_SIZE
+      } finally {
+        if (seq === this.loadSeq) this.loading = false
+      }
     },
     async loadFacets() {
       const api = useApi()
@@ -114,6 +155,15 @@ export const useScansStore = defineStore('scans', {
     setMode(m: 'grid' | 'list') { this.mode = m },
     toggleFacet(key: FacetKey, val: string) {
       const set = this.facets[key]
+      if (key === 'status') {
+        // The server accepts a single status and serverArgs() sends only one — make
+        // status honest single-select (radio semantics) instead of silently applying
+        // just the first of a multi-selection (L-F8).
+        const had = set.has(val)
+        set.clear()
+        if (!had) set.add(val)
+        return
+      }
       set.has(val) ? set.delete(val) : set.add(val)
     },
     clearFacets() { this.facets = emptyFacets(); this.savedView = 'all' },
@@ -209,7 +259,17 @@ export const useScansStore = defineStore('scans', {
         await cells.open(full)
         const firstAtt = full.attachments?.[0]?.id
         if (focus === 'document' && firstAtt) initialTab = firstAtt
-      } catch { /* open the reader anyway; it falls back via ensureAttachments */ }
+      } catch {
+        // Rich fetch failed. Fall back to a plain load; if that fails too, do NOT
+        // open the reader — it would render the previously selected cell (stale
+        // cellStore.current) under this document (M55).
+        try { await cells.load(id) } catch { /* handled below */ }
+        if (cells.currentId !== id) {
+          this.openId = null
+          useUiStore().pushToast('error', 'Document could not be loaded')
+          return
+        }
+      }
       reader.openReader(id, initialTab)
     },
   },

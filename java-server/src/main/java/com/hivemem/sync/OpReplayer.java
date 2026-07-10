@@ -16,9 +16,15 @@ public class OpReplayer {
 
     private static final Logger log = LoggerFactory.getLogger(OpReplayer.class);
 
-    public enum ReplayResult { REPLAYED, SKIPPED, CONFLICT, UNKNOWN_OP }
+    /**
+     * SKIPPED means "legitimately not applied" (already applied, duplicate, stale) — safe to
+     * advance past. FAILED means the op threw during execution (e.g. embedding service down,
+     * malformed payload) — the caller must NOT advance {@code last_seen_seq} past it, so the op
+     * is retried on the next pull instead of being silently lost.
+     */
+    public enum ReplayResult { REPLAYED, SKIPPED, CONFLICT, UNKNOWN_OP, FAILED }
 
-    public record BatchResult(int replayed, int skipped) {}
+    public record BatchResult(int replayed, int skipped, int failed) {}
 
     private final DSLContext dsl;
     private final EmbeddingClient embeddingClient;
@@ -38,7 +44,7 @@ public class OpReplayer {
             result = executeOp(op);
         } catch (Exception e) {
             log.warn("Op replay failed op_id={} op_type={}", op.opId(), op.opType(), e);
-            return ReplayResult.SKIPPED;
+            return ReplayResult.FAILED;
         }
 
         if (result == ReplayResult.REPLAYED || result == ReplayResult.CONFLICT) {
@@ -48,14 +54,20 @@ public class OpReplayer {
     }
 
     public BatchResult replayAll(UUID sourcePeer, List<OpDto> ops) {
-        if (ops == null || sourcePeer == null) return new BatchResult(0, 0);
-        int replayed = 0, skipped = 0;
+        if (ops == null || sourcePeer == null) return new BatchResult(0, 0, 0);
+        int replayed = 0, skipped = 0, failed = 0;
         for (OpDto op : ops) {
             ReplayResult r = replay(sourcePeer, op);
+            if (r == ReplayResult.FAILED) {
+                // Ops are sequential and may be causally dependent (add_cell → revise_cell);
+                // stop at the first failure. The remaining ops arrive again via the seq-based pull.
+                failed++;
+                break;
+            }
             if (r == ReplayResult.REPLAYED || r == ReplayResult.CONFLICT) replayed++;
             else skipped++;
         }
-        return new BatchResult(replayed, skipped);
+        return new BatchResult(replayed, skipped, failed);
     }
 
     private ReplayResult executeOp(OpDto op) {
@@ -76,6 +88,11 @@ public class OpReplayer {
             case "diary_write" -> replayDiaryWrite(p);
             case "update_blueprint" -> replayUpdateBlueprint(p);
             case "approve_pending" -> replayApprovePending(p);
+            case "reject_cell" -> replayRejectCell(p);
+            case "add_tags" -> replayAddTags(p);
+            case "remove_tags" -> replayRemoveTags(p);
+            case "bulk_tag" -> replayBulkTag(p);
+            case "update_cell_meta" -> replayUpdateCellMeta(p);
             default -> {
                 log.debug("Unknown op_type='{}' — skipping", op.opType());
                 yield ReplayResult.UNKNOWN_OP;
@@ -95,9 +112,12 @@ public class OpReplayer {
         }
         String content = text(p, "content");
         String summary = text(p, "summary");
+        // encodeForCell returns null by contract for long content without a summary: mirror the
+        // local write path — insert with NULL embedding and tag needs_summary instead of NPEing.
         List<Float> embedding = embeddingClient.encodeForCell(content, summary);
-        Float[] embArr = embedding.toArray(Float[]::new);
+        Float[] embArr = embedding == null ? null : embedding.toArray(Float[]::new);
         String[] tags = arrayField(p, "tags");
+        if (embArr == null) tags = appendIfMissing(tags, "needs_summary");
         String[] keyPoints = arrayField(p, "key_points");
         OffsetDateTime validFrom = p.hasNonNull("valid_from")
                 ? OffsetDateTime.parse(p.get("valid_from").asText()) : null;
@@ -132,9 +152,22 @@ public class OpReplayer {
         }
         String newContent = text(p, "new_content");
         String newSummary = text(p, "new_summary");
+        // Same null-embedding contract as replayAddCell: NULL vector + needs_summary tag.
         List<Float> embedding = embeddingClient.encodeForCell(newContent, newSummary);
-        Float[] embArr = embedding.toArray(Float[]::new);
+        Float[] embArr = embedding == null ? null : embedding.toArray(Float[]::new);
         String status = textOrDefault(p, "status", "committed");
+
+        // Prefer payload metadata over the old revision's: the summarizer ships its LLM-derived
+        // key_points/insight/tags in the op so the enrichment reaches peers. Absent fields carry
+        // the old values over; new_tags are merged (union) with the old tags — mirroring the
+        // local WriteToolRepository.reviseCell semantics.
+        String[] keyPoints = p.hasNonNull("new_key_points")
+                ? arrayField(p, "new_key_points") : meta.get("key_points", String[].class);
+        String insight = p.hasNonNull("new_insight")
+                ? text(p, "new_insight") : meta.get("insight", String.class);
+        String[] mergedTags = mergeTags(meta.get("tags", String[].class),
+                p.hasNonNull("new_tags") ? arrayField(p, "new_tags") : null);
+        String[] tags = embArr == null ? appendIfMissing(mergedTags, "needs_summary") : mergedTags;
 
         dsl.transaction(ctx -> {
             var tx = ctx.dsl();
@@ -147,9 +180,9 @@ public class OpReplayer {
                     newId, oldId, newContent, embArr,
                     meta.get("realm", String.class), meta.get("signal", String.class),
                     meta.get("topic", String.class), meta.get("source", String.class),
-                    meta.get("tags", String[].class), meta.get("importance", Integer.class),
-                    text(p, "new_summary"), meta.get("key_points", String[].class),
-                    meta.get("insight", String.class), meta.get("actionability", String.class),
+                    tags, meta.get("importance", Integer.class),
+                    newSummary, keyPoints,
+                    insight, meta.get("actionability", String.class),
                     status, text(p, "agent_id"));
         });
         return ReplayResult.REPLAYED;
@@ -346,6 +379,85 @@ public class OpReplayer {
         return ReplayResult.REPLAYED;
     }
 
+    private ReplayResult replayRejectCell(JsonNode p) {
+        UUID cellId = uuid(p, "cell_id");
+        // Idempotent: 0 rows affected (already rejected, closed, missing) is still REPLAYED.
+        dsl.execute("""
+                UPDATE cells
+                SET status = 'rejected'
+                WHERE id = ?
+                  AND valid_until IS NULL
+                  AND status IN ('committed', 'pending')
+                """, cellId);
+        return ReplayResult.REPLAYED;
+    }
+
+    private ReplayResult replayAddTags(JsonNode p) {
+        applyAddTags(uuid(p, "cell_id"), arrayField(p, "tags"));
+        return ReplayResult.REPLAYED;
+    }
+
+    private ReplayResult replayRemoveTags(JsonNode p) {
+        applyRemoveTags(uuid(p, "cell_id"), arrayField(p, "tags"));
+        return ReplayResult.REPLAYED;
+    }
+
+    private ReplayResult replayBulkTag(JsonNode p) {
+        String[] cellIds = arrayField(p, "cell_ids");
+        String[] addTags = arrayField(p, "add_tags");
+        String[] removeTags = arrayField(p, "remove_tags");
+        for (String idString : cellIds) {
+            UUID cellId = UUID.fromString(idString);
+            if (addTags.length > 0) applyAddTags(cellId, addTags);
+            if (removeTags.length > 0) applyRemoveTags(cellId, removeTags);
+        }
+        return ReplayResult.REPLAYED;
+    }
+
+    /**
+     * Derived cell metadata written by the summarizer (document_type, topic/title, valid_from,
+     * extra tags). Absent payload fields leave the column unchanged.
+     */
+    private ReplayResult replayUpdateCellMeta(JsonNode p) {
+        UUID cellId = uuid(p, "cell_id");
+        OffsetDateTime validFrom = p.hasNonNull("valid_from")
+                ? OffsetDateTime.parse(p.get("valid_from").asText()) : null;
+        dsl.execute("""
+                UPDATE cells
+                SET document_type = COALESCE(?, document_type),
+                    topic = COALESCE(?, topic),
+                    valid_from = COALESCE(?::timestamptz, valid_from)
+                WHERE id = ?
+                  AND valid_until IS NULL
+                """, text(p, "document_type"), text(p, "topic"), validFrom, cellId);
+        String[] addTags = arrayField(p, "add_tags");
+        if (addTags.length > 0) applyAddTags(cellId, addTags);
+        return ReplayResult.REPLAYED;
+    }
+
+    /** Mirrors WriteToolRepository.addTags (union, de-duplicated; array_cat tolerates NULL tags). */
+    private void applyAddTags(UUID cellId, String[] tags) {
+        dsl.execute("""
+                UPDATE cells
+                SET tags = (SELECT array_agg(DISTINCT t) FROM unnest(array_cat(tags, ?::text[])) t)
+                WHERE id = ?
+                  AND valid_until IS NULL
+                """, tags, cellId);
+    }
+
+    /** Mirrors WriteToolRepository.removeTags. */
+    private void applyRemoveTags(UUID cellId, String[] tags) {
+        dsl.execute("""
+                UPDATE cells
+                SET tags = CASE
+                    WHEN tags IS NULL THEN NULL
+                    ELSE array(SELECT t FROM unnest(tags) t WHERE t <> ALL(?::text[]))
+                END
+                WHERE id = ?
+                  AND valid_until IS NULL
+                """, tags, cellId);
+    }
+
     private UUID findLocalOpForCell(UUID cellId) {
         var row = dsl.fetchOne(
                 "SELECT op_id FROM ops_log WHERE op_type = 'add_cell' AND payload->>'cell_id' = ? LIMIT 1",
@@ -382,6 +494,25 @@ public class OpReplayer {
         if (!arr.isArray()) return new String[0];
         String[] result = new String[arr.size()];
         for (int i = 0; i < arr.size(); i++) result[i] = arr.get(i).asText();
+        return result;
+    }
+
+    /** Union of existing and new tags, order-preserving and de-duplicated. */
+    private static String[] mergeTags(String[] oldTags, String[] newTags) {
+        if (newTags == null || newTags.length == 0) return oldTags;
+        java.util.LinkedHashSet<String> merged = new java.util.LinkedHashSet<>();
+        if (oldTags != null) merged.addAll(java.util.Arrays.asList(oldTags));
+        merged.addAll(java.util.Arrays.asList(newTags));
+        return merged.toArray(String[]::new);
+    }
+
+    private static String[] appendIfMissing(String[] tags, String tag) {
+        if (tags == null) return new String[] {tag};
+        for (String t : tags) {
+            if (tag.equals(t)) return tags;
+        }
+        String[] result = java.util.Arrays.copyOf(tags, tags.length + 1);
+        result[tags.length] = tag;
         return result;
     }
 }

@@ -1,5 +1,7 @@
 .env
 .mcp.json
+# Real S3 credentials — create from seaweedfs/s3.json.template
+seaweedfs/s3.json
 backups/
 node_modules/
 *.png

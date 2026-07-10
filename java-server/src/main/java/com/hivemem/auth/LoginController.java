@@ -73,7 +73,10 @@ public class LoginController {
             @RequestParam(value = "next", required = false) String next,
             HttpServletRequest request,
             HttpServletResponse response) throws Exception {
-        String ip = request.getRemoteAddr();
+        // Bucket on the real TCP peer, not getRemoteAddr(): with
+        // forward-headers-strategy=framework the latter reflects the client-supplied
+        // X-Forwarded-For, which an attacker can rotate to evade the lockout.
+        String ip = AuthFilter.tcpPeerAddress(request);
         if (rateLimiter.isBlocked(ip)) {
             response.setStatus(429);
             return null;

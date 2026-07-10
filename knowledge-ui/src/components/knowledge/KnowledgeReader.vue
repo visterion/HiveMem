@@ -3,6 +3,7 @@ import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useCellStore } from '../../stores/cell'
 import { useReaderStore } from '../../stores/reader'
+import { useUiStore } from '../../stores/ui'
 import { cellLabel } from '../../api/cellLabel'
 import HmIcon from '../shell/HmIcon.vue'
 import CellEditor from './CellEditor.vue'
@@ -13,6 +14,7 @@ import { cellToMarkdown, cellMarkdownFilename } from '../../composables/cellMark
 
 const cellStore = useCellStore()
 const reader = useReaderStore()
+const ui = useUiStore()
 const { t } = useI18n()
 
 const cell = computed(() => cellStore.current?.cell ?? null)
@@ -33,11 +35,20 @@ async function addTag() {
   if (!tag || !cell.value) return
   newTag.value = ''
   if ((cell.value.tags ?? []).includes(tag)) return
-  await cellStore.addTags(cell.value.id, [tag])
+  try {
+    await cellStore.addTags(cell.value.id, [tag])
+  } catch {
+    newTag.value = tag // restore the typed tag so the user can retry
+    ui.pushToast('error', t('common.actionFailed'))
+  }
 }
 async function removeTag(tag: string) {
   if (!cell.value) return
-  await cellStore.removeTags(cell.value.id, [tag])
+  try {
+    await cellStore.removeTags(cell.value.id, [tag])
+  } catch {
+    ui.pushToast('error', t('common.actionFailed'))
+  }
 }
 
 function exportMarkdown() {

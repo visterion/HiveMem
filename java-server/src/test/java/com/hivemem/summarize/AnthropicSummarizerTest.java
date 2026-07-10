@@ -123,15 +123,24 @@ class AnthropicSummarizerTest {
     @Test
     void generateTitleReturnsShortTitleFromSummary() {
         mock.stubComplete("Schornsteinfeger-Rechnung 2025");
-        String title = summarizer.generateTitle("Rechnung von Schornsteinfegermeister Matthias Fischer …");
-        assertThat(title).isEqualTo("Schornsteinfeger-Rechnung 2025");
+        AnthropicSummarizer.TitleResult title =
+                summarizer.generateTitle("Rechnung von Schornsteinfegermeister Matthias Fischer …");
+        assertThat(title.title()).isEqualTo("Schornsteinfeger-Rechnung 2025");
     }
 
     @Test
     void generateTitleStripsSurroundingQuotes() {
         mock.stubComplete("\\\"Debeka Beitragsanpassung 2026\\\"");
-        String title = summarizer.generateTitle("Debeka Beitragsänderung …");
-        assertThat(title).isEqualTo("Debeka Beitragsanpassung 2026");
+        AnthropicSummarizer.TitleResult title = summarizer.generateTitle("Debeka Beitragsänderung …");
+        assertThat(title.title()).isEqualTo("Debeka Beitragsanpassung 2026");
+    }
+
+    @Test
+    void generateTitleOnBlankInputSpendsNoTokens() {
+        AnthropicSummarizer.TitleResult title = summarizer.generateTitle("   ");
+        assertThat(title.title()).isNull();
+        assertThat(title.inputTokens()).isZero();
+        assertThat(title.outputTokens()).isZero();
     }
 
     @Test

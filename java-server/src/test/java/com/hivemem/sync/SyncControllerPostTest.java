@@ -60,7 +60,7 @@ class SyncControllerPostTest {
     void setUp() {
         Mockito.reset(opReplayer);
         Mockito.when(opReplayer.replayAll(any(), any()))
-                .thenReturn(new OpReplayer.BatchResult(0, 0));
+                .thenReturn(new OpReplayer.BatchResult(0, 0, 0));
         mockMvc = MockMvcBuilders.webAppContextSetup(context).addFilters(authFilter).build();
     }
 
@@ -77,7 +77,7 @@ class SyncControllerPostTest {
         UUID sourcePeer = UUID.randomUUID();
 
         Mockito.when(opReplayer.replayAll(eq(sourcePeer), any()))
-                .thenReturn(new OpReplayer.BatchResult(2, 1));
+                .thenReturn(new OpReplayer.BatchResult(2, 1, 0));
 
         mockMvc.perform(post("/sync/ops")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer good-token")

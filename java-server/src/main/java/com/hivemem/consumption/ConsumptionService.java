@@ -116,7 +116,7 @@ public class ConsumptionService implements SeparationApplier {
             } catch (Exception e) {
                 log.warn("Consumption ingest failed for {}: {}", filename, e.toString());
                 if (fileRepo != null) fileRepo.markFailed(hash, e.toString());
-                tryMoveFailed(staged);
+                tryMoveFailed(staged, hash);
             }
         }
     }
@@ -162,7 +162,7 @@ public class ConsumptionService implements SeparationApplier {
                             + "or raise hivemem.consumption.max-pages)",
                     filename, realPageCount, props.getMaxPages());
             if (fileRepo != null) fileRepo.markFailed(hash, "page count " + realPageCount + " exceeds max-pages " + props.getMaxPages());
-            tryMoveFailed(staged);
+            tryMoveFailed(staged, hash);
             return;
         }
 
@@ -176,6 +176,9 @@ public class ConsumptionService implements SeparationApplier {
                 try { text = tesseract.ocr(pages.get(i), ocrProps.getLanguages(), ocrProps.getCallTimeoutSeconds()); }
                 catch (Exception ocrErr) { text = ""; }
                 digests.add(digestBuilder.build(i + 1, text));
+                // Heartbeat: a large batch's per-page OCR can outlast the recovery sweep's stale
+                // threshold; bump updated_at so a live run isn't mistaken for a crash and re-staged.
+                if (fileRepo != null) fileRepo.touch(hash);
             }
             String s3Key = "consumption/batch-" + correlationId + ".pdf";
             seaweed.uploadBytes(s3Key, bytes, "application/pdf");
@@ -209,7 +212,7 @@ public class ConsumptionService implements SeparationApplier {
             log.warn("Separation prep failed for {}: {}", filename, e.toString());
             if (jobCreated) jobs.markFailed(correlationId);
             if (fileRepo != null) fileRepo.markFailed(hash, e.toString());
-            tryMoveFailed(staged);
+            tryMoveFailed(staged, hash);
         }
     }
 
@@ -230,6 +233,13 @@ public class ConsumptionService implements SeparationApplier {
             return;
         }
         SeparationJobRepository.Job job = jobOpt.get();
+        // Atomically claim the job BEFORE doing any work: a duplicate webhook delivery, or the
+        // reconcile sweep degrading near the stale threshold, must not ingest the batch twice.
+        if (!jobs.claim(job.correlationId())) {
+            log.info("Separation job {} (run {}) already claimed elsewhere; skipping duplicate apply",
+                    job.correlationId(), runId);
+            return;
+        }
         try {
             byte[] pdf = seaweed.downloadBytes(job.s3Key());
             int total = job.pageCount();
@@ -269,7 +279,10 @@ public class ConsumptionService implements SeparationApplier {
         } catch (Exception e) {
             log.warn("apply separation run {} (job {}) failed: {}", runId, job.correlationId(), e.toString());
             jobs.markFailed(job.correlationId());
-            tryMoveFailed(Path.of(job.sourcePath()));
+            // The ledger row was marked 'done' at dispatch; flip it back to 'failed' so the
+            // recovery sweep's bounded retry owns re-ingesting the batch (no terminal dead-end).
+            failLedgerAndMoveFailed(Path.of(job.sourcePath()),
+                    "apply separation run " + runId + " failed: " + e);
         }
     }
 
@@ -277,9 +290,32 @@ public class ConsumptionService implements SeparationApplier {
         return name.toLowerCase().endsWith(".pdf") ? name.substring(0, name.length() - 4) : name;
     }
 
-    private void tryMoveFailed(Path file) {
-        try { mover.moveToFailed(file); }
-        catch (IOException io) { log.error("Could not move {} to failed/: {}", file, io.toString()); }
+    private void tryMoveFailed(Path file) { tryMoveFailed(file, null); }
+
+    /** Move to failed/ and, when the ledger row is known, persist the (possibly collision-suffixed)
+     *  landed filename so the retry sweep resolves the physical file under its real name. */
+    private void tryMoveFailed(Path file, String hash) {
+        try {
+            Path dest = mover.moveToFailed(file);
+            if (fileRepo != null && hash != null && dest != null) {
+                fileRepo.updateFilename(hash, dest.getFileName().toString());
+            }
+        } catch (IOException io) { log.error("Could not move {} to failed/: {}", file, io.toString()); }
+    }
+
+    /** Flip the ledger row for a staged batch back to 'failed' (hash recomputed from the on-disk
+     *  bytes — the row was marked 'done' at dispatch) and move the file to failed/, so the recovery
+     *  sweep's bounded retry owns re-ingesting it instead of leaving a terminal dead-end. */
+    private void failLedgerAndMoveFailed(Path staged, String reason) {
+        String hash = null;
+        if (fileRepo != null) {
+            try { hash = sha256(Files.readAllBytes(staged)); }
+            catch (Exception readErr) {
+                log.warn("Could not hash {} for ledger recovery: {}", staged, readErr.toString());
+            }
+            if (hash != null) fileRepo.markFailed(hash, reason);
+        }
+        tryMoveFailed(staged, hash);
     }
 
     /** Move a (staged) source to processed/ but never fail the caller on a move error — the work is done. */

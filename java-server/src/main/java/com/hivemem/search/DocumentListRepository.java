@@ -70,10 +70,12 @@ public class DocumentListRepository {
                 "LEFT JOIN LATERAL (SELECT object FROM active_facts " +
                 "    WHERE source_id = c.id AND predicate IN ('vendor','party') " +
                 "    ORDER BY predicate LIMIT 1) corr ON true " +
-                "WHERE c.valid_until IS NULL " +
+                "WHERE (c.valid_until IS NULL OR c.valid_until > now()) " +
                 "AND c.realm IS NOT DISTINCT FROM ? " +
                 "AND c.status = COALESCE(?, 'committed') " +
-                "AND (?::text[] IS NULL OR c.tags::varchar[] && ?::varchar[]) " +
+                // No cast on c.tags: the column is text[] and a varchar[] cast would defeat
+                // the idx_cells_tags GIN index.
+                "AND (?::text[] IS NULL OR c.tags && ?::text[]) " +
                 "AND (?::text IS NULL OR c.signal = ?) " +
                 "AND (?::text IS NULL OR c.topic = ?) " +
                 "ORDER BY " + orderClause + " " +

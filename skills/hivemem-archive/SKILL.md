@@ -17,9 +17,9 @@ This skill guides the agent in systematically persisting knowledge into the Hive
 
 1.  **Analyze Session:** Summarize the core achievement and its rationale.
 2.  **Classify (Realm/Signal/Topic):**
-    - `Realm`: Top-level (e.g., `projects`, `private`).
-    - `Signal`: Category (e.g., `software`, `finance`).
-    - `Topic`: Specific topic (e.g., `hivemem-auth`).
+    - `Realm`: Free-form major area (e.g., `hivemem`, `work`, `personal`).
+    - `Signal`: Fixed enum — one of `facts`, `events`, `discoveries`, `preferences`, `advice`.
+    - `Topic`: Free-form specific subject within the realm (e.g., `hivemem-auth`).
 3.  **Store Cell:** Pass `dedupe_threshold` (e.g. `0.92`) to `add_cell` so the server encodes once and refuses to insert if a near-duplicate exists. Fill all progressive fields.
     - Content: Verbatim source material
     - Summary: Short synopsis

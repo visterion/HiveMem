@@ -138,6 +138,17 @@ abstract class ConsumptionITSupport {
         jobRepo = new SeparationJobRepository(dsl);
     }
 
+    /** Wrap an instance (possibly null) in an ObjectProvider for constructor wiring in tests. */
+    protected static <T> ObjectProvider<T> providerOf(T instance) {
+        return new ObjectProvider<>() {
+            @Override public T getObject(Object... args) { return instance; }
+            @Override public T getObject() { return instance; }
+            @Override public T getIfAvailable() { return instance; }
+            @Override public T getIfUnique() { return instance; }
+            @Override public Stream<T> stream() { return instance == null ? Stream.empty() : Stream.of(instance); }
+        };
+    }
+
     /** Build a ConsumptionService wired to the shared collaborators, with no VistierieSeparationClient
      *  (so the single-doc path is taken and apply() works without queen). No ledger repo. */
     protected ConsumptionService buildService(ConsumptionProperties cp) {

@@ -37,18 +37,30 @@ export function useKnowledgeSearch() {
   const results = ref<SearchResult[]>([])
   const facetCounts = ref<Record<string, FacetValue[]>>({})
   const loading = ref(false)
+  // Monotonic token: only the latest run() may commit results, so an older,
+  // slower response can never overwrite a newer one (search-as-you-type race, M53).
+  let requestSeq = 0
 
   function hasAnyFilter() {
     return !!query.value.trim() || facets.realm.size || facets.signal.size || facets.tag.size
   }
 
   async function run() {
-    if (!hasAnyFilter()) { results.value = []; facetCounts.value = {}; return }
+    if (!hasAnyFilter()) {
+      requestSeq++ // invalidate any in-flight response so it can't repopulate a cleared list
+      results.value = []; facetCounts.value = {}; loading.value = false
+      return
+    }
+    const seq = ++requestSeq
     loading.value = true
     try {
       const api = useApi()
       const searchArgs: Record<string, unknown> = {
-        query: query.value, limit: 50, include: ['summary', 'created_at', 'scores'],
+        query: query.value, limit: 50,
+        // `include` REPLACES the server's default field set. content/tags/layers must
+        // be listed explicitly: opened results are cached, and a partial row renders
+        // a blank reader and lets Edit overwrite the real content with the seed text (C3).
+        include: ['content', 'tags', 'key_points', 'insight', 'importance', 'summary', 'created_at', 'scores'],
       }
       const tags = [...facets.tag]; if (tags.length) searchArgs.tags = tags
       if (facets.realm.size === 1) searchArgs.realm = [...facets.realm][0]
@@ -61,9 +73,12 @@ export function useKnowledgeSearch() {
         api.call<SearchResult[]>('search', searchArgs),
         api.call<Record<string, FacetValue[]>>('facet_count', facetArgs).catch(() => ({})),
       ])
+      if (seq !== requestSeq) return // stale — a newer run() owns the state now
       results.value = rows ?? []
       facetCounts.value = counts ?? {}
-    } finally { loading.value = false }
+    } finally {
+      if (seq === requestSeq) loading.value = false
+    }
   }
 
   function toggleFacet(key: KnowledgeFacetKey, value: string) {

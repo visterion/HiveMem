@@ -41,6 +41,11 @@ public class KgEntityRepository {
      * Register (or extend) a canonical entity. The normalized canonical name is stored as an alias
      * entry alongside the normalized incoming aliases (so a lookup of the canonical name resolves to
      * itself); on conflict the new normalized aliases are unioned into the existing array.
+     *
+     * <p>Conflicts are arbitrated on the NORMALIZED canonical name (the unique expression index
+     * from V0040, matching {@link KgEntityNormalizer#normalize}), so casing/whitespace variants of
+     * an existing canonical merge into the existing row (its exact spelling wins) instead of
+     * creating duplicate canonicals.
      */
     public void upsert(String canonical, List<String> aliases, String createdBy) {
         List<String> safeAliases = aliases == null ? List.of() : aliases;
@@ -51,7 +56,7 @@ public class KgEntityRepository {
         dslContext.execute("""
                 INSERT INTO kg_entity (canonical_name, aliases, created_by)
                 VALUES (?, ?, ?)
-                ON CONFLICT (canonical_name) DO UPDATE
+                ON CONFLICT (lower(regexp_replace(btrim(canonical_name), '\\s+', ' ', 'g'))) DO UPDATE
                 SET aliases = (
                     SELECT array_agg(DISTINCT x)
                     FROM unnest(kg_entity.aliases || excluded.aliases) AS x
