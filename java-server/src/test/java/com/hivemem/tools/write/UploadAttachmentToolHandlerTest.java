@@ -115,6 +115,19 @@ class UploadAttachmentToolHandlerTest {
     }
 
     @Test
+    void oversizedBase64Payload_rejectedBeforeDecode() throws Exception {
+        AuthPrincipal alice = new AuthPrincipal("alice", AuthRole.WRITER);
+        String oversized = "A".repeat(2 * 1024 * 1024 + 1);
+        JsonNode args = MAPPER.readTree(String.format("""
+                {"realm":"work","filename":"a.txt","mime_type":"text/plain","data":"%s"}""", oversized));
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> handler.call(alice, args));
+        assertEquals("Inline upload too large; use POST /api/attachments for files larger than 1MB",
+                ex.getMessage());
+        verifyNoInteractions(service);
+    }
+
+    @Test
     void serviceFailureWrappedAsRuntimeException() throws Exception {
         doThrow(new RuntimeException("disk full"))
                 .when(service).ingest(any(), any(), any(), any(), any(), any(), any(), any());

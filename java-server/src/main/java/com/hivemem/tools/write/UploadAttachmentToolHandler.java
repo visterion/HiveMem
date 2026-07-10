@@ -19,6 +19,14 @@ import java.util.UUID;
 @Order(38)
 public class UploadAttachmentToolHandler implements ToolHandler {
 
+    /**
+     * Upper bound on the inline Base64 {@code data} payload length (in characters, not
+     * decoded bytes). Guards against a caller sending a huge inline payload that would
+     * otherwise be fully allocated by {@link Base64.Decoder#decode(String)} before any
+     * size check — this is a cheap {@code String.length()} check before that allocation.
+     */
+    static final int MAX_INLINE_BASE64 = 2 * 1024 * 1024;
+
     private final AttachmentService service;
 
     public UploadAttachmentToolHandler(AttachmentService service) {
@@ -60,6 +68,10 @@ public class UploadAttachmentToolHandler implements ToolHandler {
         String filename = WriteArgumentParser.requiredText(arguments, "filename");
         String mimeType = WriteArgumentParser.requiredText(arguments, "mime_type");
         String data     = WriteArgumentParser.requiredText(arguments, "data");
+        if (data.length() > MAX_INLINE_BASE64) {
+            throw new IllegalArgumentException(
+                    "Inline upload too large; use POST /api/attachments for files larger than 1MB");
+        }
         byte[] bytes;
         try {
             bytes = Base64.getDecoder().decode(data);
