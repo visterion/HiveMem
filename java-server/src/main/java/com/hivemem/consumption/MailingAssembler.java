@@ -46,7 +46,17 @@ public class MailingAssembler {
               "confidence":<0.0-1.0>,
               "pages":[<global page numbers in reading order: letter first, then its
               continuation pages by printed page label, then enclosures; blank pages last>]}]
-            Every page exactly once across all mailings.""";
+            Every page exactly once across all mailings.
+
+            Additional hard rules:
+            - Printed page-label continuity: pages of the SAME sender whose printed labels form one
+              continuous sequence are ONE document; body dates never split such a sequence.
+            - It is FORBIDDEN to output two mailings with the same sender and the same letter date —
+              merge them into one.
+            - Enclosures from an affiliated authority/organization (e.g. a Datenschutz notice of the
+              state tax administration inside a Finanzamt mailing) belong to the main mailing.
+            - Every page must appear exactly once — re-check your output against the page list before
+              answering.""";
 
     private final CompleteClient client;
 

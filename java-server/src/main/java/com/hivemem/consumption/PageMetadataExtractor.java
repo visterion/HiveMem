@@ -21,8 +21,11 @@ public class PageMetadataExtractor {
     static final String PROMPT = """
             This is ONE page of a scanned German letter/document batch. Read it and extract:
             - sender: the sender/letterhead (company or authority) printed on the page, else null
-            - date: the letter date printed on the page (not "Stand"/print dates of generic notices
-              — if only a "Stand: ..." date exists, report that but prefix it with "Stand ")
+            - date: the letter's ISSUE date — the date printed in the letterhead/date line or in the
+              subject/heading ("Bescheid ... vom 05.09.2025"). NEVER use dates that only appear in the
+              body prose (transmission dates like "uebermittelt am ...", references like "Ihr Schreiben
+              vom ...", due dates, "Stand: ..." print dates of generic notices — if only a "Stand" date
+              exists, report it prefixed with "Stand "). If no issue date is visible, null.
             - page_label: the page number PRINTED on the page (e.g. "Seite 2 von 2", "2/3");
               vertical print-shop control strings along the edge do NOT count; else null
             - doc_type: short type, e.g. "letter", "contract data sheet", "SEPA mandate",
