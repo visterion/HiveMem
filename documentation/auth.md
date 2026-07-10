@@ -15,7 +15,9 @@ Tokens are stored as SHA-256 hashes in PostgreSQL. The plaintext is shown exactl
 `SessionAuthFilter` runs first and passes bearer-authenticated paths (including `/sync` — peer
 replication would otherwise be redirected to the login page) through to `AuthFilter`, which
 validates the bearer token or returns `401`. Every `/admin` endpoint additionally enforces the
-`admin` role itself.
+`admin` role itself, and `/sync/ops` (both GET and POST) additionally requires a `writer`- or
+`admin`-role token — peer tokens are issued as `writer` (see `scripts/connect-peers.sh`), so
+this closes a `reader`/`agent`-token committed-write bypass without breaking peer sync.
 
 ## Roles
 
