@@ -3,6 +3,7 @@ import { defineComponent } from 'vue'
 import { mount, type VueWrapper } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { useKeybindings } from '../../src/composables/keybindings'
+import { useHistoryClose } from '../../src/composables/useHistoryClose'
 import { useCellStore } from '../../src/stores/cell'
 import { useReaderStore } from '../../src/stores/reader'
 import { useUiStore } from '../../src/stores/ui'
@@ -65,7 +66,11 @@ describe('useKeybindings input/dialog guards', () => {
     expect(toast).toHaveBeenCalledTimes(1)
   })
 
-  it('Escape from inside the reader dialog still closes the reader', () => {
+  it('Escape does NOT call reader.close() directly while the reader is open (H9)', () => {
+    // useHistoryClose (armed by Reader.vue while open) owns Escape for the reader —
+    // it pushed the history sentinel, so it must be the only path that closes it.
+    // If useKeybindings also called reader.close() here, both paths would each
+    // trigger a history.back(), navigating the user out of the route.
     const reader = useReaderStore()
     reader.open = true
     const close = vi.spyOn(reader, 'close').mockImplementation(() => {})
@@ -75,7 +80,20 @@ describe('useKeybindings input/dialog guards', () => {
     readerDialog.appendChild(inner)
     document.body.appendChild(readerDialog)
     press(inner, 'Escape')
-    expect(close).toHaveBeenCalledTimes(1)
+    expect(close).not.toHaveBeenCalled()
+  })
+
+  it('Escape while the reader is open triggers exactly one history.back(), via useHistoryClose alone (H9)', () => {
+    const reader = useReaderStore()
+    reader.open = true
+    const back = vi.spyOn(history, 'back').mockImplementation(() => {})
+    const { arm } = useHistoryClose(() => reader.close())
+    arm()
+    press(document.body, 'Escape')
+    expect(back).toHaveBeenCalledTimes(1)
+    // cleanup: this instance is still "armed" from the mocked back(); drain it
+    // so the real popstate listener doesn't leak into later tests.
+    window.dispatchEvent(new PopStateEvent('popstate'))
   })
 
   it('Escape inside a dialog does NOT clear the selected cell', () => {
