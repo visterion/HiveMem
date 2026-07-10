@@ -65,6 +65,19 @@ describe('useKeybindings input/dialog guards', () => {
     expect(toast).toHaveBeenCalledTimes(1)
   })
 
+  it('Escape from inside the reader dialog still closes the reader', () => {
+    const reader = useReaderStore()
+    reader.open = true
+    const close = vi.spyOn(reader, 'close').mockImplementation(() => {})
+    const readerDialog = document.createElement('div')
+    readerDialog.setAttribute('role', 'dialog')
+    const inner = document.createElement('button')
+    readerDialog.appendChild(inner)
+    document.body.appendChild(readerDialog)
+    press(inner, 'Escape')
+    expect(close).toHaveBeenCalledTimes(1)
+  })
+
   it('Escape inside a dialog does NOT clear the selected cell', () => {
     const cell = useCellStore()
     cell.currentId = 'c1'

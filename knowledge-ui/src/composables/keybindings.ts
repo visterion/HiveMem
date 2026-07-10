@@ -23,9 +23,9 @@ export function useKeybindings() {
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
       e.preventDefault(); ui.activePanel = 'search'
     } else if (e.key === 'Escape') {
-      // A visible dialog owns Escape — don't clear background state under it.
-      if (isInDialog(e.target)) return
       if (reader.open) reader.close()
+      // Any other visible dialog owns Escape — don't clear background state under it.
+      else if (isInDialog(e.target)) return
       else if (cell.currentId) {
         cell.clear()
         canvas.setFocus(null)
