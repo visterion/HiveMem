@@ -816,7 +816,7 @@ class ReadToolIntegrationTest {
         }
 
         JsonNode content = callToolContent("traverse", Map.of(
-                "cell_id", root.toString(), "max_depth", 50, "max_nodes", 5));
+                "cell_id", root.toString(), "max_depth", 10, "max_nodes", 5));
         assertThat(content.path("truncated").asBoolean()).isTrue();
         assertThat(content.path("node_count").asInt()).isLessThanOrEqualTo(5);
         assertThat(content.path("edges")).isNotEmpty();

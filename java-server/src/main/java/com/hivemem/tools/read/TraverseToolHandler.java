@@ -14,7 +14,12 @@ import java.util.UUID;
 @Order(6)
 public class TraverseToolHandler implements ToolHandler {
     private static final int DEFAULT_MAX_DEPTH = 2;
-    private static final int MAX_MAX_DEPTH = 100;
+    /**
+     * The recursive CTE dedupes on rows including depth, so a cyclic graph re-qualifies
+     * every edge at every depth level; a high max_depth on a densely-connected graph can pin
+     * a DB connection for a long time. Lowered from 100 (see B3/M14 fix).
+     */
+    private static final int MAX_MAX_DEPTH = 10;
     private static final int DEFAULT_MAX_NODES = 200;
     private static final int MIN_MAX_NODES = 1;
     private static final int MAX_MAX_NODES = 1000;
@@ -41,7 +46,7 @@ public class TraverseToolHandler implements ToolHandler {
         return ToolInputSchema.object()
                 .requiredUuid("cell_id", "UUID of the starting cell")
                 .optionalString("relation_filter", "Limit traversal to this relation type")
-                .optionalInteger("max_depth", "Maximum traversal depth (default 2, max 100)")
+                .optionalInteger("max_depth", "Maximum traversal depth (default 2, max 10)")
                 .optionalIntegerInRange("max_nodes", "Cap on distinct cells in the result (default 200)", 1, 1000)
                 .build();
     }

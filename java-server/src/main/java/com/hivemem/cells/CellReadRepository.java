@@ -18,6 +18,9 @@ import java.util.UUID;
 @Repository
 public class CellReadRepository {
 
+    /** Statement timeout for the recursive traverse CTE (see B3/M14: bound worst-case work). */
+    private static final int TRAVERSE_QUERY_TIMEOUT_SECONDS = 5;
+
     private final DSLContext dslContext;
 
     public CellReadRepository(DSLContext dslContext) {
@@ -211,8 +214,13 @@ public class CellReadRepository {
             params.add(edgeLimit);
         }
 
+        // Bound the recursive CTE with a statement timeout: on a densely-connected/cyclic
+        // graph the query re-qualifies every edge at every depth before the outer LIMIT
+        // trims it, which could otherwise pin a DB connection indefinitely (see B3/M14).
         List<Map<String, Object>> results = new ArrayList<>();
-        for (Record row : dslContext.fetch(sql, params.toArray())) {
+        for (Record row : dslContext.resultQuery(sql, params.toArray())
+                .queryTimeout(TRAVERSE_QUERY_TIMEOUT_SECONDS)
+                .fetch()) {
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("from_cell", uuidValue(row, "from_cell"));
             result.put("to_cell", uuidValue(row, "to_cell"));
