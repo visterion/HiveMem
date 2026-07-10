@@ -11,7 +11,6 @@ import org.jooq.Record;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
-import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 
@@ -55,14 +54,11 @@ public class GetAttachmentInfoToolHandler implements ToolHandler {
                 LIMIT 1
                 """, id);
 
-        Map<String, Object> result = new LinkedHashMap<>(row);
+        Map<String, Object> result = AttachmentFieldFilter.strip(row);
         result.put("cell_id", cellRow != null ? cellRow.get("cell_id", UUID.class).toString() : null);
         result.put("thumbnail_uri", row.get("s3_key_thumbnail") != null
                 ? "hivemem://attachments/" + id + "/thumbnail" : null);
         result.put("content_uri", "hivemem://attachments/" + id + "/content");
-
-        result.remove("s3_key_original");
-        result.remove("s3_key_thumbnail");
 
         return result;
     }

@@ -40,6 +40,8 @@ public class ListAttachmentsToolHandler implements ToolHandler {
     @Override
     public Object call(AuthPrincipal principal, JsonNode arguments) {
         UUID cellId = WriteArgumentParser.requiredUuid(arguments, "cell_id");
-        return repo.findByCellId(cellId);
+        return repo.findByCellId(cellId).stream()
+                .map(AttachmentFieldFilter::strip)
+                .toList();
     }
 }
