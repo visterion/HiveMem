@@ -79,7 +79,10 @@ public class WriteToolService {
         String status = effectiveStatus(principal.role(), requestedStatus);
         List<Float> embedding = embeddingClient.encodeForCell(content, summary);
 
-        if (dedupeThreshold != null) {
+        if (dedupeThreshold != null && embedding != null) {
+            // embedding is null when summary is blank/absent AND content exceeds
+            // EmbeddingClient.CONTENT_EMBED_MAX_CHARS — skip the dedupe check in that case
+            // (the cell is tagged needs_summary below and deduped later once summarized).
             // Serialize concurrent identical adds so the dedupe check-then-insert cannot race
             // (mirrors updateBlueprint's pg_advisory_xact_lock pattern).
             writeToolRepository.advisoryXactLock("cell-dedupe:" + content);
