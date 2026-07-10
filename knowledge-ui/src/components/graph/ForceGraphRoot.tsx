@@ -54,10 +54,15 @@ export function ForceGraphRoot(props: {
       const radius = (node.val ?? 1) + (isFocused ? 4 : isHovered ? 2 : 0)
       const color = node.color ?? '#888888'
 
+      // shadowBlur is the most expensive Canvas2D op — reserve the glow for nodes
+      // the user is actually looking at instead of paying it for every node per frame.
+      const glowing = isFocused || isHovered || (hasActive && highlightIds.has(id))
       ctx.save()
       ctx.globalAlpha = dim
-      ctx.shadowColor = color
-      ctx.shadowBlur = radius * 1.6
+      if (glowing) {
+        ctx.shadowColor = color
+        ctx.shadowBlur = radius * 1.6
+      }
       ctx.beginPath()
       ctx.arc(node.x ?? 0, node.y ?? 0, radius, 0, 2 * Math.PI)
       ctx.fillStyle = color
