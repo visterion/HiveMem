@@ -53,6 +53,7 @@ export default {
   search: {
     placeholder: 'Zum Suchen tippen…',
     searching: 'Suche läuft…',
+    searchError: 'Suche fehlgeschlagen.',
     hudPlaceholder: 'Suchen…',
     comingSoon: 'Demnächst',
     stats: '{cells} Zellen · {facts} Fakten · {realms} Realms',

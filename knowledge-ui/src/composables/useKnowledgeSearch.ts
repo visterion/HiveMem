@@ -37,6 +37,7 @@ export function useKnowledgeSearch() {
   const results = ref<SearchResult[]>([])
   const facetCounts = ref<Record<string, FacetValue[]>>({})
   const loading = ref(false)
+  const error = ref<string | null>(null)
   // Monotonic token: only the latest run() may commit results, so an older,
   // slower response can never overwrite a newer one (search-as-you-type race, M53).
   let requestSeq = 0
@@ -53,6 +54,7 @@ export function useKnowledgeSearch() {
     }
     const seq = ++requestSeq
     loading.value = true
+    error.value = null
     try {
       const api = useApi()
       const searchArgs: Record<string, unknown> = {
@@ -69,6 +71,10 @@ export function useKnowledgeSearch() {
       if (query.value.trim()) facetArgs.query = query.value
       if (tags.length) facetArgs.tags = tags
 
+      // facet_count failing is tolerable (facets just stay empty); search failing is
+      // not — it used to propagate out of run() as an unhandled rejection (nothing
+      // called it awaited/caught, e.g. the debounce timer), leaving `loading` stuck
+      // true and no feedback in the UI.
       const [rows, counts] = await Promise.all([
         api.call<SearchResult[]>('search', searchArgs),
         api.call<Record<string, FacetValue[]>>('facet_count', facetArgs).catch(() => ({})),
@@ -76,6 +82,10 @@ export function useKnowledgeSearch() {
       if (seq !== requestSeq) return // stale — a newer run() owns the state now
       results.value = rows ?? []
       facetCounts.value = counts ?? {}
+    } catch (e) {
+      if (seq !== requestSeq) return // a newer run() already owns the state
+      error.value = e instanceof Error ? e.message : 'search failed'
+      results.value = []
     } finally {
       if (seq === requestSeq) loading.value = false
     }
@@ -94,5 +104,5 @@ export function useKnowledgeSearch() {
 
   const shown = computed(() => sortResults(filterResults(results.value, facets), sort.value))
 
-  return { query, facets, sort, results, facetCounts, loading, shown, run, toggleFacet, setSort, clearFacets }
+  return { query, facets, sort, results, facetCounts, loading, error, shown, run, toggleFacet, setSort, clearFacets }
 }
