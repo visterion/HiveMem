@@ -55,6 +55,11 @@ const hives: Hive[] = ['subtil', 'spürbar', 'stark']
 
 <style scoped>
 .tweaks { position:fixed; right:18px; bottom:18px; z-index:120; }
+@media (max-width: 959px) {
+  /* The bottom icon rail owns the lowest ~60px (+ safe area) on mobile —
+     float the FAB above it instead of on top of its right-most buttons. */
+  .tweaks { bottom: calc(72px + env(safe-area-inset-bottom)); }
+}
 .tw-fab { width:44px; height:44px; border-radius:50%; background:var(--honey); color:#1a1206;
   display:grid; place-items:center; box-shadow:var(--shadow-1); border:none; cursor:pointer; }
 .tw-panel { position:absolute; right:0; bottom:54px; width:300px; background:var(--bg-2); border:1px solid var(--line-2);
