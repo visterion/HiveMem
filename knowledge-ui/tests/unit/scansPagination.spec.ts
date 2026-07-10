@@ -80,6 +80,23 @@ describe('scans store — pagination, stale responses, status facet', () => {
     expect(s.facets.tag.size).toBe(2)
   })
 
+  it('search rows are not nuked by a stale correspondent facet selection (M17)', async () => {
+    vi.spyOn(MockApiClient.prototype, 'call').mockImplementation(async (tool: string, args?: Record<string, unknown>) => {
+      if (tool === 'search') {
+        expect((args?.include as string[])).toContain('summary')
+        return Array.from({ length: 5 }, (_, i) => docRow(`s${i}`))
+      }
+      return {}
+    })
+    const s = useScansStore()
+    s.facets.correspondent.add('Finanzamt') // selected while browsing; still active when a query starts
+    s.setQuery('rent')
+    await s.load()
+    expect(s.results.length).toBe(5)
+    expect(s.filtered.length).toBe(5) // must NOT be filtered to 0 (search rows have no `correspondent`)
+    expect(s.results.every(r => (r as any).isSearchRow)).toBe(true)
+  })
+
   it('search mode surfaces truncation instead of paginating (M54)', async () => {
     vi.spyOn(MockApiClient.prototype, 'call').mockImplementation(async (tool: string) => {
       if (tool === 'search') return Array.from({ length: 100 }, (_, i) => docRow(`s${i}`))

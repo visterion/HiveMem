@@ -151,6 +151,21 @@ export interface DocumentRow {
   correspondent?: string | null
 }
 
+/**
+ * A DocumentRow shape as actually returned by the `search` tool: only
+ * id/realm/signal/topic plus whatever was requested via `include` are
+ * guaranteed. `status`, `attachment_id`, `mime_type`, `page_count`,
+ * `has_thumbnail`, `confidence` and `correspondent` are never present —
+ * casting search results straight to DocumentRow (as scans.ts used to)
+ * lied about that. Card/table rendering must degrade gracefully for rows
+ * shaped like this (M17).
+ */
+export type SearchDocumentRow = Pick<DocumentRow, 'id' | 'realm' | 'signal' | 'topic' | 'tags' | 'summary' | 'created_at'> &
+  Partial<Pick<DocumentRow, 'status' | 'importance' | 'attachment_id' | 'mime_type' | 'page_count' | 'has_thumbnail' | 'confidence' | 'correspondent'>> & {
+    /** Marks a row as search-sourced so consumers can branch instead of assuming full DocumentRow shape. */
+    isSearchRow: true
+  }
+
 export interface MediaItem {
   cell_id: string
   attachment_id: string

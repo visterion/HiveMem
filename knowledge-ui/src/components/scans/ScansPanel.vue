@@ -143,7 +143,11 @@ onMounted(() => {
         :selected="store.facets.signal"
         @toggle="onToggle"
       />
+      <!-- Correspondent is derived from fact:vendor/fact:party via facet_count,
+           which only covers browse mode — search-mode rows never carry a
+           `correspondent` field, so this facet can't match them (M17). -->
       <FacetGroup
+        v-if="!store.query.trim()"
         :title="t('scans.correspondent')"
         field="correspondent"
         :options="store.facetCounts.correspondent || []"

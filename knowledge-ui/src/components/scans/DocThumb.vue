@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import type { DocumentRow } from '../../api/types'
+import type { DocumentRow, SearchDocumentRow } from '../../api/types'
 import HmIcon from '../shell/HmIcon.vue'
-const props = defineProps<{ d: DocumentRow; big?: boolean }>()
-const thumbUrl = (d: DocumentRow) => d.has_thumbnail && d.attachment_id ? `/api/attachments/${d.attachment_id}/thumbnail` : null
+const props = defineProps<{ d: DocumentRow | SearchDocumentRow; big?: boolean }>()
+const thumbUrl = (d: DocumentRow | SearchDocumentRow) => d.has_thumbnail && d.attachment_id ? `/api/attachments/${d.attachment_id}/thumbnail` : null
 </script>
 <template>
   <div :class="['docthumb', { big }]">
