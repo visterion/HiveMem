@@ -7,6 +7,7 @@ import * as directives from 'vuetify/directives'
 import ScansResults from '../../src/components/scans/ScansResults.vue'
 import { i18n } from '../../src/i18n/index'
 import { resetApi } from '../../src/api/useApi'
+import { MockApiClient } from '../../src/api/mockClient'
 import { useScansStore } from '../../src/stores/scans'
 
 describe('ScansResults', () => {
@@ -67,6 +68,26 @@ describe('ScansResults', () => {
     s.facets.correspondent.add('Finanzamt')
     await flushPromises()
     expect(w.text()).toContain('Finanzamt')
+  })
+
+  it('shows an error state with retry when reload fails, not a misleading "no results" (E5)', async () => {
+    let calls = 0
+    const spy = vi.spyOn(MockApiClient.prototype, 'call').mockImplementation(async (tool: string) => {
+      if (tool === 'list_documents') { calls++; if (calls === 1) throw new Error('boom'); return [] }
+      return {}
+    })
+    const vuetify = createVuetify({ components, directives })
+    const w = mount(ScansResults, { global: { plugins: [i18n, vuetify] } })
+    await vi.advanceTimersByTimeAsync(500); await flushPromises()
+    expect(w.find('.empty.error').exists()).toBe(true)
+    expect(w.find('.retry-btn').exists()).toBe(true)
+    // no "no results" text shown for the failed load
+    expect(w.text()).not.toContain('Keine Dokumente gefunden')
+
+    await w.find('.retry-btn').trigger('click')
+    await vi.advanceTimersByTimeAsync(500); await flushPromises()
+    expect(w.find('.empty.error').exists()).toBe(false)
+    spy.mockRestore()
   })
 
   describe('infinite scroll (H8)', () => {

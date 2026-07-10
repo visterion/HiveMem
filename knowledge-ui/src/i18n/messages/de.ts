@@ -190,6 +190,7 @@ export default {
     openDoc: 'Dokument öffnen',
     noResults: 'Keine Dokumente gefunden', noResultsSub: 'Passe Suche oder Filter an.',
     searchTruncated: 'Nur die ersten Treffer werden angezeigt — Suche verfeinern für mehr.',
+    loadError: 'Dokumente konnten nicht geladen werden.',
     newestFirst: 'Neueste zuerst', oldestFirst: 'Älteste zuerst', titleAZ: 'Titel A–Z', sortBy: 'Sortieren',
     pending: 'Offen', committed: 'Freigegeben',
     gridView: 'Kachelansicht', listView: 'Listenansicht',

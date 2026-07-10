@@ -14,6 +14,23 @@ const { t } = useI18n()
 const store = useScansStore()
 const ui = useUiStore()
 
+// reload() can fail (network/backend restart); before this, a failed load left
+// `store.filtered` empty and showed the misleading "no results" empty state
+// instead of an error + retry (E5).
+const loadError = ref(false)
+const lastLoadSucceeded = ref(false)
+
+async function doReload() {
+  try {
+    await store.reload()
+    loadError.value = false
+    lastLoadSucceeded.value = true
+  } catch {
+    loadError.value = true
+    lastLoadSucceeded.value = false
+  }
+}
+
 // Local debounced query, kept in sync when the store's query changes elsewhere
 // (e.g. saved views or programmatic resets).
 const q = ref(store.query)
@@ -25,7 +42,7 @@ function onInput() {
   debounceTimer = setTimeout(() => {
     debounceTimer = null
     store.setQuery(q.value)
-    store.reload()
+    doReload()
   }, 200)
 }
 
@@ -52,17 +69,17 @@ onUnmounted(() => { sentinelObserver?.disconnect(); sentinelObserver = null })
 
 function onSort(v: string) {
   store.setSort(v as 'newest' | 'oldest' | 'title')
-  store.reload()
+  doReload()
 }
 
 function onFacetChip(key: FacetKey, val: string) {
   store.toggleFacet(key, val)
-  store.reload()
+  doReload()
 }
 
 function onClearFacets() {
   store.clearFacets()
-  store.reload()
+  doReload()
 }
 
 async function onApprove() {
@@ -77,7 +94,7 @@ async function onApprove() {
     return
   }
   store.clearSelection()
-  store.reload()
+  doReload()
 }
 
 async function onBulkTag() {
@@ -105,7 +122,7 @@ async function onBulkRealm() {
 // All facet keys that can have active values
 const FACET_KEYS: FacetKey[] = ['tag', 'status', 'realm', 'year', 'signal', 'correspondent']
 
-onMounted(() => { store.reload() })
+onMounted(() => { doReload() })
 </script>
 
 <template>
@@ -174,7 +191,17 @@ onMounted(() => { store.reload() })
 
     <!-- Results area -->
     <div class="scan-canvas">
-      <template v-if="store.filtered.length === 0 && !store.loading">
+      <template v-if="loadError">
+        <div class="empty error">
+          <HmIcon name="scans" :size="48" class="hexbig" />
+          <span>{{ t('scans.loadError') }}</span>
+          <button class="retry-btn" @click="doReload">{{ t('common.retry') }}</button>
+        </div>
+      </template>
+
+      <!-- Gated on lastLoadSucceeded: a failed load must not show "no results" —
+           that's misleading when the real problem is a network/backend error (E5). -->
+      <template v-else-if="store.filtered.length === 0 && !store.loading && lastLoadSucceeded">
         <div class="empty">
           <HmIcon name="scans" :size="48" class="hexbig" />
           <span>{{ t('scans.noResults') }}</span>
@@ -377,6 +404,21 @@ onMounted(() => { store.reload() })
 .hexbig {
   opacity: 0.3;
 }
+
+.empty.error span {
+  color: var(--danger, #ff6b6b);
+}
+
+.retry-btn {
+  font-size: 12.5px;
+  color: var(--text-1, #eee);
+  background: var(--bg-3, rgba(255,255,255,.06));
+  border: 1px solid var(--line, #e0e0e0);
+  border-radius: 8px;
+  padding: 6px 14px;
+  cursor: pointer;
+}
+.retry-btn:hover { background: var(--bg-4, rgba(255,255,255,.12)); }
 
 .scroll-sentinel {
   height: 1px;

@@ -190,6 +190,7 @@ export default {
     openDoc: 'Open document',
     noResults: 'No documents found', noResultsSub: 'Adjust your search or filters.',
     searchTruncated: 'Only the first results are shown — refine your search for more.',
+    loadError: 'Documents could not be loaded.',
     newestFirst: 'Newest first', oldestFirst: 'Oldest first', titleAZ: 'Title A–Z', sortBy: 'Sort',
     pending: 'Pending', committed: 'Committed',
     gridView: 'Grid view', listView: 'List view',
