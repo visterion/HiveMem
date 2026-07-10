@@ -88,6 +88,11 @@ public class ReassemblyOrchestrator {
                 if (o.blank()) blank.add(pageNo);
             }
 
+            // Heartbeat: bump the ledger row's updated_at between passes so a large batch's
+            // (2*N+1)-call worst-case latency can't make the recovery sweep mistake it for a
+            // crash-stranded file and re-stage it mid-run (see consumption.md reassembly note).
+            if (hash != null && fileRepo != null) fileRepo.touch(hash);
+
             // Pass 2 — per-page metadata from the upright renders.
             List<PageMetadataExtractor.PageMetadata> meta = new ArrayList<>();
             for (int i = 0; i < upright.size(); i++) {
@@ -96,6 +101,9 @@ public class ReassemblyOrchestrator {
                 if (m.blank()) blank.add(m.page());
                 meta.add(m);
             }
+
+            // Heartbeat before pass 3 as well (see note above).
+            if (hash != null && fileRepo != null) fileRepo.touch(hash);
 
             // Pass 3 — text-only mailing assembly (throws on garbage → degrade path).
             List<DocGroup> groups = assembler.assemble(props.getRealm(), meta);

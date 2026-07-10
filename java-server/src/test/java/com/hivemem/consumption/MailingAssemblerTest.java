@@ -51,6 +51,22 @@ class MailingAssemblerTest {
     }
 
     @Test
+    void multiLineSummaryRendersOnOneRow() {
+        CompleteClient cc = mock(CompleteClient.class);
+        when(cc.complete(anyString(), anyString()))
+                .thenReturn("[{\"mailing\":\"m\",\"description\":\"d\",\"confidence\":1.0,\"pages\":[1]}]");
+        new MailingAssembler(cc).assemble("documents", List.of(
+                new PageMetadataExtractor.PageMetadata(1, "BEV", null, null, "letter",
+                        null, "line one\nline two\r\nline three", false)));
+        ArgumentCaptor<String> prompt = ArgumentCaptor.forClass(String.class);
+        verify(cc).complete(anyString(), prompt.capture());
+        String rowsSection = prompt.getValue();
+        assertTrue(rowsSection.contains("'line one line two  line three'"));
+        // exactly one row for this page: no embedded newline broke it into multiple lines
+        assertEquals(1, rowsSection.split("- page 1:", -1).length - 1);
+    }
+
+    @Test
     void garbageOutputThrows() {
         CompleteClient cc = mock(CompleteClient.class);
         when(cc.complete(anyString(), anyString())).thenReturn("sorry, I cannot help with that");

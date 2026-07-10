@@ -78,8 +78,11 @@ public class MailingAssembler {
     }
 
     /** Render like Python's repr so the rows match the validated prompt format exactly:
-     *  null → None, string → '...' (single quotes inside the value escaped). */
+     *  null → None, string → '...' (backslashes and single quotes inside the value escaped,
+     *  newlines/carriage returns flattened to spaces so a multi-line summary can't break the
+     *  one-row-per-page format). */
     private static String pyRepr(String s) {
-        return s == null ? "None" : "'" + s.replace("'", "\\'") + "'";
+        return s == null ? "None" : "'" + s.replace("\\", "\\\\").replace("'", "\\'")
+                .replace("\n", " ").replace("\r", " ") + "'";
     }
 }

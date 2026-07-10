@@ -282,7 +282,7 @@ public class AnthropicSummarizer {
 
     /**
      * Tolerant: strip ```json / ``` fences and narrow to the {...} object, so a fenced or
-     * prose-wrapped LLM response still parses. Mirrors LlmJson's tolerant array parse.
+     * prose-wrapped LLM response still parses. Mirrors LlmJson's tolerant object parse.
      */
     static String stripJsonFences(String text) {
         String cleaned = text.strip();

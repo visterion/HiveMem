@@ -18,9 +18,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * End-to-end reassembly: a 3-page batch where the vision model assigns pages 1+3 to doc A and page 2
- * to doc B (non-contiguous). Asserts two committed cells (source consumption:%) and the staged file
- * moved into processed/.
+ * End-to-end reassembly: a 3-page batch where the completion model (MailingAssembler) assigns pages
+ * 1+3 to doc A and page 2 to doc B (non-contiguous). Asserts two committed cells (source
+ * consumption:%) and the staged file moved into processed/.
  */
 class ReassemblyIT extends ConsumptionITSupport {
 

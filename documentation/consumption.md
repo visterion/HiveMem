@@ -173,6 +173,17 @@ consumption executor, never throws to the caller):
 etc.) the whole batch is ingested as a single `pending` document and the source
 is moved to `processed/`. Nothing is lost.
 
+**Operator note — `recovery-stale-threshold` vs. reassembly latency.** The 3-pass
+pipeline makes ~2·N+1 sequential LLM calls per batch, so a very large batch's
+worst-case latency (with retries) is roughly (2·N+1) × 2 × the queen call
+timeout. `recovery-stale-threshold` (default 30 min) must comfortably exceed
+that, or `ConsumptionRecoverySweep` can re-stage a still-running batch as
+crash-stranded, causing double-processing. Defaults are safe by a wide margin
+(a 17-page batch ≈ 3 min ≪ 30 min) — but raise the threshold if you raise
+`max-pages` well beyond the default. `ReassemblyOrchestrator` also touches the
+ledger row's `updated_at` between passes as a heartbeat, further reducing the
+risk for in-flight batches.
+
 ### File disposition
 
 | Outcome | Destination |
@@ -230,8 +241,8 @@ the initial dispatch and the sweep — the sweep degrades rather than retries.
 | `reassembly-confidence-threshold` | `HIVEMEM_CONSUMPTION_REASSEMBLY_CONFIDENCE` | `0.5` | Minimum per-group confidence for a `committed` document; below it the group is `pending`. Aggressive default — most groups commit. |
 | `reassembly-render-dpi` | `HIVEMEM_CONSUMPTION_REASSEMBLY_DPI` | `150` | DPI used to rasterize pages into the vision payload (downscaled vs. OCR DPI to keep requests small). |
 | `reassembly-purpose` | `HIVEMEM_CONSUMPTION_REASSEMBLY_PURPOSE` | `separator` | Vistierie routing purpose for all 3-pass reassembly calls. Needs a routing rule pointing at a vision-capable model (Haiku works; Sonnet for harder visual grouping). |
-| `reassembly-max-tokens` | `HIVEMEM_CONSUMPTION_REASSEMBLY_MAX_TOKENS` | `4096` | Max output tokens for the grouping response. |
-| `blank-filter-enabled` | `HIVEMEM_CONSUMPTION_BLANK_FILTER_ENABLED` | `true` | Drop near-white pages from reassembled documents (image signal, combined with the LLM's own blank verdict). A document whose pages are all blank is dropped entirely, so it never becomes a cell. |
+| `reassembly-max-tokens` | `HIVEMEM_CONSUMPTION_REASSEMBLY_MAX_TOKENS` | `4096` | Max output tokens for each of the three passes' responses. |
+| `blank-filter-enabled` | `HIVEMEM_CONSUMPTION_BLANK_FILTER_ENABLED` | `true` | Gates ONLY the pixel-based near-white detector (`BlankPageDetector.isNearWhite`). The LLM's own blank verdicts from passes 1 and 2 always apply regardless of this flag; disabling it just stops the additional pixel-based signal from also marking pages blank. A document whose pages are all blank (by either signal) is dropped entirely, so it never becomes a cell. |
 | `blank-white-fraction` | `HIVEMEM_CONSUMPTION_BLANK_WHITE_FRACTION` | `0.995` | Fraction of near-white pixels above which a page is treated as blank. Higher = more conservative (fewer pages dropped). |
 
 ### New `hivemem.queen.*` keys added by this feature

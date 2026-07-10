@@ -1,5 +1,6 @@
 package com.hivemem.consumption;
 
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class PageReassemblerTest {
@@ -40,5 +41,18 @@ class PageReassemblerTest {
         var docs =
                 r.toDocuments(java.util.List.of(group("a", 0.9, 3, 1, 3, 2)), 3);
         org.junit.jupiter.api.Assertions.assertEquals(java.util.List.of(3, 1, 2), docs.get(0).pages());
+    }
+
+    @Test
+    void outOfRangePagesAreDroppedAndRealPagesBecomeOrphans() {
+        PageReassembler r = new PageReassembler(new ConsumptionProperties());
+        List<PageReassembler.ResultDoc> docs =
+                r.toDocuments(java.util.List.of(group("hallucinated", 0.9, 0, 99)), 2);
+        // hallucinated group is empty after range filter -> no doc from it;
+        // pages 1..2 were never assigned -> two 1-page pending orphans
+        org.junit.jupiter.api.Assertions.assertEquals(2, docs.size());
+        org.junit.jupiter.api.Assertions.assertEquals(java.util.List.of(1), docs.get(0).pages());
+        org.junit.jupiter.api.Assertions.assertEquals("pending", docs.get(0).status());
+        org.junit.jupiter.api.Assertions.assertEquals(java.util.List.of(2), docs.get(1).pages());
     }
 }
