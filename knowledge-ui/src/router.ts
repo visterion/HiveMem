@@ -1,4 +1,5 @@
-import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
+import { createRouter, createWebHistory, type RouteRecordRaw, type RouteLocationNormalized } from 'vue-router'
+import { useAuthStore } from './stores/auth'
 
 const routes: RouteRecordRaw[] = [
   { path: '/', name: 'search', meta: { title: 'nav.search', icon: 'search', full: false, mobilePrimary: 'panel' },
@@ -34,3 +35,15 @@ const routes: RouteRecordRaw[] = [
 ]
 
 export const router = createRouter({ history: createWebHistory(), routes })
+
+// UX guard only — the backend enforces the real role ACL. Redirect users whose
+// role is already known to be non-admin; an unknown role (initial deep link
+// before wake_up resolves) passes, since AppShell gates rendering on auth.
+export function adminGuard(to: RouteLocationNormalized) {
+  if (to.meta.role !== 'admin') return true
+  const auth = useAuthStore()
+  if (auth.role && auth.role !== 'admin') return { name: 'search' }
+  return true
+}
+
+router.beforeEach(adminGuard)
