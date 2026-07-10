@@ -3,6 +3,7 @@
 export default {
   common: {
     connecting: 'Connecting…',
+    connectError: 'Connection failed. Please try again.',
     loading: 'Loading…',
     reload: 'Reload',
     retry: 'Retry',
