@@ -138,7 +138,8 @@ class PeerAdminControllerTest {
 
     @Configuration(proxyBeanMethods = false)
     @EnableWebMvc
-    @Import({AuthFilter.class, com.hivemem.auth.RateLimiter.class, PeerAdminController.class})
+    @Import({AuthFilter.class, com.hivemem.auth.RateLimiter.class, com.hivemem.auth.SecurityProperties.class,
+            PeerAdminController.class})
     static class TestConfig {
         @Bean
         SyncPeerRepository syncPeerRepository() { return Mockito.mock(SyncPeerRepository.class); }

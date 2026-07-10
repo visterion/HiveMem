@@ -25,7 +25,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(controllers = SessionAuthFilterTest.TestController.class)
-@Import({SessionAuthFilter.class, AuthFilter.class, RateLimiter.class, SessionAuthFilterTest.TestConfig.class})
+@Import({SessionAuthFilter.class, AuthFilter.class, RateLimiter.class, com.hivemem.auth.SecurityProperties.class,
+        SessionAuthFilterTest.TestConfig.class})
 class SessionAuthFilterTest {
 
     @Autowired

@@ -26,7 +26,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(controllers = SpaController.class)
-@Import({SessionAuthFilter.class, AuthFilter.class, RateLimiter.class, SpaRoutingTest.TestConfig.class})
+@Import({SessionAuthFilter.class, AuthFilter.class, RateLimiter.class, com.hivemem.auth.SecurityProperties.class,
+        SpaRoutingTest.TestConfig.class})
 class SpaRoutingTest {
 
     @Autowired

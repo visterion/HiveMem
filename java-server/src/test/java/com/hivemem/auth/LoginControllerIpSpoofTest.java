@@ -36,7 +36,7 @@ class LoginControllerIpSpoofTest {
                 "valid-token".equals(t)
                         ? Optional.of(new AuthPrincipal("alice", AuthRole.READER))
                         : Optional.empty());
-        return new LoginController(tokens, limiter);
+        return new LoginController(tokens, limiter, new SecurityProperties());
     }
 
     @Test

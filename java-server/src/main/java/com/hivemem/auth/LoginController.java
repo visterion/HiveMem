@@ -49,10 +49,13 @@ public class LoginController {
 
     private final TokenService tokenService;
     private final LoginRateLimiter rateLimiter;
+    private final SecurityProperties securityProperties;
 
-    public LoginController(TokenService tokenService, LoginRateLimiter rateLimiter) {
+    public LoginController(TokenService tokenService, LoginRateLimiter rateLimiter,
+                           SecurityProperties securityProperties) {
         this.tokenService = tokenService;
         this.rateLimiter = rateLimiter;
+        this.securityProperties = securityProperties;
     }
 
     @GetMapping("/login")
@@ -73,10 +76,12 @@ public class LoginController {
             @RequestParam(value = "next", required = false) String next,
             HttpServletRequest request,
             HttpServletResponse response) throws Exception {
-        // Bucket on the real TCP peer, not getRemoteAddr(): with
-        // forward-headers-strategy=framework the latter reflects the client-supplied
-        // X-Forwarded-For, which an attacker can rotate to evade the lockout.
-        String ip = AuthFilter.tcpPeerAddress(request);
+        // Bucket on the same key AuthFilter uses (real TCP peer, or the Cloudflare-injected
+        // CF-Connecting-IP when trusted-proxy is on): with forward-headers-strategy=framework
+        // getRemoteAddr() reflects the client-supplied X-Forwarded-For, which an attacker
+        // can rotate to evade the lockout, and behind the Cloudflare Tunnel the TCP peer is
+        // loopback for every external request unless we key on CF-Connecting-IP instead.
+        String ip = AuthFilter.rateLimitKey(request, securityProperties);
         if (rateLimiter.isBlocked(ip)) {
             response.setStatus(429);
             return null;

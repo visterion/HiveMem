@@ -103,6 +103,7 @@ class HooksAuditLoggingTest {
     @Import({
             AuthFilter.class,
             com.hivemem.auth.RateLimiter.class,
+            com.hivemem.auth.SecurityProperties.class,
             HooksController.class
     })
     static class TestConfig {

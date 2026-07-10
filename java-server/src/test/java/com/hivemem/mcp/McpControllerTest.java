@@ -357,6 +357,7 @@ class McpControllerTest {
     @Import({
             AuthFilter.class,
             com.hivemem.auth.RateLimiter.class,
+            com.hivemem.auth.SecurityProperties.class,
             ToolPermissionService.class,
             ToolRegistry.class,
             McpController.class

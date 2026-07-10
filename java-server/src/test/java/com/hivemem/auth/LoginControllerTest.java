@@ -20,7 +20,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(controllers = LoginController.class)
-@Import({LoginController.class, LoginRateLimiter.class, RateLimiter.class, LoginControllerTest.TestConfig.class})
+@Import({LoginController.class, LoginRateLimiter.class, RateLimiter.class, SecurityProperties.class,
+        LoginControllerTest.TestConfig.class})
 class LoginControllerTest {
 
     @Autowired

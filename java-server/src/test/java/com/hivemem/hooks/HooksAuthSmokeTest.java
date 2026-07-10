@@ -30,7 +30,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * upcoming hook endpoint will inherit the existing token-auth pipeline.
  */
 @WebMvcTest(controllers = HooksAuthSmokeTest.StubHooksController.class)
-@Import({AuthFilter.class, RateLimiter.class, HooksAuthSmokeTest.HooksAuthSmokeTestConfig.class})
+@Import({AuthFilter.class, RateLimiter.class, com.hivemem.auth.SecurityProperties.class,
+        HooksAuthSmokeTest.HooksAuthSmokeTestConfig.class})
 class HooksAuthSmokeTest {
 
     @Autowired

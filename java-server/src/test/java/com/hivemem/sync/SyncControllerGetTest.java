@@ -79,7 +79,8 @@ class SyncControllerGetTest {
 
     @Configuration(proxyBeanMethods = false)
     @EnableWebMvc
-    @Import({AuthFilter.class, com.hivemem.auth.RateLimiter.class, SyncController.class})
+    @Import({AuthFilter.class, com.hivemem.auth.RateLimiter.class, com.hivemem.auth.SecurityProperties.class,
+            SyncController.class})
     static class TestConfig {
         @Bean
         SyncOpsRepository syncOpsRepository() { return Mockito.mock(SyncOpsRepository.class); }

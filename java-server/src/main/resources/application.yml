@@ -33,6 +33,13 @@ spring:
 
 hivemem:
   language: ${HIVEMEM_LANGUAGE:de}
+  security:
+    # Production is reachable only through the Cloudflare Tunnel, so the TCP peer address
+    # is loopback for every external request; rate limiting instead keys on the
+    # tunnel-injected CF-Connecting-IP header. Set to false for deployments with no
+    # trusted reverse proxy in front (e.g. direct LAN access), where it falls back to the
+    # raw TCP peer address.
+    trusted-proxy: ${HIVEMEM_TRUSTED_PROXY:true}
   oauth:
     enabled: ${HIVEMEM_OAUTH_ENABLED:false}
     issuer: ${HIVEMEM_OAUTH_ISSUER:}

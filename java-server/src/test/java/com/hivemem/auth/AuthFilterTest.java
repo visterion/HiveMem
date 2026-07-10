@@ -25,7 +25,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 
 @WebMvcTest(controllers = AuthFilterTest.TestMcpController.class)
-@Import({AuthFilter.class, RateLimiter.class, AuthFilterTest.AuthFilterTestConfig.class})
+@Import({AuthFilter.class, RateLimiter.class, SecurityProperties.class, AuthFilterTest.AuthFilterTestConfig.class})
 class AuthFilterTest {
 
     @Autowired
@@ -55,7 +55,8 @@ class AuthFilterTest {
     void vistieriePathIsExemptFromAuthFilter() throws Exception {
         // shouldNotFilter must return true for /vistierie/** so the controller's own
         // webhook-token check runs instead of the api_tokens bearer check.
-        AuthFilter filter = new AuthFilter(Optional.empty(), new RateLimiter(), Optional.empty(), Optional.empty());
+        AuthFilter filter = new AuthFilter(Optional.empty(), new RateLimiter(), Optional.empty(), Optional.empty(),
+                new SecurityProperties());
         MockHttpServletRequest req = new MockHttpServletRequest();
         req.setRequestURI("/vistierie/tools/find_isolated_cells");
         assertThat(filter.shouldNotFilter(req)).isTrue();
@@ -77,7 +78,7 @@ class AuthFilterTest {
     @Test
     void mcp401WithOAuthEnabledCarriesWwwAuthenticateHeader() throws Exception {
         AuthFilter filter = new AuthFilter(Optional.empty(), new RateLimiter(), Optional.empty(),
-                Optional.of(oauthProps(true, "https://hivemem.example.com")));
+                Optional.of(oauthProps(true, "https://hivemem.example.com")), new SecurityProperties());
         MockHttpServletResponse res = new MockHttpServletResponse();
         int status = invokeUnauthenticated(filter, "/mcp", res);
         assertThat(status).isEqualTo(401);
@@ -88,7 +89,7 @@ class AuthFilterTest {
     @Test
     void mcp401WithOAuthDisabledHasNoWwwAuthenticateHeader() throws Exception {
         AuthFilter filter = new AuthFilter(Optional.empty(), new RateLimiter(), Optional.empty(),
-                Optional.of(oauthProps(false, "https://hivemem.example.com")));
+                Optional.of(oauthProps(false, "https://hivemem.example.com")), new SecurityProperties());
         MockHttpServletResponse res = new MockHttpServletResponse();
         int status = invokeUnauthenticated(filter, "/mcp", res);
         assertThat(status).isEqualTo(401);
@@ -98,7 +99,7 @@ class AuthFilterTest {
     @Test
     void mcp401WithBlankIssuerHasNoWwwAuthenticateHeader() throws Exception {
         AuthFilter filter = new AuthFilter(Optional.empty(), new RateLimiter(), Optional.empty(),
-                Optional.of(oauthProps(true, "")));
+                Optional.of(oauthProps(true, "")), new SecurityProperties());
         MockHttpServletResponse res = new MockHttpServletResponse();
         int status = invokeUnauthenticated(filter, "/mcp", res);
         assertThat(status).isEqualTo(401);
@@ -108,7 +109,7 @@ class AuthFilterTest {
     @Test
     void nonMcp401WithOAuthEnabledHasNoMcpHeader() throws Exception {
         AuthFilter filter = new AuthFilter(Optional.empty(), new RateLimiter(), Optional.empty(),
-                Optional.of(oauthProps(true, "https://hivemem.example.com")));
+                Optional.of(oauthProps(true, "https://hivemem.example.com")), new SecurityProperties());
         MockHttpServletResponse res = new MockHttpServletResponse();
         int status = invokeUnauthenticated(filter, "/sync/ops", res);
         assertThat(status).isEqualTo(401);
@@ -118,7 +119,8 @@ class AuthFilterTest {
     @Test
     void syncPathIsBearerGuarded() {
         // Peer sync authenticates with a bearer token; AuthFilter must filter it.
-        AuthFilter filter = new AuthFilter(Optional.empty(), new RateLimiter(), Optional.empty(), Optional.empty());
+        AuthFilter filter = new AuthFilter(Optional.empty(), new RateLimiter(), Optional.empty(), Optional.empty(),
+                new SecurityProperties());
         MockHttpServletRequest req = new MockHttpServletRequest();
         req.setRequestURI("/sync/ops");
         assertThat(filter.shouldNotFilter(req)).isFalse();
@@ -126,7 +128,8 @@ class AuthFilterTest {
 
     @Test
     void adminIsBearerGuardedButApiAttachmentsIsSessionOnly() {
-        AuthFilter filter = new AuthFilter(Optional.empty(), new RateLimiter(), Optional.empty(), Optional.empty());
+        AuthFilter filter = new AuthFilter(Optional.empty(), new RateLimiter(), Optional.empty(), Optional.empty(),
+                new SecurityProperties());
         // /admin stays bearer-guarded — used by CLI/scripts (connect-peers.sh -> /admin/peers).
         MockHttpServletRequest admin = new MockHttpServletRequest();
         admin.setRequestURI("/admin/tokens");

@@ -29,6 +29,12 @@ public class AuthFilter extends OncePerRequestFilter {
     public static final String PRINCIPAL_ATTRIBUTE = AuthPrincipal.class.getName();
     private static final String BEARER_PREFIX = "Bearer ";
 
+    /**
+     * Header the Cloudflare Tunnel injects/overwrites with the real client IP. Not
+     * spoofable by a client going through the tunnel — see {@link SecurityProperties}.
+     */
+    private static final String CF_CONNECTING_IP_HEADER = "CF-Connecting-IP";
+
     private static final Duration OAUTH_CACHE_TTL = Duration.ofSeconds(60);
     private static final int OAUTH_CACHE_MAX_SIZE = 1000;
 
@@ -36,6 +42,7 @@ public class AuthFilter extends OncePerRequestFilter {
     private final RateLimiter rateLimiter;
     private final Optional<OAuthRepository> oauthRepository;
     private final Optional<OAuthProperties> oauthProperties;
+    private final SecurityProperties securityProperties;
 
     /**
      * Short-TTL cache for OAuth bearer resolution, keyed by the token's SHA-256 hash
@@ -51,11 +58,13 @@ public class AuthFilter extends OncePerRequestFilter {
     public AuthFilter(Optional<TokenService> tokenService,
                       RateLimiter rateLimiter,
                       Optional<OAuthRepository> oauthRepository,
-                      Optional<OAuthProperties> oauthProperties) {
+                      Optional<OAuthProperties> oauthProperties,
+                      SecurityProperties securityProperties) {
         this.tokenService = tokenService;
         this.rateLimiter = rateLimiter;
         this.oauthRepository = oauthRepository;
         this.oauthProperties = oauthProperties;
+        this.securityProperties = securityProperties;
     }
 
     @Override
@@ -91,8 +100,12 @@ public class AuthFilter extends OncePerRequestFilter {
 
         // Use the actual TCP peer address for rate-limit bucketing, NOT the X-Forwarded-For
         // address Spring's ForwardedHeaderFilter would have substituted via getRemoteAddr().
-        // Otherwise an attacker can spoof XFF to evade per-IP rate limits.
-        String clientIp = tcpPeerAddress(request);
+        // Otherwise an attacker can spoof XFF to evade per-IP rate limits. In production
+        // HiveMem is reachable only through the Cloudflare Tunnel, so the TCP peer is
+        // loopback for every external request; when trusted-proxy is on, key on the
+        // tunnel-injected CF-Connecting-IP header instead (see SecurityProperties) — that
+        // header is not spoofable by a client going through the tunnel, unlike XFF.
+        String clientIp = rateLimitKey(request, securityProperties);
 
         long retryAfter = rateLimiter.checkRateLimit(clientIp);
         if (retryAfter > 0) {
@@ -176,6 +189,27 @@ public class AuthFilter extends OncePerRequestFilter {
             underlying = w.getRequest();
         }
         return underlying.getRemoteAddr();
+    }
+
+    /**
+     * Resolve the rate-limit bucket key for a request: when {@link SecurityProperties#isTrustedProxy()}
+     * is on and the request carries a {@code CF-Connecting-IP} header, key on that
+     * (single) header value — it is injected/overwritten by the Cloudflare Tunnel, so a
+     * client going through the tunnel cannot spoof it. Otherwise fall back to
+     * {@link #tcpPeerAddress(HttpServletRequest)}, which preserves the existing
+     * anti-XFF-spoofing property for direct (non-tunnel) access such as the LAN.
+     *
+     * <p>Public so other rate-limited entry points (e.g. {@link LoginController}) bucket
+     * on the same key.
+     */
+    public static String rateLimitKey(HttpServletRequest request, SecurityProperties securityProperties) {
+        if (securityProperties.isTrustedProxy()) {
+            String cfConnectingIp = request.getHeader(CF_CONNECTING_IP_HEADER);
+            if (cfConnectingIp != null && !cfConnectingIp.isBlank()) {
+                return cfConnectingIp.trim();
+            }
+        }
+        return tcpPeerAddress(request);
     }
 
     /**
