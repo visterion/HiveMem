@@ -47,8 +47,7 @@ async function focusLoadedCell(id: string) {
 function renderReact() {
   if (!root) return
   root.render(createElement(ForceGraphRoot, {
-    nodes: graph.value.nodes,
-    links: graph.value.links,
+    graph: graph.value,
     width: size.value.width,
     height: size.value.height,
     focusedId: canvas.focusedId,

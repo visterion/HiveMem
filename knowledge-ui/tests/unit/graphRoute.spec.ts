@@ -188,11 +188,11 @@ describe('graph route', () => {
     expect(createRoot).toHaveBeenCalled()
 
     const reactElement = reactRoot.render.mock.calls.at(-1)?.[0]
-    expect(reactElement?.props.nodes).toHaveLength(2)
-    expect(reactElement?.props.links).toHaveLength(1)
+    expect(reactElement?.props.graph.nodes).toHaveLength(2)
+    expect(reactElement?.props.graph.links).toHaveLength(1)
     expect(reactElement?.props.width).toBe(640)
     expect(reactElement?.props.height).toBe(480)
-    expect(reactElement?.props.nodes[0]?.color).toBeTruthy()
+    expect(reactElement?.props.graph.nodes[0]?.color).toBeTruthy()
 
     const forceGraphElement = reactElement?.type(reactElement.props)
     expect(forceGraphElement?.props.nodeColor).toBe('color')
@@ -220,7 +220,7 @@ describe('graph route', () => {
     await nextTick()
 
     const rerenderedElement = reactRoot.render.mock.calls.at(-1)?.[0]
-    expect(rerenderedElement?.props.nodes).toHaveLength(3)
+    expect(rerenderedElement?.props.graph.nodes).toHaveLength(3)
 
     wrapper.unmount()
     expect(reactRoot.unmount).toHaveBeenCalledTimes(1)

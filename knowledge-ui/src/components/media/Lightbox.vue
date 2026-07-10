@@ -109,4 +109,37 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 .lb-meta { flex:1; padding:26px; max-width:320px; }
 .osm-link { color:var(--honey); text-decoration:none; }
 .osm-link:hover { text-decoration:underline; }
+
+@media (max-width: 700px) {
+  /* Side-by-side stage (image | EXIF column) cannot fit a phone: stack it,
+     drop the outer padding, and keep the fixed controls above the content. */
+  .lightbox { padding: 0; }
+  .lb-stage {
+    flex-direction: column;
+    width: 100%;
+    height: 100%;
+    max-width: none;
+    max-height: none;
+    border-radius: 0;
+    border: none;
+    overflow-y: auto;
+  }
+  .lb-img { flex: 0 0 auto; min-height: 0; width: 100%; }
+  .lb-img img { max-height: 55dvh; }
+  .lb-meta {
+    flex: 0 0 auto;
+    max-width: none;
+    padding: 18px 16px calc(18px + env(safe-area-inset-bottom));
+  }
+  .lb-close {
+    top: calc(10px + env(safe-area-inset-top));
+    right: 12px;
+    z-index: 2;
+    background: rgba(0, 0, 0, 0.35);
+    border-radius: 50%;
+  }
+  .lb-nav { width: 38px; height: 52px; font-size: 26px; z-index: 2; }
+  .lb-prev { left: 8px; }
+  .lb-next { right: 8px; }
+}
 </style>

@@ -128,8 +128,7 @@ describe('graph interactions', () => {
     const node = makeGraphNode('cell-1', { val: 5, x: 10, y: 20 })
 
     const hoveredGraphElement = ForceGraphRoot({
-      nodes: [node],
-      links: [],
+      graph: { nodes: [node], links: [] },
       width: 640,
       height: 480,
       focusedId: null,
@@ -173,8 +172,7 @@ describe('graph interactions', () => {
     expect(hoveredCtx.fillText).toHaveBeenCalled()
 
     const focusedGraphElement = ForceGraphRoot({
-      nodes: [node],
-      links: [],
+      graph: { nodes: [node], links: [] },
       width: 640,
       height: 480,
       focusedId: 'cell-1',
@@ -235,6 +233,7 @@ describe('graph interactions', () => {
 
     const hoveredReactElement = reactRoot.render.mock.calls.at(-1)?.[0]
     expect(hoveredReactElement.props.hoveredId).toBe('cell-1')
+    expect(hoveredReactElement.props.graph).toBe(initialReactElement.props.graph)
 
     hoveredReactElement.props.onNodeHover(null)
     await nextTick()

@@ -23,8 +23,7 @@ const LABEL_COLOR = '#C5CBD6'
 const DIM_LINK = 'rgba(70,214,224,0.08)'
 
 export function ForceGraphRoot(props: {
-  nodes: GraphNode[]
-  links: GraphLink[]
+  graph: { nodes: GraphNode[]; links: GraphLink[] }
   width: number
   height: number
   focusedId: string | null
@@ -35,11 +34,14 @@ export function ForceGraphRoot(props: {
 }) {
   const activeId = props.focusedId ?? props.hoveredId
   const hasActive = activeId != null
-  const highlightIds = neighborIds(activeId, props.links)
+  const highlightIds = neighborIds(activeId, props.graph.links)
 
   return createElement(ForceGraph2DComponent, {
     ref: props.forceGraphRef,
-    graphData: { nodes: props.nodes, links: props.links },
+    // Pass the caller-owned object through untouched: its identity changes only
+    // when the actual node/link data changes, which is what keeps react-kapsule
+    // from reheating the d3 simulation on hover/focus/resize renders.
+    graphData: props.graph,
     width: props.width,
     height: props.height,
     nodeLabel: 'label',
@@ -52,10 +54,15 @@ export function ForceGraphRoot(props: {
       const radius = (node.val ?? 1) + (isFocused ? 4 : isHovered ? 2 : 0)
       const color = node.color ?? '#888888'
 
+      // shadowBlur is the most expensive Canvas2D op — reserve the glow for nodes
+      // the user is actually looking at instead of paying it for every node per frame.
+      const glowing = isFocused || isHovered || (hasActive && highlightIds.has(id))
       ctx.save()
       ctx.globalAlpha = dim
-      ctx.shadowColor = color
-      ctx.shadowBlur = radius * 1.6
+      if (glowing) {
+        ctx.shadowColor = color
+        ctx.shadowBlur = radius * 1.6
+      }
       ctx.beginPath()
       ctx.arc(node.x ?? 0, node.y ?? 0, radius, 0, 2 * Math.PI)
       ctx.fillStyle = color

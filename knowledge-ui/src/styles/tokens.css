@@ -47,7 +47,8 @@ body {
 *::-webkit-scrollbar-track { background:transparent; }
 
 .app {
-  height:100vh; display:grid;
+  height:100vh; height:100dvh; /* dvh tracks mobile browser chrome; vh is the fallback */
+  display:grid;
   grid-template-columns: var(--rail-w) auto 1fr auto;
   background:
     radial-gradient(1200px 700px at 78% -8%, rgba(244,183,64,0.06), transparent 60%),
