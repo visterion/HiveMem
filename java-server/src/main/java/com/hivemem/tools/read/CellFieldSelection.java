@@ -18,6 +18,17 @@ public final class CellFieldSelection {
             "tags", "importance", "source", "created_at",
             "valid_from", "valid_until"
     );
+    /**
+     * {@code search} is backed by {@code ranked_search} / {@code CellSearchRepository.RankedRow},
+     * which does not select {@code key_points}, {@code insight}, or {@code source} — they'd be
+     * silently omitted from the response despite being advertised. Only {@code get_cell} (which
+     * reads the full cell row) can serve those fields; see {@link #GET_CELL_ONLY_FIELDS} for the
+     * get_cell-only allow-list additions.
+     */
+    private static final List<String> SEARCH_UNSUPPORTED_FIELDS = List.of("key_points", "insight", "source");
+    private static final List<String> SEARCH_OPTIONAL_FIELDS = OPTIONAL_FIELDS.stream()
+            .filter(field -> !SEARCH_UNSUPPORTED_FIELDS.contains(field))
+            .toList();
     private static final List<String> GET_CELL_ONLY_FIELDS = List.of(
             "parent_id", "actionability", "status", "created_by", "attachments", "confidence"
     );
@@ -36,7 +47,7 @@ public final class CellFieldSelection {
     }
 
     public static CellFieldSelection forSearch(List<String> include) {
-        return from(include, SEARCH_DEFAULTS, OPTIONAL_FIELDS);
+        return from(include, SEARCH_DEFAULTS, SEARCH_OPTIONAL_FIELDS);
     }
 
     public static CellFieldSelection forGetCell(List<String> include) {
@@ -52,7 +63,7 @@ public final class CellFieldSelection {
     public static List<String> searchIncludeFields() {
         List<String> all = new ArrayList<>();
         all.add("realm");
-        all.addAll(OPTIONAL_FIELDS);
+        all.addAll(SEARCH_OPTIONAL_FIELDS);
         return List.copyOf(all);
     }
 

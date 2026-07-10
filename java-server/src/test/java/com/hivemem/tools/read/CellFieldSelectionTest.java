@@ -87,4 +87,33 @@ class CellFieldSelectionTest {
                 "id", "realm", "signal", "topic", "summary"
         );
     }
+
+    @Test
+    void searchRejectsKeyPointsInsightAndSourceBecauseTheRankedRowNeverPopulatesThem() {
+        assertThatThrownBy(() -> CellFieldSelection.forSearch(List.of("key_points")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Invalid include field: key_points");
+        assertThatThrownBy(() -> CellFieldSelection.forSearch(List.of("insight")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Invalid include field: insight");
+        assertThatThrownBy(() -> CellFieldSelection.forSearch(List.of("source")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Invalid include field: source");
+    }
+
+    @Test
+    void searchIncludeFieldsExcludesUnsupportedFields() {
+        assertThat(CellFieldSelection.searchIncludeFields())
+                .doesNotContain("key_points", "insight", "source");
+    }
+
+    @Test
+    void getCellStillAllowsKeyPointsInsightAndSource() {
+        CellFieldSelection selection = CellFieldSelection.forGetCell(
+                List.of("key_points", "insight", "source"));
+
+        assertThat(selection.responseFields()).containsExactly(
+                "id", "realm", "signal", "topic", "key_points", "insight", "source"
+        );
+    }
 }
