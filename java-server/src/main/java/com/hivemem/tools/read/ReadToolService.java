@@ -94,11 +94,14 @@ public class ReadToolService {
         this.kgEntityRepository = kgEntityRepository;
     }
 
+    /**
+     * limit/offset must already be validated by the caller (see
+     * ListCellIdsToolHandler#boundedLimit/#boundedOffset) — this service no longer silently
+     * clamps out-of-range values (see B4/LOW fix).
+     */
     public Map<String, Object> listCellIds(CellSelector selector, int limit, int offset) {
-        int clampedLimit = Math.min(Math.max(limit, 1), 1000);
-        int clampedOffset = Math.max(offset, 0);
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("ids", cellSelectorRepository.selectIds(selector, clampedLimit, clampedOffset));
+        result.put("ids", cellSelectorRepository.selectIds(selector, limit, offset));
         result.put("total", cellSelectorRepository.countMatches(selector));
         return result;
     }

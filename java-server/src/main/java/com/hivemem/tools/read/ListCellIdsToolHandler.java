@@ -16,6 +16,10 @@ import java.util.Map;
 @Order(47)
 public class ListCellIdsToolHandler implements ToolHandler {
 
+    private static final int DEFAULT_LIMIT = 200;
+    private static final int MIN_LIMIT = 1;
+    private static final int MAX_LIMIT = 1000;
+
     private final ReadToolService readToolService;
 
     public ListCellIdsToolHandler(ReadToolService readToolService) {
@@ -48,7 +52,27 @@ public class ListCellIdsToolHandler implements ToolHandler {
         Integer limit = WriteArgumentParser.optionalInteger(arguments, "limit");
         Integer offset = WriteArgumentParser.optionalInteger(arguments, "offset");
         return readToolService.listCellIds(selector,
-                limit == null ? 200 : limit,
-                offset == null ? 0 : offset);
+                boundedLimit(limit),
+                boundedOffset(offset));
+    }
+
+    private static int boundedLimit(Integer limit) {
+        if (limit == null) {
+            return DEFAULT_LIMIT;
+        }
+        if (limit < MIN_LIMIT || limit > MAX_LIMIT) {
+            throw new IllegalArgumentException("Invalid limit");
+        }
+        return limit;
+    }
+
+    private static int boundedOffset(Integer offset) {
+        if (offset == null) {
+            return 0;
+        }
+        if (offset < 0) {
+            throw new IllegalArgumentException("Invalid offset");
+        }
+        return offset;
     }
 }
