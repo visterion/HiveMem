@@ -85,6 +85,16 @@ function close() {
 
 <style scoped>
 .scan { position:fixed; top:0; right:0; bottom:0; width:360px; background:#0e0e1c; border-left:1px solid #1a1a24; display:flex; flex-direction:column; z-index:8; }
+@media (max-width: 959px) {
+  /* Fullscreen takeover like the sibling panels: a fixed 360px right column
+     neither fits phone widths nor clears the top bar / bottom rail z-order. */
+  .scan {
+    inset: 0;
+    width: auto;
+    z-index: 60;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
 .content { white-space:pre-wrap; word-break:break-word; max-height:240px; overflow:auto; font-size:11px; color:#aaa; background:#0a0a14; padding:8px; border-radius:4px; margin:0; }
 header { display:flex; align-items:center; justify-content:space-between; padding:10px 14px; border-bottom:1px solid #1a1a24; gap:8px; }
 header strong { flex:1; font-size:14px; }
