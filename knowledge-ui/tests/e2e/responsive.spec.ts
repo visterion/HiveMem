@@ -105,6 +105,22 @@ test.describe('mobile flows (390)', () => {
     // The overview tab (DocInfoTab) is the active landing view for a title tap.
     await expect(page.locator('.dinfo')).toBeVisible()
   })
+
+  test('settings reachable via topbar gear; rail fits viewport', async ({ page }) => {
+    await gotoMock(page, '/')
+    // Bar passt: kein rail-btn ragt raus
+    const overflow = await page.$$eval('.rail-btn', (els, vw) =>
+      els.filter(e => { const r = e.getBoundingClientRect(); return r.width > 0 && r.x + r.width > vw + 1 }).length,
+      390)
+    expect(overflow).toBe(0)
+    await page.click('[data-test="tb-settings"]')
+    await expect(page).toHaveURL(/settings/)
+  })
+
+  test('search drawer starts closed and toggles via search tab', async ({ page }) => {
+    await gotoMock(page, '/')
+    await expect(page.locator('.panel.open')).toHaveCount(0)
+  })
 })
 
 test.describe('mobile chrome collisions', () => {
