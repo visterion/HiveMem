@@ -151,7 +151,13 @@ public class WriteToolService {
         return result;
     }
 
-    @Transactional
+    /**
+     * The fact embedding is precomputed BEFORE the advisory lock/transaction open: it's an HTTP
+     * call to the embedding service, and must not hold a pooled connection or a lock for the
+     * duration of that round trip (same pattern as {@link #kgRenamePredicate} / {@code kgAlias} —
+     * see the comment on {@link WriteToolRepository#inTransaction}). The contradiction check does
+     * not need the embedding, so it still runs first inside the transaction, unchanged.
+     */
     public Map<String, Object> kgAdd(
             AuthPrincipal principal,
             String subject,
@@ -164,7 +170,7 @@ public class WriteToolService {
             String onConflict
     ) {
         String status = effectiveStatus(principal.role(), requestedStatus);
-        subject = kgEntityRepository.resolve(subject);
+        String resolvedSubject = kgEntityRepository.resolve(subject);
 
         String conflictMode = onConflict == null ? "insert" : onConflict;
         if (!conflictMode.equals("insert")
@@ -174,69 +180,73 @@ public class WriteToolService {
             throw new IllegalArgumentException("Invalid on_conflict");
         }
 
-        int superseded = 0;
-        if (!conflictMode.equals("insert")) {
-            // Serialize the conflict check-then-supersede against concurrent kg_add on the same
-            // (subject, predicate) — otherwise two supersedes can both miss each other's insert.
-            writeToolRepository.advisoryXactLock("kg-conflict:" + subject + "|" + predicate);
-            List<Map<String, Object>> conflicts =
-                    writeToolRepository.checkContradiction(subject, predicate, object);
-            if (!conflicts.isEmpty()) {
-                switch (conflictMode) {
-                    case "reject" -> throw new IllegalStateException(
-                            "kg_add rejected: conflicting active fact exists");
-                    case "return" -> {
-                        Map<String, Object> rejection = new java.util.LinkedHashMap<>();
-                        rejection.put("inserted", false);
-                        rejection.put("conflicts", conflicts);
-                        return rejection;
-                    }
-                    case "supersede" -> {
-                        for (Map<String, Object> conflict : conflicts) {
-                            UUID conflictId = UUID.fromString(String.valueOf(conflict.get("fact_id")));
-                            writeToolRepository.invalidateFact(conflictId);
-                            Map<String, Object> invalidatePayload = new java.util.LinkedHashMap<>();
-                            invalidatePayload.put("fact_id", conflictId.toString());
-                            pushDispatcher.dispatch(opLogWriter.append("kg_invalidate", invalidatePayload));
-                        }
-                        superseded = conflicts.size();
-                    }
-                    default -> throw new IllegalStateException("unreachable");
-                }
-            }
-        }
-
-        List<Float> factEmbedding = null;
+        List<Float> computedEmbedding = null;
         try {
-            factEmbedding = embeddingClient.encodeDocument(subject + " " + predicate + " " + object);
+            computedEmbedding = embeddingClient.encodeDocument(resolvedSubject + " " + predicate + " " + object);
         } catch (RuntimeException e) {
             log.warn("Fact embedding unavailable, storing without embedding", e);
         }
+        final List<Float> factEmbedding = computedEmbedding;
 
-        Map<String, Object> inserted = writeToolRepository.addFact(
-                subject, predicate, object, confidence,
-                sourceId, status, principal.name(), validFrom, factEmbedding);
+        return writeToolRepository.inTransaction(() -> {
+            int superseded = 0;
+            if (!conflictMode.equals("insert")) {
+                // Serialize the conflict check-then-supersede against concurrent kg_add on the
+                // same (subject, predicate) — otherwise two supersedes can both miss each other's
+                // insert.
+                writeToolRepository.advisoryXactLock("kg-conflict:" + resolvedSubject + "|" + predicate);
+                List<Map<String, Object>> conflicts =
+                        writeToolRepository.checkContradiction(resolvedSubject, predicate, object);
+                if (!conflicts.isEmpty()) {
+                    switch (conflictMode) {
+                        case "reject" -> throw new IllegalStateException(
+                                "kg_add rejected: conflicting active fact exists");
+                        case "return" -> {
+                            Map<String, Object> rejection = new java.util.LinkedHashMap<>();
+                            rejection.put("inserted", false);
+                            rejection.put("conflicts", conflicts);
+                            return rejection;
+                        }
+                        case "supersede" -> {
+                            for (Map<String, Object> conflict : conflicts) {
+                                UUID conflictId = UUID.fromString(String.valueOf(conflict.get("fact_id")));
+                                writeToolRepository.invalidateFact(conflictId);
+                                Map<String, Object> invalidatePayload = new java.util.LinkedHashMap<>();
+                                invalidatePayload.put("fact_id", conflictId.toString());
+                                pushDispatcher.dispatch(opLogWriter.append("kg_invalidate", invalidatePayload));
+                            }
+                            superseded = conflicts.size();
+                        }
+                        default -> throw new IllegalStateException("unreachable");
+                    }
+                }
+            }
 
-        Map<String, Object> opPayload = new java.util.LinkedHashMap<>();
-        opPayload.put("fact_id", inserted.get("id"));
-        opPayload.put("subject", subject);
-        opPayload.put("predicate", predicate);
-        opPayload.put("object", object);
-        opPayload.put("confidence", confidence);
-        opPayload.put("source_id", sourceId == null ? null : sourceId.toString());
-        opPayload.put("status", status);
-        opPayload.put("agent_id", principal.name());
-        opPayload.put("valid_from", validFrom == null ? null : validFrom.toString());
-        UUID opId = opLogWriter.append("kg_add", opPayload);
-        pushDispatcher.dispatch(opId);
+            Map<String, Object> inserted = writeToolRepository.addFact(
+                    resolvedSubject, predicate, object, confidence,
+                    sourceId, status, principal.name(), validFrom, factEmbedding);
 
-        Map<String, Object> result = new java.util.LinkedHashMap<>();
-        result.put("inserted", true);
-        result.putAll(inserted);
-        if (conflictMode.equals("supersede")) {
-            result.put("superseded", superseded);
-        }
-        return result;
+            Map<String, Object> opPayload = new java.util.LinkedHashMap<>();
+            opPayload.put("fact_id", inserted.get("id"));
+            opPayload.put("subject", resolvedSubject);
+            opPayload.put("predicate", predicate);
+            opPayload.put("object", object);
+            opPayload.put("confidence", confidence);
+            opPayload.put("source_id", sourceId == null ? null : sourceId.toString());
+            opPayload.put("status", status);
+            opPayload.put("agent_id", principal.name());
+            opPayload.put("valid_from", validFrom == null ? null : validFrom.toString());
+            UUID opId = opLogWriter.append("kg_add", opPayload);
+            pushDispatcher.dispatch(opId);
+
+            Map<String, Object> result = new java.util.LinkedHashMap<>();
+            result.put("inserted", true);
+            result.putAll(inserted);
+            if (conflictMode.equals("supersede")) {
+                result.put("superseded", superseded);
+            }
+            return result;
+        });
     }
 
     /**
