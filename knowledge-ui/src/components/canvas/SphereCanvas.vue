@@ -35,11 +35,20 @@ let labelLayer: Container | null = null
 let cachedRealmPos: Map<string, { x: number; y: number }> | null = null
 let cachedRealmSig: string | null = null
 let cachedViewportSig: string | null = null
-// Camera state, hoisted to module scope so render() (top-level, called from
-// the `watch`s below) can drive the one-time initial zoom-to-fit alongside
-// the interaction handlers set up in onMounted (wheel/pan/pinch/snapTo).
+// Camera state, hoisted out of onMounted's closure so render() (also called
+// from the `watch`s below) can drive the one-time initial zoom-to-fit
+// alongside the interaction handlers set up in onMounted (wheel/pan/pinch/
+// snapTo). Note: in a <script setup> SFC this top level compiles into
+// setup(), so these are per-component-instance — every mount naturally
+// starts at zoom=1/pan 0,0 matching its brand-new world container. The
+// explicit reset at the start of onMounted is a defensive guarantee of that
+// contract (e.g. should these ever move to a plain <script> module scope).
 let zoom = 1, panX = 0, panY = 0
 let didInitialFit = false
+// True once the user changes the camera themselves (wheel/pan/pinch). The
+// initial fit must never clobber a user transform — even when store data
+// arrives only after the user has already started interacting.
+let userInteracted = false
 
 function applyTransform() {
   if (!world || !app) return
@@ -71,6 +80,10 @@ function applyTransform() {
 
 onMounted(async () => {
   if (!root.value) return
+  // Fresh camera per mount — must match the brand-new world container below.
+  zoom = 1; panX = 0; panY = 0
+  didInitialFit = false
+  userInteracted = false
   app = new Application()
   await app.init({ background: 0x050510, resizeTo: root.value, antialias: true, resolution: devicePixelRatio, autoDensity: true })
   root.value.appendChild(app.canvas)
@@ -100,6 +113,7 @@ onMounted(async () => {
     panX = mouseX - (mouseX - panX) * (next / zoom)
     panY = mouseY - (mouseY - panY) * (next / zoom)
     zoom = next
+    userInteracted = true
     applyTransform()
   }, { passive: false })
 
@@ -139,6 +153,7 @@ onMounted(async () => {
       const [p] = pointers.values()
       panX = panStartPanX + (p.x - panStartX)
       panY = panStartPanY + (p.y - panStartY)
+      userInteracted = true
       applyTransform()
     } else if (pointers.size === 2) {
       const [a, b] = [...pointers.values()]
@@ -150,6 +165,7 @@ onMounted(async () => {
       panX = midX - worldX * next
       panY = midY - worldY * next
       zoom = next
+      userInteracted = true
       applyTransform()
     }
   }
@@ -265,9 +281,10 @@ function render() {
   for (const r of canvasStore.realms) realmSize.set(r.name, 120 + Math.log(1 + r.cell_count) * 30)
 
   // 2b. One-time zoom-to-fit: frame the realm cluster bounds on the very first
-  // layout, so mobile viewports don't open cut off. Never runs again once set
-  // (must not override a user's own pan/zoom after they've interacted).
-  if (!didInitialFit && realmPos.size > 0) {
+  // layout, so mobile viewports don't open cut off. Never runs again once set,
+  // and never after the user has touched the camera (data can stream in after
+  // the user already panned/zoomed — their transform must not be overridden).
+  if (!didInitialFit && !userInteracted && realmPos.size > 0) {
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
     for (const r of canvasStore.realms) {
       const p = realmPos.get(r.name); if (!p) continue
