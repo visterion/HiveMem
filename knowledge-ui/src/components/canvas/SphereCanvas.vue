@@ -9,6 +9,7 @@ import { useCellStore } from '../../stores/cell'
 import { useReaderStore } from '../../stores/reader'
 import { computeWingPositions, poissonDiskCells } from '../../composables/layout'
 import { cellVisibleAt } from '../../composables/lod'
+import { computeFitView } from './fitView'
 import type { Cell } from '../../api/types'
 
 const root = ref<HTMLDivElement>()
@@ -34,6 +35,39 @@ let labelLayer: Container | null = null
 let cachedRealmPos: Map<string, { x: number; y: number }> | null = null
 let cachedRealmSig: string | null = null
 let cachedViewportSig: string | null = null
+// Camera state, hoisted to module scope so render() (top-level, called from
+// the `watch`s below) can drive the one-time initial zoom-to-fit alongside
+// the interaction handlers set up in onMounted (wheel/pan/pinch/snapTo).
+let zoom = 1, panX = 0, panY = 0
+let didInitialFit = false
+
+function applyTransform() {
+  if (!world || !app) return
+  world.scale.set(zoom); world.position.set(panX, panY)
+  const viewLeft = -panX / zoom, viewTop = -panY / zoom
+  const viewRight = viewLeft + app.screen.width / zoom
+  const viewBottom = viewTop + app.screen.height / zoom
+  const walk = (container: Container | null) => {
+    if (!container) return
+    for (const c of container.children) {
+      const s = c as any
+      if (s._kind === 'cell') {
+        let vis = cellVisibleAt(zoom)
+        if (vis) {
+          const r = Math.max(s.width, s.height)
+          vis = s.x + r > viewLeft && s.x - r < viewRight
+             && s.y + r > viewTop  && s.y - r < viewBottom
+        }
+        s.visible = vis
+      } else if (s._kind === 'signal' || s._kind === 'signal-label') {
+        s.visible = zoom >= 0.7
+      } else if (s._kind === 'realm-label') {
+        s.visible = zoom <= 2.2
+      }
+    }
+  }
+  walk(realmLayer); walk(signalLayer); walk(cellLayer); walk(labelLayer)
+}
 
 onMounted(async () => {
   if (!root.value) return
@@ -57,8 +91,6 @@ onMounted(async () => {
   const bg = new Graphics().rect(0, 0, 4000, 4000).fill(0x05050f)
   ;(bg as any).filters = [godrays()]
   app.stage.addChildAt(bg, 0)
-
-  let zoom = 1, panX = 0, panY = 0
 
   app.canvas.addEventListener('wheel', e => {
     e.preventDefault()
@@ -132,34 +164,6 @@ onMounted(async () => {
     app?.canvas.removeEventListener('pointermove', onPointerMove)
     app?.canvas.removeEventListener('pointerup', onPointerUp)
     app?.canvas.removeEventListener('pointercancel', onPointerUp)
-  }
-
-  function applyTransform() {
-    if (!world || !app) return
-    world.scale.set(zoom); world.position.set(panX, panY)
-    const viewLeft = -panX / zoom, viewTop = -panY / zoom
-    const viewRight = viewLeft + app.screen.width / zoom
-    const viewBottom = viewTop + app.screen.height / zoom
-    const walk = (container: Container | null) => {
-      if (!container) return
-      for (const c of container.children) {
-        const s = c as any
-        if (s._kind === 'cell') {
-          let vis = cellVisibleAt(zoom)
-          if (vis) {
-            const r = Math.max(s.width, s.height)
-            vis = s.x + r > viewLeft && s.x - r < viewRight
-               && s.y + r > viewTop  && s.y - r < viewBottom
-          }
-          s.visible = vis
-        } else if (s._kind === 'signal' || s._kind === 'signal-label') {
-          s.visible = zoom >= 0.7
-        } else if (s._kind === 'realm-label') {
-          s.visible = zoom <= 2.2
-        }
-      }
-    }
-    walk(realmLayer); walk(signalLayer); walk(cellLayer); walk(labelLayer)
   }
 
   function snapTo(worldX: number, worldY: number, targetZoom: number, onDone: () => void) {
@@ -259,6 +263,25 @@ function render() {
   }
   const realmSize = new Map<string, number>()
   for (const r of canvasStore.realms) realmSize.set(r.name, 120 + Math.log(1 + r.cell_count) * 30)
+
+  // 2b. One-time zoom-to-fit: frame the realm cluster bounds on the very first
+  // layout, so mobile viewports don't open cut off. Never runs again once set
+  // (must not override a user's own pan/zoom after they've interacted).
+  if (!didInitialFit && realmPos.size > 0) {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+    for (const r of canvasStore.realms) {
+      const p = realmPos.get(r.name); if (!p) continue
+      const radius = (realmSize.get(r.name) ?? 120) / 2
+      minX = Math.min(minX, p.x - radius); maxX = Math.max(maxX, p.x + radius)
+      minY = Math.min(minY, p.y - radius); maxY = Math.max(maxY, p.y + radius)
+    }
+    if (minX < maxX && minY < maxY) {
+      const fit = computeFitView({ minX, minY, maxX, maxY }, { w: width, h: height })
+      zoom = fit.zoom; panX = fit.panX; panY = fit.panY
+      applyTransform()
+      didInitialFit = true
+    }
+  }
 
   // 3. Signal sub-centers + deterministic cell positions. Poisson with a fixed
   // seed gives the same first-N points regardless of how large N grows, so

@@ -17,6 +17,11 @@ const { allApplications, allContainers } = vi.hoisted(() => ({
 vi.mock('pixi.js', () => {
   class FakeContainer {
     children: any[] = []
+    // world.position / world.scale are driven by applyTransform(), which now
+    // also runs once during the initial render() (zoom-to-fit) — not just
+    // from interaction handlers.
+    position = { x: 0, y: 0, set(x: number, y: number) { this.x = x; this.y = y } }
+    scale = { x: 1, y: 1, set(v: number) { this.x = v; this.y = v } }
     addChild(c: any) { this.children.push(c); return c }
     addChildAt(c: any) { this.children.push(c); return c }
     removeChild(c: any) { this.children = this.children.filter(x => x !== c); return c }
