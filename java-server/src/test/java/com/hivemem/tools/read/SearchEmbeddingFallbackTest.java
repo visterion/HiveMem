@@ -68,7 +68,7 @@ class SearchEmbeddingFallbackTest {
                 .thenThrow(new EmbeddingUnavailableException("embedding service down", null));
         CellSearchRepository.RankedRow row = new CellSearchRepository.RankedRow(
                 UUID.randomUUID(), "content", "summary", "realm", "facts", "topic",
-                List.of(), 3, OffsetDateTime.now(), OffsetDateTime.now(), null,
+                List.of(), 3, List.of(), null, OffsetDateTime.now(), OffsetDateTime.now(), null,
                 0.0, 0.5, 0.3, 0.6, 0.0, 0.0, 0.4);
         when(cellSearchRepository.rankedSearch(
                 isNull(), anyString(), any(), any(), any(), anyInt(),

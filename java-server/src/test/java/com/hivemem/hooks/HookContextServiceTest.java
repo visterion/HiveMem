@@ -103,7 +103,7 @@ class HookContextServiceTest {
     @Test
     void semanticFloorFiltersKeywordOnlyMatch() {
         RankedRow keywordOnly = new RankedRow(UUID.randomUUID(), "x", "keyword match", "r", "s", "t",
-                List.of(), 3, OffsetDateTime.now(), null, null,
+                List.of(), 3, List.of(), null, OffsetDateTime.now(), null, null,
                 0.1, 0.9, 0.0, 0.0, 0.0, 0.0, 0.70);
         when(repo.rankedSearch(any(), anyString(), any(), any(), any(), anyInt(),
                 anyDouble(), anyDouble(), anyDouble(), anyDouble(), anyDouble(), anyDouble(), any(), any(), any()))
@@ -130,10 +130,10 @@ class HookContextServiceTest {
         UUID projectId = UUID.randomUUID();
         UUID otherId = UUID.randomUUID();
         RankedRow projectCell = new RankedRow(projectId, "x", "hivemem summary", "tech", "s", "hivemem",
-                List.of("hivemem"), 1, OffsetDateTime.now(), null, null,
+                List.of("hivemem"), 1, List.of(), null, OffsetDateTime.now(), null, null,
                 0.8, 0.0, 0.0, 0.0, 0.0, 0.0, 0.80);
         RankedRow otherCell = new RankedRow(otherId, "x", "other summary", "tech", "s", "ansible",
-                List.of("ansible"), 1, OffsetDateTime.now(), null, null,
+                List.of("ansible"), 1, List.of(), null, OffsetDateTime.now(), null, null,
                 0.85, 0.0, 0.0, 0.0, 0.0, 0.0, 0.85);
         when(repo.rankedSearch(any(), anyString(), any(), any(), any(), anyInt(),
                 anyDouble(), anyDouble(), anyDouble(), anyDouble(), anyDouble(), anyDouble(), any(), any(), any()))
@@ -172,13 +172,13 @@ class HookContextServiceTest {
 
     private RankedRow weakRow() {
         return new RankedRow(UUID.randomUUID(), "x", "x", "r", "s", "t",
-                List.of(), 3, OffsetDateTime.now(), null, null,
+                List.of(), 3, List.of(), null, OffsetDateTime.now(), null, null,
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.10);
     }
 
     private RankedRow strongRow() {
         return new RankedRow(UUID.randomUUID(), "x", "Phase 3 plan", "r", "s", "t",
-                List.of(), 1, OffsetDateTime.now(), null, null,
+                List.of(), 1, List.of(), null, OffsetDateTime.now(), null, null,
                 0.9, 0.0, 0.0, 0.0, 0.0, 0.0, 0.90);
     }
 }

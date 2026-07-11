@@ -19,6 +19,7 @@ class ContextFormatterTest {
 
     private RankedRow row(UUID id, String summary, String realm, String topic, OffsetDateTime validFrom) {
         return new RankedRow(id, "content", summary, realm, "facts", topic, List.of(), 3,
+                List.of(), null,
                 OffsetDateTime.now(), validFrom, null,
                 0.8, 0.0, 0.0, 0.0, 0.0, 0.0, 0.85);
     }
@@ -61,6 +62,7 @@ class ContextFormatterTest {
     void fallsBackToContentWhenSummaryIsBlank() {
         RankedRow r = new RankedRow(UUID.randomUUID(), "this is the full content",
                 "", "r", "facts", "t", List.of(), 3,
+                List.of(), null,
                 OffsetDateTime.now(), null, null,
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.5);
 

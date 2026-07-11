@@ -1,7 +1,24 @@
--- Template loaded by EmbeddingStateRepository.replaceRankedSearchFunction.
--- {{DIM}} is replaced at runtime with the active embedding dimension.
+-- V0048: add key_points/insight to the ranked_search return shape so search
+-- results can surface a cell's key points and insight without a follow-up
+-- fetch. See java-server/src/main/resources/db/templates/ranked_search.sql.tmpl
+-- for the runtime-rendered (and authoritative) version of this function:
+-- EmbeddingMigrationService recreates ranked_search from that template on
+-- every startup (see V0017), dropping ALL existing overloads first — so this
+-- migration only needs to produce a signature-compatible function for
+-- environments that migrate without ever booting the app (e.g. a bare Flyway
+-- run against a fresh schema).
 
-CREATE OR REPLACE FUNCTION ranked_search(
+DO $do$
+DECLARE r RECORD;
+BEGIN
+    FOR r IN SELECT oid::regprocedure AS sig FROM pg_proc
+             WHERE proname = 'ranked_search' AND pronamespace = 'public'::regnamespace LOOP
+        EXECUTE 'DROP FUNCTION ' || r.sig;
+    END LOOP;
+END
+$do$;
+
+CREATE FUNCTION ranked_search(
     query_embedding vector,
     query_text TEXT,
     p_realm TEXT DEFAULT NULL,
@@ -51,7 +68,7 @@ LANGUAGE SQL STABLE AS $$
           AND (p_signal IS NULL OR c.signal = p_signal)
           AND (p_topic IS NULL OR c.topic = p_topic)
           AND (p_tags IS NULL OR c.tags && p_tags)
-        ORDER BY (c.embedding::vector({{DIM}})) <=> query_embedding
+        ORDER BY (c.embedding::vector(1024)) <=> query_embedding
         LIMIT 200
     ),
     kw AS (
@@ -81,7 +98,7 @@ LANGUAGE SQL STABLE AS $$
         FROM cells c
         JOIN candidates ca ON ca.id = c.id
         WHERE c.embedding IS NOT NULL AND query_embedding IS NOT NULL
-        ORDER BY (c.embedding::vector({{DIM}})) <=> query_embedding
+        ORDER BY (c.embedding::vector(1024)) <=> query_embedding
         LIMIT 25
     ),
     graph AS (
@@ -99,7 +116,7 @@ LANGUAGE SQL STABLE AS $$
         SELECT c.id, c.content, c.summary, c.realm, c.signal, c.topic,
             c.tags, c.importance, c.key_points, c.insight, c.created_at, c.valid_from, c.valid_until,
             CASE WHEN c.embedding IS NOT NULL AND query_embedding IS NOT NULL
-                 THEN (1 - ((c.embedding::vector({{DIM}})) <=> query_embedding))::REAL
+                 THEN (1 - ((c.embedding::vector(1024)) <=> query_embedding))::REAL
                  ELSE 0::REAL END AS sem,
             CASE WHEN q.tsq IS NOT NULL THEN ts_rank_cd(c.tsv, q.tsq, 32)::REAL
                  ELSE 0::REAL END AS kw,

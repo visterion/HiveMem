@@ -711,6 +711,31 @@ class SearchParityIntegrationTest {
         assertThat(results.get(0).path("valid_until").isNull()).isTrue();
     }
 
+    @Test
+    void searchReturnsKeyPointsAndInsightWhenIncluded() throws Exception {
+        UUID id = UUID.fromString("00000000-0000-0000-0000-000000000902");
+        insertDrawer(id, "Vector search layers cell", "eng", "facts", "layers",
+                2, "layer summary", "committed", OffsetDateTime.parse("2026-04-03T10:00:00Z"));
+        insertKeyPointsAndInsight(id, new String[] {"point one", "point two"}, "the insight");
+
+        JsonNode results = callTool("writer-token", "search", Map.of(
+                "query", "vector search layers",
+                "include", List.of("key_points", "insight", "summary")));
+
+        JsonNode first = results.get(0);
+        assertThat(first.path("insight").asText()).isEqualTo("the insight");
+        assertThat(first.path("key_points").isArray()).isTrue();
+        assertThat(first.path("key_points").get(0).asText()).isEqualTo("point one");
+    }
+
+    /** {@link #insertDrawer} doesn't know about {@code key_points}/{@code insight} —
+     *  patch them onto an already-inserted cell for tests that need those columns. */
+    private void insertKeyPointsAndInsight(UUID id, String[] keyPoints, String insight) {
+        dslContext.execute(
+                "UPDATE cells SET key_points = ?::text[], insight = ? WHERE id = ?",
+                keyPoints, insight, id);
+    }
+
     private void insertDrawer(
             UUID id,
             String content,

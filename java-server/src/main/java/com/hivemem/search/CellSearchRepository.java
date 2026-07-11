@@ -51,6 +51,7 @@ public class CellSearchRepository {
         String[] realmsArr = (realmIn == null || realmIn.isEmpty()) ? null : realmIn.toArray(String[]::new);
         String sql = """
                 SELECT id, content, summary, realm, signal, topic, tags, importance,
+                       key_points, insight,
                        created_at, valid_from, valid_until,
                        score_semantic, score_keyword, score_recency,
                        score_importance, score_popularity, score_graph_proximity,
@@ -78,6 +79,8 @@ public class CellSearchRepository {
                     row.get("topic", String.class),
                     textArray(row, "tags"),
                     row.get("importance", Integer.class),
+                    textArray(row, "key_points"),
+                    row.get("insight", String.class),
                     row.get("created_at", OffsetDateTime.class),
                     row.get("valid_from", OffsetDateTime.class),
                     row.get("valid_until", OffsetDateTime.class),
@@ -102,6 +105,8 @@ public class CellSearchRepository {
             String topic,
             List<String> tags,
             Integer importance,
+            List<String> keyPoints,
+            String insight,
             OffsetDateTime createdAt,
             OffsetDateTime validFrom,
             OffsetDateTime validUntil,

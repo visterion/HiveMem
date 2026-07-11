@@ -60,9 +60,11 @@ class QueenWebhookServiceTest {
                 anyDouble(), anyDouble(), anyDouble(), anyDouble(), anyDouble(), anyDouble(), any(), any(), any()))
                 .thenReturn(List.of(
                         new RankedRow(self, "self", "selfsum", "work", "facts", "t", List.of(), 3,
+                                List.of(), null,
                                 OffsetDateTime.now(), OffsetDateTime.now(), null,
                                 1.0, 0, 0, 0, 0, 0, 1.0),
                         new RankedRow(other, "o", "othersum", "work", "facts", "t", List.of(), 3,
+                                List.of(), null,
                                 OffsetDateTime.now(), OffsetDateTime.now(), null,
                                 0.8, 0, 0, 0, 0, 0, 0.8)));
 
