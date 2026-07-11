@@ -3,6 +3,7 @@
 export default {
   common: {
     connecting: 'Connecting…',
+    connectError: 'Connection failed. Please try again.',
     loading: 'Loading…',
     reload: 'Reload',
     retry: 'Retry',
@@ -48,11 +49,12 @@ export default {
     exif: 'EXIF',
     camera: 'Camera', resolution: 'Resolution', location: 'Location', size: 'Size', takenAt: 'Taken',
     showInGraph: 'Show in graph',
-    today: 'Today', thisWeek: 'This week', thisMonth: 'This month',
+    today: 'Today', thisWeek: 'This week', thisMonth: 'This month', older: 'Older',
   },
   search: {
     placeholder: 'Type to search…',
     searching: 'Searching…',
+    searchError: 'Search failed.',
     hudPlaceholder: 'Search…',
     comingSoon: 'Coming soon',
     stats: '{cells} cells · {facts} facts · {realms} realms',
@@ -188,6 +190,8 @@ export default {
     page: 'Page', of: 'of', approve: 'Approve', editMeta: 'Edit metadata', openOriginal: 'Open original',
     openDoc: 'Open document',
     noResults: 'No documents found', noResultsSub: 'Adjust your search or filters.',
+    searchTruncated: 'Only the first results are shown — refine your search for more.',
+    loadError: 'Documents could not be loaded.',
     newestFirst: 'Newest first', oldestFirst: 'Oldest first', titleAZ: 'Title A–Z', sortBy: 'Sort',
     pending: 'Pending', committed: 'Committed',
     gridView: 'Grid view', listView: 'List view',

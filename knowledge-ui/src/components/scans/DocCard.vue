@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import type { DocumentRow } from '../../api/types'
+import type { DocumentRow, SearchDocumentRow } from '../../api/types'
 import { docName } from '../../api/cellLabel'
 import DocThumb from './DocThumb.vue'
 import Snippet from './Snippet.vue'
 import HmIcon from '../shell/HmIcon.vue'
 
-const props = defineProps<{ d: DocumentRow; q: string; selected: boolean }>()
+const props = defineProps<{ d: DocumentRow | SearchDocumentRow; q: string; selected: boolean }>()
 const emit = defineEmits<{ (e: 'open'): void; (e: 'openInfo'): void; (e: 'select'): void }>()
 
 function formatDate(iso: string): string {

@@ -7,6 +7,7 @@ import * as directives from 'vuetify/directives'
 import ScansResults from '../../src/components/scans/ScansResults.vue'
 import { i18n } from '../../src/i18n/index'
 import { resetApi } from '../../src/api/useApi'
+import { MockApiClient } from '../../src/api/mockClient'
 import { useScansStore } from '../../src/stores/scans'
 
 describe('ScansResults', () => {
@@ -67,5 +68,65 @@ describe('ScansResults', () => {
     s.facets.correspondent.add('Finanzamt')
     await flushPromises()
     expect(w.text()).toContain('Finanzamt')
+  })
+
+  it('shows an error state with retry when reload fails, not a misleading "no results" (E5)', async () => {
+    let calls = 0
+    const spy = vi.spyOn(MockApiClient.prototype, 'call').mockImplementation(async (tool: string) => {
+      if (tool === 'list_documents') { calls++; if (calls === 1) throw new Error('boom'); return [] }
+      return {}
+    })
+    const vuetify = createVuetify({ components, directives })
+    const w = mount(ScansResults, { global: { plugins: [i18n, vuetify] } })
+    await vi.advanceTimersByTimeAsync(500); await flushPromises()
+    expect(w.find('.empty.error').exists()).toBe(true)
+    expect(w.find('.retry-btn').exists()).toBe(true)
+    // no "no results" text shown for the failed load
+    expect(w.text()).not.toContain('Keine Dokumente gefunden')
+
+    await w.find('.retry-btn').trigger('click')
+    await vi.advanceTimersByTimeAsync(500); await flushPromises()
+    expect(w.find('.empty.error').exists()).toBe(false)
+    spy.mockRestore()
+  })
+
+  describe('infinite scroll (H8)', () => {
+    let observeCb: ((entries: { isIntersecting: boolean }[]) => void) | null = null
+    let originalIO: any
+
+    beforeEach(() => {
+      originalIO = (globalThis as any).IntersectionObserver
+      ;(globalThis as any).IntersectionObserver = class {
+        constructor(cb: (entries: { isIntersecting: boolean }[]) => void) { observeCb = cb }
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      }
+    })
+    afterEach(() => { (globalThis as any).IntersectionObserver = originalIO; observeCb = null })
+
+    it('calls store.loadMore() when the sentinel intersects and hasMore is true', async () => {
+      const vuetify = createVuetify({ components, directives })
+      const w = mount(ScansResults, { global: { plugins: [i18n, vuetify] } })
+      await vi.advanceTimersByTimeAsync(500); await flushPromises()
+      const s = useScansStore()
+      s.hasMore = true
+      const spy = vi.spyOn(s, 'loadMore').mockResolvedValue()
+      observeCb!([{ isIntersecting: true }])
+      expect(spy).toHaveBeenCalled()
+      w.unmount()
+    })
+
+    it('does not call store.loadMore() when hasMore is false', async () => {
+      const vuetify = createVuetify({ components, directives })
+      const w = mount(ScansResults, { global: { plugins: [i18n, vuetify] } })
+      await vi.advanceTimersByTimeAsync(500); await flushPromises()
+      const s = useScansStore()
+      s.hasMore = false
+      const spy = vi.spyOn(s, 'loadMore').mockResolvedValue()
+      observeCb!([{ isIntersecting: true }])
+      expect(spy).not.toHaveBeenCalled()
+      w.unmount()
+    })
   })
 })

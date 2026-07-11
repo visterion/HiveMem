@@ -10,9 +10,11 @@ const { t, locale } = useI18n()
 const media = useMediaStore()
 
 const stageEl = ref<HTMLElement | null>(null)
+const sentinelEl = ref<HTMLElement | null>(null)
 const containerWidth = ref(0)
 let ro: ResizeObserver | null = null
 let measureTimer: ReturnType<typeof setTimeout> | null = null
+let sentinelObserver: IntersectionObserver | null = null
 
 function measure() {
   if (stageEl.value) containerWidth.value = Math.round(stageEl.value.getBoundingClientRect().width)
@@ -20,6 +22,7 @@ function measure() {
 
 onMounted(() => {
   void media.load()
+  media.startClock() // keeps Today/This week bucket boundaries rolling over live
   measure()
   if (typeof ResizeObserver !== 'undefined') {
     // Debounce width updates so a continuous resize doesn't re-pack every tick.
@@ -29,10 +32,21 @@ onMounted(() => {
     })
     if (stageEl.value) ro.observe(stageEl.value)
   }
+  // Infinite scroll: the store already exposes loadMore()/hasMore (M57), but
+  // nothing called it — the gallery was silently capped at PAGE_SIZE. Observe a
+  // sentinel at the end of the scroll container (H8).
+  if (typeof IntersectionObserver !== 'undefined') {
+    sentinelObserver = new IntersectionObserver(entries => {
+      if (entries.some(e => e.isIntersecting) && media.hasMore && !media.loading) media.loadMore()
+    })
+    if (sentinelEl.value) sentinelObserver.observe(sentinelEl.value)
+  }
 })
 onBeforeUnmount(() => {
   ro?.disconnect(); ro = null
   if (measureTimer) { clearTimeout(measureTimer); measureTimer = null }
+  sentinelObserver?.disconnect(); sentinelObserver = null
+  media.stopClock()
 })
 
 function labelFor(key: string): string {
@@ -42,6 +56,7 @@ function labelFor(key: string): string {
   // 'YYYY-MM' → localized "Month YYYY"
   const m = key.match(/^(\d{4})-(\d{2})$/)
   if (m) return new Date(Number(m[1]), Number(m[2]) - 1, 1).toLocaleDateString(locale.value, { month: 'long', year: 'numeric' })
+  if (key === 'older') return t('photos.older') // missing date (no taken_at/created_at); was rendering the raw key
   return key
 }
 
@@ -73,7 +88,7 @@ const isEmpty = computed(() => media.loaded && media.photos.length === 0 && !med
         <div class="photo-date">{{ labelFor(group.key) }}</div>
         <div class="photo-rows">
           <div v-for="(row, ri) in group.rows" :key="ri" class="photo-row" :style="{ height: row.height + 'px' }">
-            <div v-for="cell in row.items" :key="cell.item.cell_id" class="photo-slot"
+            <div v-for="cell in row.items" :key="cell.item.attachment_id" class="photo-slot"
                  :style="{ width: cell.width + 'px', height: cell.height + 'px' }">
               <PhotoTile :item="cell.item"
                          @open="media.openLightbox(media.photos.indexOf(cell.item))" />
@@ -82,6 +97,8 @@ const isEmpty = computed(() => media.loaded && media.photos.length === 0 && !med
         </div>
       </div>
     </div>
+
+    <div ref="sentinelEl" class="scroll-sentinel" />
 
     <Lightbox v-if="media.lightboxItem" :item="media.lightboxItem"
               @close="media.closeLightbox()" @next="media.next()" @prev="media.prev()" />
@@ -98,5 +115,6 @@ const isEmpty = computed(() => media.loaded && media.photos.length === 0 && !med
 .photo-row { display:flex; gap:4px; }
 .photo-slot { flex:none; }
 .empty, .notice { display:grid; place-items:center; min-height:200px; color:var(--text-2); }
+.scroll-sentinel { height:1px; }
 .h-display { font-family:var(--font-display); font-weight:600; letter-spacing:-0.02em; color:var(--text-0); }
 </style>

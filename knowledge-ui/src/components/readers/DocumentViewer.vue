@@ -33,6 +33,14 @@ let zoomTimer: ReturnType<typeof setTimeout> | null = null
 // Load-generation token: each url change / unmount bumps it, so a stale in-flight
 // getDocument can neither render the old doc under the new tab nor leak post-unmount.
 let loadGen = 0
+// Render-generation token: rapid ‹/› paging can start a second renderPage() call
+// before the first's `await doc.getPage(n)` resolves. renderTask.cancel() alone
+// doesn't help there — the earlier call hasn't reached pdfPage.render() yet — so
+// both would go on to size/draw the same canvas concurrently, and pdf.js throws
+// a "same canvas" error that used to falsely flip the viewer into the error state.
+// Only the render that's still current when its getPage() resolves may touch the
+// canvas or flag an error.
+let renderGen = 0
 
 async function loadPdf() {
   const gen = ++loadGen
@@ -51,6 +59,7 @@ async function loadPdf() {
 }
 
 async function renderPage(n: number) {
+  const gen = ++renderGen
   // Cancel an in-flight render so rapid page changes can't paint out of order.
   renderTask?.cancel?.()
   renderTask = null
@@ -58,7 +67,10 @@ async function renderPage(n: number) {
   const doc = pdfDoc
   try {
     const pdfPage = await doc.getPage(n)
-    if (doc !== pdfDoc) return // doc swapped/destroyed while awaiting
+    // Stale: the doc was swapped/destroyed, or a newer renderPage() call (rapid
+    // ‹/› paging) started while this one was awaiting getPage(). Neither may
+    // proceed to touch the canvas.
+    if (doc !== pdfDoc || gen !== renderGen) return
     const dpr = window.devicePixelRatio || 1
     const base = pdfPage.getViewport({ scale: 1 })
     const fitW = (surface.value?.clientWidth || base.width)
@@ -83,10 +95,12 @@ async function renderPage(n: number) {
     const task = pdfPage.render({ canvasContext: ctx, viewport: devVp })
     renderTask = task
     await task.promise
-    renderTask = null
+    if (gen === renderGen) renderTask = null
   } catch (e: any) {
     // A cancelled render is expected when the page changes mid-flight; a stale
-    // (swapped/destroyed) doc erroring must not mark the new doc as failed.
+    // (swapped/destroyed) doc or a render superseded by a newer one must not mark
+    // the current view as failed.
+    if (gen !== renderGen) return
     if (e?.name !== 'RenderingCancelledException' && doc === pdfDoc) error.value = true
   }
 }

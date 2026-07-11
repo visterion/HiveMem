@@ -12,7 +12,7 @@ import HmIcon from '../shell/HmIcon.vue'
 import FacetGroup from '../scans/FacetGroup.vue'
 import SortMenu from '../scans/SortMenu.vue'
 
-const { query, facets, sort, shown, facetCounts, loading, run, toggleFacet, setSort, clearFacets } = useKnowledgeSearch()
+const { query, facets, sort, shown, facetCounts, loading, error, run, toggleFacet, setSort, clearFacets } = useKnowledgeSearch()
 const cellStore = useCellStore()
 const ui = useUiStore()
 const route = useRoute()
@@ -92,7 +92,11 @@ function realmColor(realm: string): string {
           </div>
         </div>
       </div>
-      <div v-if="loading" class="hint">{{ t('search.searching') }}</div>
+      <div v-if="error" class="hint error">
+        {{ t('search.searchError') }}
+        <button class="retry-btn" @click="run()">{{ t('common.retry') }}</button>
+      </div>
+      <div v-else-if="loading" class="hint">{{ t('search.searching') }}</div>
       <div v-else-if="!shown.length && (activeFilterCount || query)" class="hint">
         {{ t('common.noResults') }}
       </div>
@@ -132,6 +136,10 @@ function realmColor(realm: string): string {
 .row-meta .sig { text-transform:capitalize; }
 .dot { width:7px; height:7px; border-radius:2px; transform:rotate(45deg); flex:none; }
 .hint { color:var(--text-2); padding:8px 12px; font-size:13px; }
+.hint.error { color:var(--danger, #ff6b6b); display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.retry-btn { font-size:12px; color:var(--text-0); background:var(--bg-3); border:1px solid var(--line);
+  border-radius:8px; padding:4px 10px; cursor:pointer; }
+.retry-btn:hover { border-color:var(--line-2); }
 @media (max-width: 959px) {
   .panel {
     grid-column: 1; width: min(88vw, 366px); position: fixed; top: 0; bottom: 0; left: 0;

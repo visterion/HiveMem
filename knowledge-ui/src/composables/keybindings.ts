@@ -23,7 +23,11 @@ export function useKeybindings() {
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
       e.preventDefault(); ui.activePanel = 'search'
     } else if (e.key === 'Escape') {
-      if (reader.open) reader.close()
+      // The reader owns Escape itself via useHistoryClose (which pushed a history
+      // sentinel on open and closes on popstate). Handling it here too caused a
+      // double history.back() — one from this handler's reader.close(), one from
+      // useHistoryClose's own listener — navigating the user out of the route (H9).
+      if (reader.open) return
       // Any other visible dialog owns Escape — don't clear background state under it.
       else if (isInDialog(e.target)) return
       else if (cell.currentId) {

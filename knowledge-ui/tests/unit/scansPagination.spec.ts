@@ -80,6 +80,22 @@ describe('scans store — pagination, stale responses, status facet', () => {
     expect(s.facets.tag.size).toBe(2)
   })
 
+  it('search rows are not nuked by a stale correspondent facet selection (M17)', async () => {
+    vi.spyOn(MockApiClient.prototype, 'call').mockImplementation(async (tool: string, args?: Record<string, unknown>) => {
+      if (tool === 'search') {
+        expect((args?.include as string[])).toContain('summary')
+        return Array.from({ length: 5 }, (_, i) => docRow(`s${i}`))
+      }
+      return {}
+    })
+    const s = useScansStore()
+    s.facets.correspondent.add('Finanzamt') // selected while browsing; still active when a query starts
+    s.setQuery('rent')
+    await s.load()
+    expect(s.results.length).toBe(5)
+    expect(s.filtered.length).toBe(5) // must NOT be filtered to 0 (search rows have no `correspondent`)
+  })
+
   it('search mode surfaces truncation instead of paginating (M54)', async () => {
     vi.spyOn(MockApiClient.prototype, 'call').mockImplementation(async (tool: string) => {
       if (tool === 'search') return Array.from({ length: 100 }, (_, i) => docRow(`s${i}`))
@@ -92,6 +108,27 @@ describe('scans store — pagination, stale responses, status facet', () => {
     expect(s.searchTruncated).toBe(true)
     await s.loadMore() // must be a no-op in search mode
     expect(s.results.length).toBe(100)
+  })
+
+  it('loadFacets() discards a stale response overtaken by a newer load()/loadFacets() (M53 mirror)', async () => {
+    let resolveFirst!: (v: unknown) => void
+    let call = 0
+    vi.spyOn(MockApiClient.prototype, 'call').mockImplementation((tool: string) => {
+      if (tool === 'list_documents') return Promise.resolve([])
+      if (tool !== 'facet_count') return Promise.resolve({})
+      call++
+      if (call === 1) return new Promise(res => { resolveFirst = res })
+      return Promise.resolve({ status: [{ value: 'new', count: 1 }] })
+    })
+    const s = useScansStore()
+    const p1 = s.loadFacets() // captures the current loadSeq
+    await s.load() // bumps loadSeq — invalidates the in-flight loadFacets above
+    const p2 = s.loadFacets()
+    await p2
+    expect(s.facetCounts.status?.[0]?.value).toBe('new')
+    resolveFirst({ status: [{ value: 'old', count: 1 }] })
+    await p1
+    expect(s.facetCounts.status?.[0]?.value).toBe('new') // stale response must not win
   })
 
   it('openDocument does not open the reader when the cell cannot be loaded (M55)', async () => {

@@ -8,6 +8,7 @@ import { createRouter, createMemoryHistory, type Router } from 'vue-router'
 import SearchPanel from '../../src/components/knowledge/SearchPanel.vue'
 import { i18n } from '../../src/i18n'
 import { resetApi } from '../../src/api/useApi'
+import { MockApiClient } from '../../src/api/mockClient'
 import { useCellStore } from '../../src/stores/cell'
 
 function makeRouter(): Router {
@@ -76,6 +77,29 @@ describe('knowledge SearchPanel', () => {
     await flushPromises()
     // After clearing, the button should disappear (activeFilterCount === 0)
     expect(w.find('.clear-btn').exists()).toBe(false)
+  })
+
+  it('renders an error state with a retry button when search fails, and clears it on a successful retry (E5)', async () => {
+    let call = 0
+    vi.spyOn(MockApiClient.prototype, 'call').mockImplementation(async (tool: string) => {
+      if (tool === 'search') {
+        call++
+        if (call === 1) throw new Error('boom')
+        return []
+      }
+      return {}
+    })
+    const vuetify = createVuetify({ components, directives })
+    const router = makeRouter(); router.push('/'); await router.isReady()
+    const w = mount(SearchPanel, { global: { plugins: [vuetify, i18n, router] } })
+    await w.find('input').setValue('a')
+    await vi.advanceTimersByTimeAsync(500)
+    await flushPromises()
+    expect(w.find('.hint.error').exists()).toBe(true)
+
+    await w.find('.retry-btn').trigger('click')
+    await flushPromises()
+    expect(w.find('.hint.error').exists()).toBe(false)
   })
 
   it('SortMenu renders and emits change on pick', async () => {

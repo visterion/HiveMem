@@ -29,7 +29,14 @@ onMounted(async () => {
 })
 
 async function onFile(e: Event) {
-  const file = (e.target as HTMLInputElement).files?.[0]
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  // Clear the input's value once we've read the file: without this, re-picking
+  // the exact same filename (e.g. after fixing the zip and re-exporting under
+  // the same name, or retrying a failed import) doesn't change the input's
+  // value, so the browser never fires another 'change' event and onFile()
+  // silently never runs again.
+  input.value = ''
   if (!file) return
   plan.value = null
   empty.value = false

@@ -19,6 +19,7 @@
     "@mdi/font": "^7.4.47",
     "@tresjs/cientos": "^5.7.0",
     "@tresjs/core": "^5.8.0",
+    "@vscode/markdown-it-katex": "^1.1.2",
     "codemirror": "^6.0.2",
     "d3-force": "^3.0.0",
     "diff": "^9.0.0",

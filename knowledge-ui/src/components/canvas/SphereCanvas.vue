@@ -289,6 +289,42 @@ function render() {
     })
   }
 
+  // 3b. Reposition already-created sprites/labels/halos to the positions just
+  // computed. Edges are rebuilt from these same maps on every render() call (step
+  // 6), but sprites/labels were previously only ever positioned once, at creation
+  // (steps 4/5/7b are creation-guarded by the `rendered*` sets). On a resize
+  // (viewportSig change invalidates the realmPos cache) or as new cells stream in
+  // and shift the deterministic layout, existing nodes stayed frozen at their old
+  // coordinates while the edges snapped to the new ones — visually detaching them.
+  for (const child of realmLayer.children) {
+    const s = child as any
+    if (s._kind !== 'realm') continue
+    const p = realmPos.get(s._name)
+    if (p) { s.x = p.x; s.y = p.y }
+  }
+  for (const child of labelLayer.children) {
+    const s = child as any
+    if (s._kind === 'realm-label') {
+      const p = realmPos.get(s._name)
+      if (p) { s.x = p.x; s.y = p.y - (realmSize.get(s._name) ?? 120) / 2 - 10 }
+    } else if (s._kind === 'signal-label') {
+      const sp = signalPos.get(s._key)
+      if (sp) { s.x = sp.x; s.y = sp.y - 30 }
+    }
+  }
+  for (const child of signalLayer.children) {
+    const s = child as any
+    if (s._kind !== 'signal') continue
+    const sp = signalPos.get(s._key)
+    if (sp) { s.x = sp.x; s.y = sp.y }
+  }
+  for (const child of cellLayer.children) {
+    const s = child as any
+    if (s._kind !== 'cell') continue
+    const pt = cellPos.get(s._cellId)
+    if (pt) { s.x = pt.x; s.y = pt.y }
+  }
+
   // 4. Add realm sprites + labels once.
   canvasStore.realms.forEach(r => {
     const p = realmPos.get(r.name); if (!p) return
@@ -307,6 +343,7 @@ function render() {
       label.x = p.x
       label.y = p.y - (realmSize.get(r.name) ?? 120) / 2 - 10
       label._kind = 'realm-label'
+      label._name = r.name
       labelLayer!.addChild(label)
       renderedRealmLabels.add(r.name)
     }
@@ -329,6 +366,7 @@ function render() {
       label.anchor.set(0.5)
       label.x = sp.x; label.y = sp.y - 30
       label._kind = 'signal-label'
+      label._key = key
       label.visible = false
       labelLayer!.addChild(label)
       renderedSignalLabels.add(key)

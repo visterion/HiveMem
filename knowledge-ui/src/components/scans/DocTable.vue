@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import type { DocumentRow } from '../../api/types'
+import type { DocumentRow, SearchDocumentRow } from '../../api/types'
 import { cellLabel } from '../../api/cellLabel'
 import Snippet from './Snippet.vue'
 import HmIcon from '../shell/HmIcon.vue'
 
-const props = defineProps<{ rows: DocumentRow[]; q: string; selection: Set<string> }>()
+const props = defineProps<{ rows: (DocumentRow | SearchDocumentRow)[]; q: string; selection: Set<string> }>()
 const emit = defineEmits<{ (e: 'open', id: string): void; (e: 'select', id: string): void }>()
 
 function formatDate(iso: string): string {
@@ -59,8 +59,10 @@ function formatDate(iso: string): string {
       <!-- Date -->
       <span class="dtbl-muted">{{ formatDate(d.created_at) }}</span>
 
-      <!-- Status -->
-      <span :class="['sl-status', d.status]">{{ d.status }}</span>
+      <!-- Status — search rows never carry a status (M17); render nothing instead
+           of an empty/misleading badge. -->
+      <span v-if="d.status" :class="['sl-status', d.status]">{{ d.status }}</span>
+      <span v-else class="dtbl-muted">—</span>
     </div>
   </div>
 </template>

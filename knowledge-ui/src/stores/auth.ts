@@ -16,6 +16,20 @@ export const useAuthStore = defineStore('auth', {
       this.role = w.role
       this.identity = w.identity
       applyBackendDefault(w.default_language)
+
+      // A non-admin who deep-links straight to /queen lands there before wake_up
+      // resolves — router.ts's adminGuard runs at navigation time, when the role
+      // is still unknown, and (by design) lets an unknown role through. Once the
+      // role actually resolves here, re-check the CURRENT route: if it's admin-only
+      // and this user isn't admin, nothing else re-navigates them away, and they'd
+      // stay on /queen indefinitely. Dynamic import avoids the static import
+      // cycle (router.ts imports useAuthStore).
+      if (this.role !== 'admin') {
+        const { router } = await import('../router')
+        if (router.currentRoute.value.meta.role === 'admin') {
+          await router.replace({ name: 'search' })
+        }
+      }
     },
     async logout() {
       try {

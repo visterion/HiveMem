@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>MarkdownTab KaTeX fixture</title>
+</head>
+<body>
+  <!--
+    Mounts the real MarkdownTab.vue through the Vite dev server's module graph —
+    the same esbuild dependency-prebundling path that crashed on the CJS
+    `@vscode/markdown-it-katex` default export ("plugin.apply is not a function").
+    vitest's module resolution can't reproduce that, so this fixture exists purely
+    to give a Playwright e2e a real build surface to assert against (H7 follow-up).
+  -->
+  <div id="app"></div>
+  <script type="module">
+    import { createApp, h } from 'vue'
+    import MarkdownTab from '/src/components/readers/MarkdownTab.vue'
+
+    const content = [
+      'Costs are $50 and $60 today.',   // plain text — the two $ must NOT be paired into math
+      '',
+      'Formula: $x^2$ is nice.',        // real inline math → a .katex element
+      '',
+      '`echo $HOME`',                   // dollar inside a code span stays literal
+    ].join('\n')
+
+    createApp({ render: () => h(MarkdownTab, { content }) }).mount('#app')
+  </script>
+</body>
+</html>

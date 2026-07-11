@@ -3,7 +3,7 @@ import { useApi } from '../api/useApi'
 import { useCellStore } from './cell'
 import { useReaderStore } from './reader'
 import { useUiStore } from './ui'
-import type { Cell, DocumentRow, FacetCounts, SavedSearch } from '../api/types'
+import type { Cell, DocumentRow, FacetCounts, SavedSearch, SearchDocumentRow } from '../api/types'
 
 export type FacetKey = 'tag' | 'status' | 'realm' | 'year' | 'signal' | 'correspondent'
 export interface SavedView { id: string; name: string; icon?: string; filter: Partial<Record<FacetKey, string[]>> }
@@ -26,7 +26,7 @@ export const useScansStore = defineStore('scans', {
     sort: 'newest' as 'newest' | 'oldest' | 'title',
     mode: 'grid' as 'grid' | 'list',
     selection: new Set<string>(),
-    results: [] as DocumentRow[],
+    results: [] as (DocumentRow | SearchDocumentRow)[],
     facetCounts: {} as FacetCounts,
     openId: null as string | null,
     loading: false,
@@ -44,12 +44,17 @@ export const useScansStore = defineStore('scans', {
      * - year / realm / signal: server returns all; refine locally
      * - correspondent: filter against the `correspondent` field on DocumentRow (derived from fact:vendor/party)
      */
-    filtered(s): DocumentRow[] {
+    filtered(s): (DocumentRow | SearchDocumentRow)[] {
+      // search rows never carry `correspondent` (it's derived from fact:vendor/
+      // fact:party via facet_count, which only covers browse mode) — applying a
+      // stale correspondent facet selection while a query is active would filter
+      // out every single search result (M17).
+      const applyCorrespondent = !s.query.trim()
       return s.results.filter(d => {
         if (s.facets.year.size && !s.facets.year.has((d.created_at || '').slice(0, 4))) return false
         if (s.facets.realm.size && !s.facets.realm.has(d.realm)) return false
         if (s.facets.signal.size && !(d.signal && s.facets.signal.has(d.signal))) return false
-        if (s.facets.correspondent.size && !(d.correspondent && s.facets.correspondent.has(d.correspondent))) return false
+        if (applyCorrespondent && s.facets.correspondent.size && !(d.correspondent && s.facets.correspondent.has(d.correspondent))) return false
         return true
       })
     },
@@ -77,9 +82,16 @@ export const useScansStore = defineStore('scans', {
       try {
         const api = useApi()
         if (this.query.trim()) {
-          const rows = await api.call<DocumentRow[]>('search', {
+          // `include` REPLACES the tool's default field set (same as get_cell), so
+          // 'summary' must be listed explicitly or every search-mode card/snippet
+          // silently loses its text (M17). `status`, `attachment_id`,
+          // `has_thumbnail`, `page_count` and `correspondent` are never returned by
+          // search regardless of `include` — SearchDocumentRow types those as
+          // optional so card/table rendering degrades gracefully instead of
+          // assuming the full DocumentRow shape.
+          const rows = await api.call<SearchDocumentRow[]>('search', {
             query: this.query, realm: REALM, ...this.serverArgs(),
-            include: ['content', 'tags', 'created_at'], limit: PAGE_SIZE,
+            include: ['content', 'tags', 'created_at', 'summary'], limit: PAGE_SIZE,
           }) ?? []
           if (seq !== this.loadSeq) return // stale — a newer load() owns the state (M53)
           this.results = rows
@@ -117,6 +129,10 @@ export const useScansStore = defineStore('scans', {
       }
     },
     async loadFacets() {
+      // Mirror load()'s M53 loadSeq guard: a slower loadFacets() triggered by an
+      // earlier reload() must not clobber facetCounts computed for a newer one
+      // (e.g. rapid facet toggling / typing).
+      const seq = this.loadSeq
       const api = useApi()
       const args: Record<string, unknown> = {
         realm: REALM,
@@ -126,6 +142,7 @@ export const useScansStore = defineStore('scans', {
       const tags = [...this.facets.tag]; if (tags.length) args.tags = tags
       const status = this.facets.status.size ? [...this.facets.status][0] : undefined; if (status) args.status = status
       const raw = await api.call<FacetCounts>('facet_count', args)
+      if (seq !== this.loadSeq) return // stale — a newer load()/loadFacets() owns the state
 
       // Merge fact:vendor + fact:party into a synthetic 'correspondent' facet.
       // Counts are summed by value (deduplicated: same entity appearing in both

@@ -75,4 +75,17 @@ describe('Lightbox', () => {
     expect(router.currentRoute.value.name).toBe('graph')
     expect(canvas.focusedId).toBe('media-ph1')
   })
+
+  it('resets imgFailed when navigating to another gallery image sharing the same cell_id (E6)', async () => {
+    // Two gallery images belonging to the same cell (attachment_id differs,
+    // cell_id doesn't) — before this fix, imgFailed was keyed on cell_id, so it
+    // never reset navigating between them.
+    const sameCellOther = { ...withGps, attachment_id: 'att-ph1-other' }
+    const w = mountLb(withGps)
+    await w.find('img').trigger('error')
+    expect(w.find('img').classes()).toContain('hidden')
+
+    await w.setProps({ item: sameCellOther })
+    expect(w.find('img').classes()).not.toContain('hidden')
+  })
 })

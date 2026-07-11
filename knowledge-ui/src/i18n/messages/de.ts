@@ -3,6 +3,7 @@
 export default {
   common: {
     connecting: 'Verbindung…',
+    connectError: 'Verbindung fehlgeschlagen. Bitte erneut versuchen.',
     loading: 'Lädt…',
     reload: 'Neu laden',
     retry: 'Erneut versuchen',
@@ -48,11 +49,12 @@ export default {
     exif: 'EXIF',
     camera: 'Kamera', resolution: 'Auflösung', location: 'Ort', size: 'Größe', takenAt: 'Aufgenommen',
     showInGraph: 'Im Graph zeigen',
-    today: 'Heute', thisWeek: 'Diese Woche', thisMonth: 'Diesen Monat',
+    today: 'Heute', thisWeek: 'Diese Woche', thisMonth: 'Diesen Monat', older: 'Älter',
   },
   search: {
     placeholder: 'Zum Suchen tippen…',
     searching: 'Suche läuft…',
+    searchError: 'Suche fehlgeschlagen.',
     hudPlaceholder: 'Suchen…',
     comingSoon: 'Demnächst',
     stats: '{cells} Zellen · {facts} Fakten · {realms} Realms',
@@ -188,6 +190,8 @@ export default {
     page: 'Seite', of: 'von', approve: 'Freigeben', editMeta: 'Metadaten bearbeiten', openOriginal: 'Original öffnen',
     openDoc: 'Dokument öffnen',
     noResults: 'Keine Dokumente gefunden', noResultsSub: 'Passe Suche oder Filter an.',
+    searchTruncated: 'Nur die ersten Treffer werden angezeigt — Suche verfeinern für mehr.',
+    loadError: 'Dokumente konnten nicht geladen werden.',
     newestFirst: 'Neueste zuerst', oldestFirst: 'Älteste zuerst', titleAZ: 'Titel A–Z', sortBy: 'Sortieren',
     pending: 'Offen', committed: 'Freigegeben',
     gridView: 'Kachelansicht', listView: 'Listenansicht',

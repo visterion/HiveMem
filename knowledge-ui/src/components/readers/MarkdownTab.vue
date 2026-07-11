@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import MarkdownIt from 'markdown-it'
-import katex from 'katex'
+import * as markdownItKatexNs from '@vscode/markdown-it-katex'
 import 'katex/dist/katex.min.css'
 import hljs from 'highlight.js'
 import 'highlight.js/styles/github-dark.css'
@@ -20,13 +20,29 @@ const md = new MarkdownIt({
   }
 })
 
-function renderKatex(src: string) {
-  return src
-    .replace(/\$\$([\s\S]+?)\$\$/g, (_, m) => katex.renderToString(m, { displayMode: true, throwOnError: false }))
-    .replace(/(^|[^\\])\$([^$\n]+?)\$/g, (_, pre, m) => pre + katex.renderToString(m, { throwOnError: false }))
+// Runs inside the markdown-it parse pipeline (respects code spans/fences and
+// emits HTML through the renderer), instead of pre-injecting KaTeX HTML into
+// the raw source before parsing — which corrupted code spans (`` `$HOME` ``)
+// and plain-text dollar amounts ("$50 and $60") by treating them as math
+// delimiters, and then got HTML-escaped anyway because `html:false`.
+//
+// This package is CJS with a TS-style `export default`, and the interop wrapping
+// differs by toolchain — sometimes single (`{ default: fn }`), sometimes double
+// (Vite's dev-time esbuild prebundling emits `export default require()`, so the
+// namespace is `{ default: { default: fn } }`). A single `.default` unwrap left
+// an object, and `md.use()` threw "plugin.apply is not a function". Peel
+// `.default` until we actually reach the plugin function — robust across Vite
+// dev prebundling, the production build, and Vitest.
+function resolvePlugin(mod: unknown): (md: MarkdownIt, options?: unknown) => MarkdownIt {
+  let cur: unknown = mod
+  while (cur && typeof cur !== 'function' && typeof (cur as { default?: unknown }).default !== 'undefined') {
+    cur = (cur as { default?: unknown }).default
+  }
+  return cur as (md: MarkdownIt, options?: unknown) => MarkdownIt
 }
+md.use(resolvePlugin(markdownItKatexNs), { throwOnError: false })
 
-const html = computed(() => md.render(renderKatex(props.content || '')))
+const html = computed(() => md.render(props.content || ''))
 </script>
 
 <template>

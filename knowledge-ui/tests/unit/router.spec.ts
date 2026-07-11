@@ -1,8 +1,10 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, beforeEach, vi } from 'vitest'
 import { router } from '../../src/router'
 import { createPinia, setActivePinia } from 'pinia'
 import { adminGuard } from '../../src/router'
 import { useAuthStore } from '../../src/stores/auth'
+import { resetApi } from '../../src/api/useApi'
+import { MockApiClient } from '../../src/api/mockClient'
 import type { RouteLocationNormalized } from 'vue-router'
 
 const asRoute = (meta: Record<string, unknown>) => ({ meta } as RouteLocationNormalized)
@@ -62,5 +64,53 @@ describe('adminGuard', () => {
     expect(adminGuard(asRoute({ role: 'admin' }))).toBe(true)
     auth.role = 'writer' as never
     expect(adminGuard(asRoute({}))).toBe(true)
+  })
+})
+
+describe('auth.init() re-checks the current route once the role resolves (E5)', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    localStorage.setItem('hivemem_mock', 'true')
+    resetApi()
+  })
+
+  it('redirects away from /queen when wake_up resolves a non-admin role (deep-link before role was known)', async () => {
+    vi.spyOn(MockApiClient.prototype, 'call').mockImplementation(async (tool: string) => {
+      if (tool === 'wake_up') return { role: 'writer', identity: 'me' }
+      return {}
+    })
+    await router.push('/queen')
+    await router.isReady()
+    expect(router.currentRoute.value.name).toBe('queen') // adminGuard lets it through: role unknown yet
+
+    await useAuthStore().init()
+    expect(router.currentRoute.value.name).toBe('search')
+    vi.restoreAllMocks()
+  })
+
+  it('does not redirect when wake_up resolves an admin role', async () => {
+    vi.spyOn(MockApiClient.prototype, 'call').mockImplementation(async (tool: string) => {
+      if (tool === 'wake_up') return { role: 'admin', identity: 'me' }
+      return {}
+    })
+    await router.push('/queen')
+    await router.isReady()
+
+    await useAuthStore().init()
+    expect(router.currentRoute.value.name).toBe('queen')
+    vi.restoreAllMocks()
+  })
+
+  it('does not redirect a non-admin role on a non-admin route', async () => {
+    vi.spyOn(MockApiClient.prototype, 'call').mockImplementation(async (tool: string) => {
+      if (tool === 'wake_up') return { role: 'writer', identity: 'me' }
+      return {}
+    })
+    await router.push('/scans')
+    await router.isReady()
+
+    await useAuthStore().init()
+    expect(router.currentRoute.value.name).toBe('scans')
+    vi.restoreAllMocks()
   })
 })

@@ -32,4 +32,21 @@ describe('DocCard + DocTable', () => {
     await w.find('.dtbl-title').trigger('click')
     expect(w.emitted('open')![0]).toEqual(['d1'])
   })
+
+  // M17: a row shaped like what `search` actually returns — no status,
+  // attachment_id, mime_type, page_count, has_thumbnail or correspondent.
+  const searchRow: any = { id: 's1', realm: 'documents', signal: 'facts', topic: null,
+    summary: 'Mietvertrag 2025', tags: ['contract'], created_at: '2025-03-01T00:00:00Z' }
+
+  it('DocCard renders a search-shaped row without throwing on missing fields', () => {
+    const w = mount(DocCard, { props: { d: searchRow, q: '', selected: false }, global: { plugins: [i18n] } })
+    expect(w.text()).toContain('Mietvertrag 2025')
+    expect(w.find('.docthumb').exists()).toBe(true) // falls back to the placeholder paper icon
+  })
+
+  it('DocTable renders a search-shaped row without throwing on missing fields', () => {
+    const w = mount(DocTable, { props: { rows: [searchRow], q: '', selection: new Set<string>() }, global: { plugins: [i18n] } })
+    expect(w.text()).toContain('Mietvertrag 2025')
+    expect(w.find('.sl-status').exists()).toBe(false) // no status badge rendered for a missing status
+  })
 })
