@@ -37,4 +37,19 @@ describe('CellInspector', () => {
     await w.find('[data-test="insp-close"]').trigger('click')
     expect(s.currentId).toBeNull()
   })
+
+  it('hides SIGNALE section when no scores are present', () => {
+    const s = seed()
+    s.selectedScores = null
+    const w = mount(CellInspector, { global: { plugins: [router, i18n] } })
+    expect(w.find('[data-test="signal-bars"]').exists()).toBe(false)
+  })
+
+  it('shows skeleton while loading instead of previous cell', () => {
+    const s = seed()
+    s.loading = true
+    const w = mount(CellInspector, { global: { plugins: [router, i18n] } })
+    expect(w.find('[data-test="inspector-skeleton"]').exists()).toBe(true)
+    expect(w.text()).not.toContain('Zusammenfassung')
+  })
 })

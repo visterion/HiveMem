@@ -22,11 +22,26 @@ function fmtDate(d: string | null): string {
   return m ? `${m[3]}.${m[2]}.${m[1]}` : d
 }
 function openDoc() { if (cellStore.currentId) reader.openReader(cellStore.currentId) }
-function showGraph() { router.push({ name: 'graph' }) }
+function showGraph() {
+  // Route-name change (search -> graph) would otherwise be cleared by router.ts's
+  // afterEach — this button's whole purpose is to keep the selection across it.
+  cellStore.preserveOnce = true
+  router.push({ name: 'graph' })
+}
 </script>
 
 <template>
-  <div v-if="cell" class="inspector fade-in" :key="cell.id">
+  <div v-if="cellStore.loading" class="inspector" data-test="inspector-skeleton">
+    <div class="insp-head">
+      <div class="skeleton-line" style="width:60px;height:11px" />
+      <div class="skeleton-line" style="width:80%;height:18px;margin-top:8px" />
+    </div>
+    <div class="insp-body">
+      <div class="skeleton-line" style="width:100%;height:60px" />
+      <div class="skeleton-line" style="width:100%;height:80px;margin-top:14px" />
+    </div>
+  </div>
+  <div v-else-if="cell" class="inspector fade-in" :key="cell.id">
     <div class="insp-head">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
         <div class="h-eyebrow">{{ t('inspector.cell') }}</div>
@@ -35,8 +50,10 @@ function showGraph() { router.push({ name: 'graph' }) }
       <div class="insp-title">{{ cellLabel(cell) }}</div>
     </div>
     <div class="insp-body">
-      <div class="section-label">{{ t('inspector.signals') }}</div>
-      <SignalBars :scores="scores" />
+      <template v-if="cellStore.selectedScores">
+        <div class="section-label">{{ t('inspector.signals') }}</div>
+        <div data-test="signal-bars"><SignalBars :scores="scores" /></div>
+      </template>
 
       <div class="section-label">{{ t('inspector.metadata') }}</div>
       <div class="meta-grid">
@@ -82,6 +99,9 @@ function showGraph() { router.push({ name: 'graph' }) }
 .btn:hover { background:var(--honey-bright); }
 .btn.ghost { background:var(--bg-3); color:var(--text-0); border:1px solid var(--line-2); }
 .btn.ghost:hover { background:var(--bg-4); }
+.skeleton-line { border-radius:6px; background:linear-gradient(90deg,var(--bg-3) 25%,var(--bg-4) 50%,var(--bg-3) 75%);
+  background-size:200% 100%; animation:skeleton-shimmer 1.4s ease-in-out infinite; }
+@keyframes skeleton-shimmer { 0% { background-position:200% 0; } 100% { background-position:-200% 0; } }
 @media (max-width: 959px) {
   .inspector {
     grid-column: 1; width: auto; position: fixed; inset: 0; z-index: 60;

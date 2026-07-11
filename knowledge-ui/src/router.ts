@@ -1,5 +1,7 @@
 import { createRouter, createWebHistory, type RouteRecordRaw, type RouteLocationNormalized } from 'vue-router'
 import { useAuthStore } from './stores/auth'
+import { useCellStore } from './stores/cell'
+import { useCanvasStore } from './stores/canvas'
 
 const routes: RouteRecordRaw[] = [
   { path: '/', name: 'search', meta: { title: 'nav.search', icon: 'search', full: false },
@@ -47,3 +49,24 @@ export function adminGuard(to: RouteLocationNormalized) {
 }
 
 router.beforeEach(adminGuard)
+
+// The inspector/panel selection (Pinia cell store) and the graph camera focus must not
+// stick across a view change — otherwise the search inspector or graph panel keeps
+// showing a stale cell from the previous route. Only a route-NAME change counts: Task 8's
+// ?cell=/?realm= query mirroring on the search route pushes query-only navigations
+// (same name) that must keep the selection. `from.name === undefined` is the initial
+// navigation on app boot — nothing to clear yet.
+// Exception: CellInspector's "Im Graph zeigen" pushes search -> graph and wants to KEEP
+// the selection for that one hop; it sets cellStore.preserveOnce before the push, and this
+// guard consumes the flag exactly once.
+router.afterEach((to, from) => {
+  if (to.name !== from.name && from.name !== undefined) {
+    const cellStore = useCellStore()
+    if (cellStore.preserveOnce) {
+      cellStore.preserveOnce = false
+      return
+    }
+    cellStore.clear()
+    useCanvasStore().setFocus(null)
+  }
+})

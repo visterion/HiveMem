@@ -39,7 +39,11 @@ export const useCellStore = defineStore('cell', {
     selectedScores: null as SearchResult | null,
     // Monotonic token: only the latest load()/open() commits currentId/loading, so
     // out-of-order responses can't clobber the user's newest selection (M52).
-    loadSeq: 0
+    loadSeq: 0,
+    // Consumed exactly once by router.ts's afterEach: set by CellInspector's "Im Graph
+    // zeigen" right before it pushes search -> graph, so that one route-name change
+    // does NOT clear the selection (the whole point of the button is to keep it).
+    preserveOnce: false
   }),
   getters: {
     current(s): CellEntry | null {

@@ -37,7 +37,16 @@ function close() {
 
 <template>
   <transition name="slide-r">
-    <aside v-if="d" class="scan">
+    <aside v-if="cellStore.loading" class="scan" data-test="scan-panel-skeleton">
+      <header>
+        <div class="skeleton-line" style="width:60%;height:16px" />
+      </header>
+      <div class="body">
+        <div class="skeleton-line" style="width:100%;height:60px" />
+        <div class="skeleton-line" style="width:100%;height:80px;margin-top:14px" />
+      </div>
+    </aside>
+    <aside v-else-if="d" class="scan">
       <header>
         <strong>{{ cellLabel(d.cell) }}</strong>
         <v-btn data-testid="scan-panel-close" icon="mdi-close" size="small" variant="text" @click="close" />
@@ -117,4 +126,7 @@ blockquote { border-left:3px solid #4dc4ff; padding-left:8px; color:#4dc4ff; fon
 .pred { color:#4dc4ff; }
 .slide-r-enter-from, .slide-r-leave-to { transform:translateX(20px); opacity:0; }
 .slide-r-enter-active, .slide-r-leave-active { transition:transform 180ms ease, opacity 180ms ease; }
+.skeleton-line { border-radius:6px; background:linear-gradient(90deg,#1a1a24 25%,#22222e 50%,#1a1a24 75%);
+  background-size:200% 100%; animation:skeleton-shimmer 1.4s ease-in-out infinite; }
+@keyframes skeleton-shimmer { 0% { background-position:200% 0; } 100% { background-position:-200% 0; } }
 </style>
