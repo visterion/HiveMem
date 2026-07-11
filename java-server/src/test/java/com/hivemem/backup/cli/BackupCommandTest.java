@@ -134,6 +134,44 @@ class BackupCommandTest {
     }
 
     @Test
+    void restoreWithForce_printsWipeWarningBeforeImporting(@TempDir Path tmp) throws Exception {
+        Path in = Files.write(tmp.resolve("backup.tar.gz"), new byte[]{0});
+
+        java.io.ByteArrayOutputStream captured = new java.io.ByteArrayOutputStream();
+        java.io.PrintStream originalOut = System.out;
+        System.setOut(new java.io.PrintStream(captured));
+        try {
+            cmd.run(new DefaultApplicationArguments(
+                    "backup", "restore", "--in=" + in, "--mode=clone", "--force", "--yes"));
+        } finally {
+            System.setOut(originalOut);
+        }
+
+        assertEquals(0, exitCode.get());
+        String output = captured.toString();
+        assertTrue(output.contains("--force"), "expected a --force warning, got: " + output);
+        assertTrue(output.toLowerCase().contains("empt"),
+                "expected the warning to mention the target being left empty, got: " + output);
+    }
+
+    @Test
+    void restoreWithoutForce_printsNoWipeWarning(@TempDir Path tmp) throws Exception {
+        Path in = Files.write(tmp.resolve("backup.tar.gz"), new byte[]{0});
+
+        java.io.ByteArrayOutputStream captured = new java.io.ByteArrayOutputStream();
+        java.io.PrintStream originalOut = System.out;
+        System.setOut(new java.io.PrintStream(captured));
+        try {
+            cmd.run(new DefaultApplicationArguments("backup", "restore", "--in=" + in, "--yes"));
+        } finally {
+            System.setOut(originalOut);
+        }
+
+        assertEquals(0, exitCode.get());
+        assertTrue(!captured.toString().contains("TRUNCATED/EMPTIED"));
+    }
+
+    @Test
     void restoreInvalidMode_exitsOne(@TempDir Path tmp) throws Exception {
         Path in = Files.write(tmp.resolve("backup.tar.gz"), new byte[]{0});
 

@@ -397,6 +397,22 @@ class McpControllerTest {
     }
 
     @Test
+    void malformedSingleObjectBodyReturnsInvalidRequestNotHttp500() throws Exception {
+        // "method" is a String field on McpRequest; a JSON array there can't be coerced and
+        // previously escaped the uncaught MAPPER.treeToValue(...) call as a raw Jackson
+        // exception -> HTTP 500 (commit ca0fc38). Must now come back as a clean JSON-RPC error.
+        mockMvc.perform(post("/mcp")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer good-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"jsonrpc":"2.0","id":40,"method":["not","a","string"]}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.error.code").value(-32600))
+                .andExpect(jsonPath("$.error.message").value(startsWith("Invalid Request")));
+    }
+
+    @Test
     void unknownMethodReturnsMethodNotFound() throws Exception {
         mockMvc.perform(post("/mcp")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer good-token")

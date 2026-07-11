@@ -96,7 +96,17 @@ public class McpController {
             return ResponseEntity.ok(McpResponse.invalidRequest(null,
                     "Invalid Request: JSON-RPC batching is not supported"));
         }
-        McpRequest request = MAPPER.treeToValue(body, McpRequest.class);
+        McpRequest request;
+        try {
+            request = MAPPER.treeToValue(body, McpRequest.class);
+        } catch (Exception e) {
+            // A syntactically-valid JSON body that doesn't fit the McpRequest shape (e.g. wrong
+            // field types) previously escaped as a raw Jackson exception -> HTTP 500. Return a
+            // proper JSON-RPC error instead (Spring's own binder gave 400 for this before commit
+            // ca0fc38 introduced the manual treeToValue call).
+            log.warn("MCP request body failed to bind to McpRequest: {}", e.getMessage());
+            return ResponseEntity.ok(McpResponse.invalidRequest(null, "Invalid Request: " + e.getMessage()));
+        }
         log.info("MCP request: method={} id={} accept={} content-type={}",
                 request.method(), request.id(),
                 servletRequest.getHeader("Accept"),

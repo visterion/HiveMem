@@ -102,6 +102,18 @@ public class BackupCommand implements ApplicationRunner {
             }
         }
 
+        if (force) {
+            // --force truncates the target DB and empties its S3 bucket BEFORE the archive
+            // import runs. If the import then fails partway through, the target is left
+            // EMPTY, not restored to its prior state — there's no safe way to import into a
+            // live target first without risking PK conflicts against the very data --force is
+            // meant to replace. Make sure the operator knows this before it starts.
+            System.out.println("⚠  --force: target will be TRUNCATED/EMPTIED before the import runs.");
+            System.out.println("   If the import fails partway through, the target is left EMPTY —");
+            System.out.println("   not restored to its prior state. Keep a separate backup of the");
+            System.out.println("   target until this restore is confirmed successful.");
+        }
+
         try (var is = new BufferedInputStream(new FileInputStream(in))) {
             restoreSvc.restore(is, mode, force);
         }

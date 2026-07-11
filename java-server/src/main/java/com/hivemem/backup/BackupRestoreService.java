@@ -99,6 +99,20 @@ public class BackupRestoreService {
                     + dbHasData + ", bucket=" + bucketHasData + "). Use --force.");
         }
 
+        if (force && (dbHasData || bucketHasData)) {
+            // --force truncates the DB and empties the bucket BEFORE the import runs. If the
+            // import then fails partway (bad archive, psql error, network drop mid-stream...),
+            // the target is left wiped with nothing restored in its place. There is currently no
+            // safer ordering here (importing into a live target first risks PK conflicts against
+            // the pre-existing data this --force call is meant to replace), so this is a
+            // deliberate operator warning rather than a behavior change.
+            log.warn("--force restore: target currently has data (db={}, bucket={}) and is about "
+                    + "to be truncated/emptied BEFORE the archive import runs. If the import fails "
+                    + "partway through, the target is left EMPTY, not restored to its prior state. "
+                    + "Keep a separate backup of the target until this restore is confirmed to have "
+                    + "succeeded.", dbHasData, bucketHasData);
+        }
+
         // The dump COPYs into every application table — including singleton rows the restore
         // process itself seeds while booting (instance_identity via InstanceConfig, identity via
         // the embedding startup check). Always truncate the full dumped table set before the
