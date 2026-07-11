@@ -67,4 +67,21 @@ describe('media store', () => {
     await s.loadMore()
     expect(s.photos.map(p => p.attachment_id)).toEqual(['p1', 'p2', 'p3', 'p4']) // p3 not duplicated
   })
+
+  it('startClock() refreshes nowTick periodically so date-bucket boundaries actually roll over (E6)', () => {
+    vi.useFakeTimers()
+    try {
+      const s = useMediaStore()
+      const initial = s.nowTick
+      s.startClock(60_000)
+      vi.advanceTimersByTime(60_000)
+      expect(s.nowTick).toBeGreaterThan(initial)
+      s.stopClock()
+      const afterStop = s.nowTick
+      vi.advanceTimersByTime(120_000)
+      expect(s.nowTick).toBe(afterStop) // stopped — no further ticks
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })

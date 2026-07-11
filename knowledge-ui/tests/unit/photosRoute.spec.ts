@@ -77,4 +77,21 @@ describe('PhotosRoute', () => {
       w.unmount()
     })
   })
+
+  it('renders a localized label for the "older" bucket, not the raw key (E6)', async () => {
+    const w = mount(PhotosRoute, globalOpts)
+    const media = useMediaStore()
+    for (let i = 0; i < 40 && !media.loaded; i++) await new Promise(r => setTimeout(r, 20))
+    // Force a photo with no taken_at/created_at into the group list, landing in
+    // the 'older' bucket (bucketKeyFor returns 'older' for a missing date).
+    media.photos = [...media.photos, {
+      cell_id: 'no-date', attachment_id: 'att-no-date', realm: 'private', summary: null,
+      tags: [], mime_type: 'image/jpeg', size_bytes: null, created_at: null, taken_at: null,
+      width: null, height: null, camera_make: null, camera_model: null,
+      gps_lat: null, gps_lon: null, place_name: null, thumbnail_uri: null, content_uri: null,
+    }]
+    await flushPromises()
+    expect(w.text()).not.toContain('older') // raw i18n key must not leak into the UI
+    expect(w.findAll('.photo-date').some(d => d.text().length > 0 && d.text() !== 'older')).toBe(true)
+  })
 })

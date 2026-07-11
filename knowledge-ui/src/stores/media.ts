@@ -4,6 +4,12 @@ import type { MediaItem } from '../api/types'
 import { groupPhotos, type PhotoGroup } from '../composables/photoGroups'
 
 const PAGE_SIZE = 200
+// A Pinia getter only recomputes when a tracked reactive dependency changes;
+// `new Date()` called directly inside `groups` isn't one, so the "Today"/"This
+// week" boundaries stayed frozen at whatever moment `groups` first ran and only
+// moved again if `photos` itself changed. `nowTick` is a real reactive
+// dependency, refreshed on an interval, so the buckets actually roll over.
+let clockTimer: ReturnType<typeof setInterval> | null = null
 
 export const useMediaStore = defineStore('media', {
   state: () => ({
@@ -14,16 +20,27 @@ export const useMediaStore = defineStore('media', {
     hasMore: false,
     error: null as string | null,
     lightboxIndex: null as number | null,
+    nowTick: Date.now(),
   }),
   getters: {
     groups(s): PhotoGroup<MediaItem>[] {
-      return groupPhotos(s.photos, new Date())
+      return groupPhotos(s.photos, new Date(s.nowTick))
     },
     lightboxItem(s): MediaItem | null {
       return s.lightboxIndex == null ? null : (s.photos[s.lightboxIndex] ?? null)
     },
   },
   actions: {
+    // Start/stop the periodic nowTick refresh — called from the Photos page's
+    // mount lifecycle so the interval doesn't run for the store's whole
+    // (singleton) lifetime regardless of whether the gallery is even shown.
+    startClock(intervalMs = 60_000) {
+      if (clockTimer) return
+      clockTimer = setInterval(() => { this.nowTick = Date.now() }, intervalMs)
+    },
+    stopClock() {
+      if (clockTimer) { clearInterval(clockTimer); clockTimer = null }
+    },
     async load() {
       if (this.loaded || this.loading) return
       this.loading = true

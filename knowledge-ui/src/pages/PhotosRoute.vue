@@ -22,6 +22,7 @@ function measure() {
 
 onMounted(() => {
   void media.load()
+  media.startClock() // keeps Today/This week bucket boundaries rolling over live
   measure()
   if (typeof ResizeObserver !== 'undefined') {
     // Debounce width updates so a continuous resize doesn't re-pack every tick.
@@ -45,6 +46,7 @@ onBeforeUnmount(() => {
   ro?.disconnect(); ro = null
   if (measureTimer) { clearTimeout(measureTimer); measureTimer = null }
   sentinelObserver?.disconnect(); sentinelObserver = null
+  media.stopClock()
 })
 
 function labelFor(key: string): string {
@@ -54,6 +56,7 @@ function labelFor(key: string): string {
   // 'YYYY-MM' → localized "Month YYYY"
   const m = key.match(/^(\d{4})-(\d{2})$/)
   if (m) return new Date(Number(m[1]), Number(m[2]) - 1, 1).toLocaleDateString(locale.value, { month: 'long', year: 'numeric' })
+  if (key === 'older') return t('photos.older') // missing date (no taken_at/created_at); was rendering the raw key
   return key
 }
 

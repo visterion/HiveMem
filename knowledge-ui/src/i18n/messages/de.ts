@@ -49,7 +49,7 @@ export default {
     exif: 'EXIF',
     camera: 'Kamera', resolution: 'Auflösung', location: 'Ort', size: 'Größe', takenAt: 'Aufgenommen',
     showInGraph: 'Im Graph zeigen',
-    today: 'Heute', thisWeek: 'Diese Woche', thisMonth: 'Diesen Monat',
+    today: 'Heute', thisWeek: 'Diese Woche', thisMonth: 'Diesen Monat', older: 'Älter',
   },
   search: {
     placeholder: 'Zum Suchen tippen…',
