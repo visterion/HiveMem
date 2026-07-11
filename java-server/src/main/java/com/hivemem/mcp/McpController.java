@@ -88,7 +88,15 @@ public class McpController {
     }
 
     @PostMapping(value = "/mcp")
-    public ResponseEntity<?> handle(@RequestBody McpRequest request, HttpServletRequest servletRequest) {
+    public ResponseEntity<?> handle(@RequestBody JsonNode body, HttpServletRequest servletRequest) {
+        if (body != null && body.isArray()) {
+            // Protocol 2025-03-26 permits a client to send a JSON-RPC batch (a top-level
+            // array). This server never implemented batching; reject it with a proper
+            // JSON-RPC error instead of letting a raw Jackson bind failure surface.
+            return ResponseEntity.ok(McpResponse.invalidRequest(null,
+                    "Invalid Request: JSON-RPC batching is not supported"));
+        }
+        McpRequest request = MAPPER.treeToValue(body, McpRequest.class);
         log.info("MCP request: method={} id={} accept={} content-type={}",
                 request.method(), request.id(),
                 servletRequest.getHeader("Accept"),

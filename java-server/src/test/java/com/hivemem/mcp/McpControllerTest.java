@@ -380,6 +380,23 @@ class McpControllerTest {
     }
 
     @Test
+    void postMcpWithJsonRpcBatchArrayReturnsInvalidRequestError() throws Exception {
+        // Protocol 2025-03-26 permits a client to send a JSON-RPC batch (a top-level array).
+        // This server never implemented batching; previously a batch body failed to bind to
+        // the single McpRequest record and surfaced as a raw Jackson deserialization error
+        // instead of a proper JSON-RPC error response.
+        mockMvc.perform(post("/mcp")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer good-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                [{"jsonrpc":"2.0","id":1,"method":"ping"}]
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.error.code").value(-32600))
+                .andExpect(jsonPath("$.error.message").value(startsWith("Invalid Request")));
+    }
+
+    @Test
     void unknownMethodReturnsMethodNotFound() throws Exception {
         mockMvc.perform(post("/mcp")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer good-token")

@@ -25,6 +25,10 @@ public record McpResponse(
         return new McpResponse("2.0", id, null, new McpError(-32602, message, null));
     }
 
+    public static McpResponse invalidRequest(Object id, String message) {
+        return new McpResponse("2.0", id, null, new McpError(-32600, message, null));
+    }
+
     public static McpResponse toolNotFound(Object id, String toolName) {
         // Per MCP, an unknown tool in tools/call is an invalid-params error (-32602),
         // not method-not-found: the method (tools/call) itself exists.
