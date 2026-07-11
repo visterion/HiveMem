@@ -63,4 +63,5 @@ const html = computed(() => md.render(props.content || ''))
 .md :deep(pre) { background:#0b0b15; padding:12px; border-radius:6px; overflow-x:auto; }
 .md :deep(blockquote) { border-left:3px solid #4dc4ff; padding-left:12px; color:#4dc4ff; font-style:italic; }
 .md :deep(code):not(pre code) { background:#1a1a2a; padding:2px 5px; border-radius:3px; font-size:0.9em; }
+.md :deep(hr.page-sep) { border:none; border-top:1px dashed #2a2a3a; margin:22px 0 8px; }
 </style>
