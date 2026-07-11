@@ -2,6 +2,7 @@ package com.hivemem.embedding;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.core.annotation.Order;
@@ -20,13 +21,32 @@ public class EmbeddingMigrationService implements ApplicationRunner {
     private static final long ADVISORY_LOCK_ID = 8421_0001L;
     private static final int BATCH_SIZE = 100;
 
+    /** Startup /info can legitimately fail a few times if the embedding sidecar boots slower
+     *  than the Java process — retry with a bounded budget instead of aborting the whole
+     *  server on the first attempt (a crash-loop under a slow-booting sidecar). Only the
+     *  STARTUP call is retried; per-request getInfo() callers (e.g. getCurrentDimension())
+     *  are unaffected. */
+    private static final int DEFAULT_STARTUP_RETRY_ATTEMPTS = 10;
+    private static final long DEFAULT_STARTUP_RETRY_BACKOFF_MS = 3000;
+
     private final EmbeddingClient embeddingClient;
     private final EmbeddingStateRepository stateRepository;
+    private final int startupRetryAttempts;
+    private final long startupRetryBackoffMs;
     private final AtomicBoolean reencodingActive = new AtomicBoolean(false);
 
+    @Autowired
     public EmbeddingMigrationService(EmbeddingClient embeddingClient, EmbeddingStateRepository stateRepository) {
+        this(embeddingClient, stateRepository, DEFAULT_STARTUP_RETRY_ATTEMPTS, DEFAULT_STARTUP_RETRY_BACKOFF_MS);
+    }
+
+    /** Test seam: allows a small attempt count / zero backoff so retry tests run fast. */
+    EmbeddingMigrationService(EmbeddingClient embeddingClient, EmbeddingStateRepository stateRepository,
+                              int startupRetryAttempts, long startupRetryBackoffMs) {
         this.embeddingClient = embeddingClient;
         this.stateRepository = stateRepository;
+        this.startupRetryAttempts = Math.max(1, startupRetryAttempts);
+        this.startupRetryBackoffMs = Math.max(0, startupRetryBackoffMs);
     }
 
     public boolean isReencodingActive() {
@@ -48,9 +68,10 @@ public class EmbeddingMigrationService implements ApplicationRunner {
     public void run(ApplicationArguments args) {
         EmbeddingInfo currentInfo;
         try {
-            currentInfo = embeddingClient.getInfo();
+            currentInfo = getInfoWithStartupRetry();
         } catch (Exception e) {
-            log.error("Failed to reach embedding service /info endpoint. Cannot validate model compatibility.", e);
+            log.error("Failed to reach embedding service /info endpoint after {} attempt(s). "
+                    + "Cannot validate model compatibility.", startupRetryAttempts, e);
             throw new IllegalStateException("Embedding service unreachable at startup", e);
         }
 
@@ -93,6 +114,31 @@ public class EmbeddingMigrationService implements ApplicationRunner {
         } finally {
             reencodingActive.set(false);
         }
+    }
+
+    /**
+     * Bounded retry around the startup {@code /info} call: an embedding sidecar that boots
+     * slower than the Java process must not crash-loop the whole server on the first attempt.
+     */
+    private EmbeddingInfo getInfoWithStartupRetry() throws InterruptedException {
+        Exception lastFailure = null;
+        for (int attempt = 1; attempt <= startupRetryAttempts; attempt++) {
+            try {
+                return embeddingClient.getInfo();
+            } catch (Exception e) {
+                lastFailure = e;
+                if (attempt < startupRetryAttempts) {
+                    log.warn("Embedding service /info not reachable yet (attempt {}/{}): {}. Retrying in {} ms...",
+                            attempt, startupRetryAttempts, e.getMessage(), startupRetryBackoffMs);
+                    if (startupRetryBackoffMs > 0) {
+                        Thread.sleep(startupRetryBackoffMs);
+                    }
+                }
+            }
+        }
+        throw new IllegalStateException(
+                "Embedding service /info still unreachable after " + startupRetryAttempts + " attempts",
+                lastFailure);
     }
 
     private void reencode(EmbeddingInfo from, EmbeddingInfo to) {

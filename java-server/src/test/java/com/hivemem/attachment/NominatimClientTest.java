@@ -59,4 +59,21 @@ class NominatimClientTest {
                 """)));
         assertThat(client.reverse(1.0, 2.0)).isEmpty();
     }
+
+    @Test
+    void stalledResponseTimesOutInsteadOfHangingForever() {
+        GeocodingProperties props = new GeocodingProperties();
+        props.setBaseUrl("http://localhost:" + server.port());
+        props.setTimeoutSeconds(1);
+        NominatimClient timeoutClient = new NominatimClient(props);
+
+        server.stubFor(get(urlPathEqualTo("/reverse"))
+                .willReturn(okJson("{}").withFixedDelay(3000)));
+
+        long start = System.currentTimeMillis();
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> timeoutClient.reverse(1.0, 2.0))
+                .isInstanceOf(NominatimClient.GeocodeUnavailableException.class);
+        long elapsedMs = System.currentTimeMillis() - start;
+        assertThat(elapsedMs).isLessThan(3000);
+    }
 }

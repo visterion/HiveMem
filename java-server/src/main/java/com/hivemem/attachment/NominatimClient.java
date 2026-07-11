@@ -2,6 +2,8 @@ package com.hivemem.attachment;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import tools.jackson.databind.JsonNode;
@@ -17,8 +19,23 @@ public class NominatimClient {
     private final RestClient http;
     private final String userAgent;
 
+    @Autowired
     public NominatimClient(GeocodingProperties props) {
-        this.http = RestClient.builder().baseUrl(props.getBaseUrl()).build();
+        this(props, RestClient.builder(), true);
+    }
+
+    NominatimClient(GeocodingProperties props, RestClient.Builder builder, boolean configureRequestFactory) {
+        if (configureRequestFactory) {
+            // No request factory means the JDK HTTP client with NO read timeout — a stalled
+            // Nominatim response would otherwise hang the calling thread forever. Mirrors
+            // KrokiClient's timeout setup.
+            int timeoutMs = props.getTimeoutSeconds() * 1000;
+            SimpleClientHttpRequestFactory rf = new SimpleClientHttpRequestFactory();
+            rf.setConnectTimeout(timeoutMs);
+            rf.setReadTimeout(timeoutMs);
+            builder = builder.requestFactory(rf);
+        }
+        this.http = builder.baseUrl(props.getBaseUrl()).build();
         this.userAgent = props.getUserAgent();
     }
 

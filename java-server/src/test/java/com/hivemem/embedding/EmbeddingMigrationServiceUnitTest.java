@@ -39,10 +39,46 @@ class EmbeddingMigrationServiceUnitTest {
 
     @Test
     void runFailsLoudlyWhenEmbeddingServiceUnreachable() {
+        // Fast retry budget (3 attempts, no backoff) so this still-always-failing case
+        // doesn't slow the suite down with the production 10x3s retry budget.
+        EmbeddingMigrationService fastRetryService =
+                new EmbeddingMigrationService(client, repo, 3, 0);
         when(client.getInfo()).thenThrow(new RuntimeException("connection refused"));
-        assertThatThrownBy(() -> service.run(null))
+        assertThatThrownBy(() -> fastRetryService.run(null))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("Embedding service unreachable");
+        verify(client, times(3)).getInfo();
+    }
+
+    @Test
+    void runRetriesStartupInfoCallAndProceedsOnceItSucceeds() {
+        EmbeddingInfo info = new EmbeddingInfo("bge-m3", 1024);
+        // Fails twice, then succeeds on the third attempt.
+        when(client.getInfo())
+                .thenThrow(new RuntimeException("not ready"))
+                .thenThrow(new RuntimeException("not ready"))
+                .thenReturn(info);
+        when(repo.loadStoredInfo()).thenReturn(Optional.empty());
+
+        EmbeddingMigrationService fastRetryService =
+                new EmbeddingMigrationService(client, repo, 10, 0);
+
+        fastRetryService.run(null);
+
+        verify(client, times(3)).getInfo();
+        verify(repo).saveInfo(info);
+    }
+
+    @Test
+    void runGivesUpAfterExhaustingStartupRetryBudget() {
+        when(client.getInfo()).thenThrow(new RuntimeException("still down"));
+        EmbeddingMigrationService fastRetryService =
+                new EmbeddingMigrationService(client, repo, 5, 0);
+
+        assertThatThrownBy(() -> fastRetryService.run(null))
+                .isInstanceOf(IllegalStateException.class);
+
+        verify(client, times(5)).getInfo();
     }
 
     @Test
