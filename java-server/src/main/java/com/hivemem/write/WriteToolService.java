@@ -58,7 +58,13 @@ public class WriteToolService {
         this.kgEntityRepository = kgEntityRepository;
     }
 
-    @Transactional
+    /**
+     * Cfix-a: {@code encodeForCell} is an HTTP call to the embedding service, and must not hold a
+     * pooled connection or the dedupe advisory lock for the duration of that round trip — the
+     * exact "network call inside a write transaction" anti-pattern already fixed for {@link
+     * #kgAdd}. It runs BEFORE the advisory lock/transaction, which then wraps only the DB writes
+     * (dedupe check, insert, tag, op-log append) via {@link WriteToolRepository#inTransaction}.
+     */
     public Map<String, Object> addCell(
             AuthPrincipal principal,
             String content,
@@ -79,76 +85,78 @@ public class WriteToolService {
         String status = effectiveStatus(principal.role(), requestedStatus);
         List<Float> embedding = embeddingClient.encodeForCell(content, summary);
 
-        if (dedupeThreshold != null && embedding != null) {
-            // embedding is null when summary is blank/absent AND content exceeds
-            // EmbeddingClient.CONTENT_EMBED_MAX_CHARS — skip the dedupe check in that case
-            // (the cell is tagged needs_summary below and deduped later once summarized).
-            // Serialize concurrent identical adds so the dedupe check-then-insert cannot race
-            // (mirrors updateBlueprint's pg_advisory_xact_lock pattern).
-            writeToolRepository.advisoryXactLock("cell-dedupe:" + content);
-            List<Map<String, Object>> duplicates = writeToolRepository.checkDuplicateCell(
-                    embedding.toString(), dedupeThreshold);
-            if (!duplicates.isEmpty()) {
-                Map<String, Object> rejection = new java.util.LinkedHashMap<>();
-                rejection.put("inserted", false);
-                rejection.put("duplicates", duplicates);
-                return rejection;
+        return writeToolRepository.inTransaction(() -> {
+            if (dedupeThreshold != null && embedding != null) {
+                // embedding is null when summary is blank/absent AND content exceeds
+                // EmbeddingClient.CONTENT_EMBED_MAX_CHARS — skip the dedupe check in that case
+                // (the cell is tagged needs_summary below and deduped later once summarized).
+                // Serialize concurrent identical adds so the dedupe check-then-insert cannot race
+                // (mirrors updateBlueprint's pg_advisory_xact_lock pattern).
+                writeToolRepository.advisoryXactLock("cell-dedupe:" + content);
+                List<Map<String, Object>> duplicates = writeToolRepository.checkDuplicateCell(
+                        embedding.toString(), dedupeThreshold);
+                if (!duplicates.isEmpty()) {
+                    Map<String, Object> rejection = new java.util.LinkedHashMap<>();
+                    rejection.put("inserted", false);
+                    rejection.put("duplicates", duplicates);
+                    return rejection;
+                }
             }
-        }
 
-        Map<String, Object> inserted = writeToolRepository.addCell(
-                content,
-                embedding,
-                realm,
-                signal,
-                topic,
-                source,
-                tags,
-                importance,
-                summary,
-                keyPoints,
-                insight,
-                actionability,
-                status,
-                principal.name(),
-                validFrom
-        );
+            Map<String, Object> inserted = writeToolRepository.addCell(
+                    content,
+                    embedding,
+                    realm,
+                    signal,
+                    topic,
+                    source,
+                    tags,
+                    importance,
+                    summary,
+                    keyPoints,
+                    insight,
+                    actionability,
+                    status,
+                    principal.name(),
+                    validFrom
+            );
 
-        if (NeedsSummaryDecider.needsSummary(content, summary)) {
-            // The repository returns the cell id as a String (uuidValue → toString),
-            // so parse it rather than casting directly to UUID.
-            Object idValue = inserted.get("id");
-            UUID cellId = idValue == null ? null : UUID.fromString(idValue.toString());
-            if (cellId != null) {
-                writeToolRepository.tagNeedsSummary(cellId);
-                eventPublisher.publishEvent(new CellNeedsSummaryEvent(cellId));
+            if (NeedsSummaryDecider.needsSummary(content, summary)) {
+                // The repository returns the cell id as a String (uuidValue → toString),
+                // so parse it rather than casting directly to UUID.
+                Object idValue = inserted.get("id");
+                UUID cellId = idValue == null ? null : UUID.fromString(idValue.toString());
+                if (cellId != null) {
+                    writeToolRepository.tagNeedsSummary(cellId);
+                    eventPublisher.publishEvent(new CellNeedsSummaryEvent(cellId));
+                }
             }
-        }
 
-        Map<String, Object> opPayload = new java.util.LinkedHashMap<>();
-        opPayload.put("cell_id", inserted.get("id"));
-        opPayload.put("realm", realm);
-        opPayload.put("signal", signal);
-        opPayload.put("topic", topic);
-        opPayload.put("source", source);
-        opPayload.put("tags", tags);
-        opPayload.put("content", content);
-        opPayload.put("summary", summary);
-        opPayload.put("key_points", keyPoints);
-        opPayload.put("insight", insight);
-        opPayload.put("importance", importance);
-        opPayload.put("actionability", actionability);
-        opPayload.put("status", status);
-        opPayload.put("agent_id", principal.name());
-        opPayload.put("valid_from", validFrom == null ? null : validFrom.toString());
-        opPayload.put("dedupe_threshold", dedupeThreshold);
-        UUID opId = opLogWriter.append("add_cell", opPayload);
-        pushDispatcher.dispatch(opId);
+            Map<String, Object> opPayload = new java.util.LinkedHashMap<>();
+            opPayload.put("cell_id", inserted.get("id"));
+            opPayload.put("realm", realm);
+            opPayload.put("signal", signal);
+            opPayload.put("topic", topic);
+            opPayload.put("source", source);
+            opPayload.put("tags", tags);
+            opPayload.put("content", content);
+            opPayload.put("summary", summary);
+            opPayload.put("key_points", keyPoints);
+            opPayload.put("insight", insight);
+            opPayload.put("importance", importance);
+            opPayload.put("actionability", actionability);
+            opPayload.put("status", status);
+            opPayload.put("agent_id", principal.name());
+            opPayload.put("valid_from", validFrom == null ? null : validFrom.toString());
+            opPayload.put("dedupe_threshold", dedupeThreshold);
+            UUID opId = opLogWriter.append("add_cell", opPayload);
+            pushDispatcher.dispatch(opId);
 
-        Map<String, Object> result = new java.util.LinkedHashMap<>();
-        result.put("inserted", true);
-        result.putAll(inserted);
-        return result;
+            Map<String, Object> result = new java.util.LinkedHashMap<>();
+            result.put("inserted", true);
+            result.putAll(inserted);
+            return result;
+        });
     }
 
     /**

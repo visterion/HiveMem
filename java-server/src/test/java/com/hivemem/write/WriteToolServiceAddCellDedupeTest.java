@@ -42,6 +42,13 @@ class WriteToolServiceAddCellDedupeTest {
         when(repo.addCell(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(),
                 any(), any(), any(), any(), any()))
                 .thenReturn(Map.of("id", insertedId.toString()));
+        // Cfix-a: addCell()'s DB writes now run inside writeToolRepository.inTransaction(...) —
+        // just run the supplier inline (no real DB in this unit test).
+        when(repo.inTransaction(org.mockito.ArgumentMatchers.<java.util.function.Supplier<Map<String, Object>>>any()))
+                .thenAnswer(invocation -> {
+                    java.util.function.Supplier<?> work = invocation.getArgument(0);
+                    return work.get();
+                });
 
         WriteToolService service = new WriteToolService(
                 repo, embedding, opLog, push, events, cellSelectorRepository, kgEntityRepository);

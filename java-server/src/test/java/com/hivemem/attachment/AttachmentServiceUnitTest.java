@@ -47,6 +47,13 @@ class AttachmentServiceUnitTest {
 
     @BeforeEach
     void setUp() {
+        // D3: ingest() now runs its DB writes inside writeRepo.inTransaction(...) instead of a
+        // method-level @Transactional — just run the supplier inline (no real DB in this unit test).
+        when(writeRepo.inTransaction(org.mockito.ArgumentMatchers.<java.util.function.Supplier<Map<String, Object>>>any()))
+                .thenAnswer(invocation -> {
+                    java.util.function.Supplier<?> work = invocation.getArgument(0);
+                    return work.get();
+                });
         service = new AttachmentService(props, seaweedFs, parsers, repo, writeRepo,
                 embeddingClient, dsl, events, krokiClient, exifExtractor, imageMetaRepo);
     }
@@ -272,5 +279,80 @@ class AttachmentServiceUnitTest {
             assertThat(e.lat()).isEqualTo(49.4874);
             assertThat(e.lon()).isEqualTo(8.4660);
         });
+    }
+
+    // ── D3: no pooled connection/transaction held across S3 uploads or the embedding call ──
+
+    @Test
+    void encodeForCellRunsBeforeAnyTransactionOpens() throws Exception {
+        props.setEnabled(true);
+
+        when(parsers.parse(eq("text/plain"), any())).thenReturn(ParseResult.empty());
+        when(embeddingClient.encodeForCell(anyString(), any())).thenReturn(List.of(0.1f));
+        when(repo.findByHash(anyString())).thenReturn(Optional.empty());
+
+        Map<String, Object> attRow = new LinkedHashMap<>();
+        attRow.put("id", UUID.randomUUID().toString());
+        attRow.put("file_hash", "h");
+        attRow.put("s3_key_original", "orig/f.txt");
+        attRow.put("s3_key_thumbnail", null);
+        when(repo.insert(anyString(), anyString(), anyString(), org.mockito.ArgumentMatchers.anyLong(),
+                anyString(), org.mockito.ArgumentMatchers.nullable(String.class), anyString(),
+                org.mockito.ArgumentMatchers.nullable(Integer.class))).thenReturn(attRow);
+        Map<String, Object> cellRow = new LinkedHashMap<>();
+        cellRow.put("id", UUID.randomUUID().toString());
+        when(writeRepo.addCell(anyString(), any(), anyString(), any(), any(), anyString(),
+                any(), any(), any(), any(), any(), any(), anyString(), anyString(), any()))
+                .thenReturn(cellRow);
+
+        InputStream in = new ByteArrayInputStream("hello".getBytes());
+        service.ingest(in, "f.txt", "text/plain", "work", "facts", "notes", null, "user");
+
+        // The embedding HTTP call, the S3 upload, and the (pre-tx) dedup pre-check must all
+        // happen BEFORE writeRepo.inTransaction opens the write transaction — otherwise a pooled
+        // Hikari connection would be held across that I/O (the exact anti-pattern this fix
+        // removes; see AttachmentService.ingest's Javadoc).
+        org.mockito.InOrder inOrder = org.mockito.Mockito.inOrder(seaweedFs, embeddingClient, writeRepo);
+        inOrder.verify(seaweedFs).upload(anyString(), any(java.nio.file.Path.class), anyString());
+        inOrder.verify(embeddingClient).encodeForCell(anyString(), any());
+        inOrder.verify(writeRepo).inTransaction(any());
+    }
+
+    @Test
+    void ingestWritesRemainAtomicInsideTheTransaction() throws Exception {
+        props.setEnabled(true);
+
+        when(parsers.parse(eq("text/plain"), any())).thenReturn(ParseResult.empty());
+        when(embeddingClient.encodeForCell(anyString(), any())).thenReturn(List.of(0.1f));
+        when(repo.findByHash(anyString())).thenReturn(Optional.empty());
+
+        Map<String, Object> attRow = new LinkedHashMap<>();
+        attRow.put("id", UUID.randomUUID().toString());
+        attRow.put("file_hash", "h");
+        attRow.put("s3_key_original", "orig/f.txt");
+        attRow.put("s3_key_thumbnail", null);
+        when(repo.insert(anyString(), anyString(), anyString(), org.mockito.ArgumentMatchers.anyLong(),
+                anyString(), org.mockito.ArgumentMatchers.nullable(String.class), anyString(),
+                org.mockito.ArgumentMatchers.nullable(Integer.class))).thenReturn(attRow);
+        Map<String, Object> cellRow = new LinkedHashMap<>();
+        UUID cellId = UUID.randomUUID();
+        cellRow.put("id", cellId.toString());
+        when(writeRepo.addCell(anyString(), any(), anyString(), any(), any(), anyString(),
+                any(), any(), any(), any(), any(), any(), anyString(), anyString(), any()))
+                .thenReturn(cellRow);
+
+        InputStream in = new ByteArrayInputStream("hello".getBytes());
+        service.ingest(in, "f.txt", "text/plain", "work", "facts", "notes", null, "user");
+
+        // insert, addCell, and linkExtractionCell must all be issued while inside the single
+        // inTransaction(...) call — i.e. exactly once each, driven by that one supplier.
+        verify(writeRepo, org.mockito.Mockito.times(1)).inTransaction(any());
+        verify(repo, org.mockito.Mockito.times(1)).insert(anyString(), anyString(), anyString(),
+                org.mockito.ArgumentMatchers.anyLong(), anyString(),
+                org.mockito.ArgumentMatchers.nullable(String.class), anyString(),
+                org.mockito.ArgumentMatchers.nullable(Integer.class));
+        verify(writeRepo, org.mockito.Mockito.times(1)).addCell(anyString(), any(), anyString(), any(), any(),
+                anyString(), any(), any(), any(), any(), any(), any(), anyString(), anyString(), any());
+        verify(repo, org.mockito.Mockito.times(1)).linkExtractionCell(any(), eq(cellId));
     }
 }
