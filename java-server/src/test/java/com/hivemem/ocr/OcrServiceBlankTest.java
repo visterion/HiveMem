@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -36,6 +37,18 @@ class OcrServiceBlankTest {
         return baos.toByteArray();
     }
 
+    /** Stubs the streaming rasterize(...) overload OcrService calls, invoking the given
+     *  consumer once per fake page — mirrors the real rasterizer's page-by-page contract. */
+    private static void stubPages(PdfPageRasterizer raster, List<byte[]> pages) throws Exception {
+        doAnswer(invocation -> {
+            PdfPageRasterizer.PageConsumer consumer = invocation.getArgument(3);
+            for (int i = 0; i < pages.size(); i++) {
+                consumer.accept(i, pages.get(i));
+            }
+            return null;
+        }).when(raster).rasterize(any(), anyInt(), anyInt(), any());
+    }
+
     private OcrService build(OcrRepository repo, SeaweedFsClient seaweed, WriteToolService writeService,
                             TesseractRunner tess, PdfPageRasterizer raster) {
         OcrProperties props = new OcrProperties();
@@ -53,7 +66,7 @@ class OcrServiceBlankTest {
         SeaweedFsClient seaweed = mock(SeaweedFsClient.class);
         when(seaweed.download(anyString())).thenReturn(new ByteArrayInputStream(new byte[] {1}));
         PdfPageRasterizer raster = mock(PdfPageRasterizer.class);
-        when(raster.rasterize(any(), anyInt(), anyInt())).thenReturn(List.of(png(true), png(false)));
+        stubPages(raster, List.of(png(true), png(false)));
         TesseractRunner tess = mock(TesseractRunner.class);
         when(tess.ocr(eq(png(true)), any(), anyInt())).thenReturn("Real invoice text");
         when(tess.ocr(eq(png(false)), any(), anyInt())).thenReturn(""); // blank page → empty OCR
@@ -75,7 +88,7 @@ class OcrServiceBlankTest {
         SeaweedFsClient seaweed = mock(SeaweedFsClient.class);
         when(seaweed.download(anyString())).thenReturn(new ByteArrayInputStream(new byte[] {1}));
         PdfPageRasterizer raster = mock(PdfPageRasterizer.class);
-        when(raster.rasterize(any(), anyInt(), anyInt())).thenReturn(List.of(png(false)));
+        stubPages(raster, List.of(png(false)));
         TesseractRunner tess = mock(TesseractRunner.class);
         when(tess.ocr(any(), any(), anyInt())).thenReturn("");
 

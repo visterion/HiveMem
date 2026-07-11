@@ -121,33 +121,40 @@ public class OcrService {
             try (InputStream in = seaweed.download(s3Key)) {
                 pdfBytes = in.readAllBytes();
             }
-            List<byte[]> pages = rasterizer.rasterize(pdfBytes, props.getRenderDpi(), props.getMaxPages());
 
             boolean visionEnabled = props.isVisionFallbackEnabled()
                     && visionClient != null
                     && visionClient.isEnabled()
                     && visionBudget != null;
-            int visionPagesUsed = 0;
 
+            // Mutable counters/accumulator captured by the per-page callback below. Rendering
+            // is now page-by-page (PdfPageRasterizer no longer materializes every page's PNG
+            // bytes up front — up to 50 pages @300 DPI held in memory for the whole OCR run
+            // was a real heap risk on large documents), so this is where "N of M pages" and
+            // the kept-text accumulation used to live around a simple indexed for-loop.
+            java.util.concurrent.atomic.AtomicInteger visionPagesUsed = new java.util.concurrent.atomic.AtomicInteger();
+            java.util.concurrent.atomic.AtomicInteger blankCount = new java.util.concurrent.atomic.AtomicInteger();
+            java.util.concurrent.atomic.AtomicInteger totalPages = new java.util.concurrent.atomic.AtomicInteger();
             List<String> keptTexts = new ArrayList<>();
-            int blankCount = 0;
-            for (int i = 0; i < pages.size(); i++) {
+
+            rasterizer.rasterize(pdfBytes, props.getRenderDpi(), props.getMaxPages(), (pageIndex, pngBytes) -> {
+                totalPages.incrementAndGet();
                 String text;
                 try {
-                    text = tesseract.ocr(pages.get(i), props.getLanguages(), props.getCallTimeoutSeconds());
+                    text = tesseract.ocr(pngBytes, props.getLanguages(), props.getCallTimeoutSeconds());
                 } catch (Exception e) {
-                    log.warn("OCR page {} of cell {} failed: {}", i + 1, cellId, e.getMessage());
+                    log.warn("OCR page {} of cell {} failed: {}", pageIndex + 1, cellId, e.getMessage());
                     text = "";
                 }
 
                 if (visionEnabled
                         && text.length() < props.getVisionFallbackMinCharsPerPage()
-                        && visionPagesUsed < props.getVisionFallbackMaxPagesPerDoc()
+                        && visionPagesUsed.get() < props.getVisionFallbackMaxPagesPerDoc()
                         && visionBudget.canSpend()) {
-                    String visionText = transcribeWithVision(pages.get(i), cellId, i + 1);
+                    String visionText = transcribeWithVision(pngBytes, cellId, pageIndex + 1);
                     if (visionText != null) {
                         text = visionText;
-                        visionPagesUsed++;
+                        visionPagesUsed.incrementAndGet();
                     }
                 }
 
@@ -155,21 +162,24 @@ public class OcrService {
                 // so an OCR failure on a page that actually has ink is never silently dropped.
                 boolean blank = props.isDropBlankPages()
                         && text.isBlank()
-                        && BlankPageDetector.isNearWhite(pages.get(i), props.getBlankWhiteFraction());
-                if (blank) { blankCount++; continue; }
-                if (text.isBlank()) {
-                    text = "[page: OCR produced no text]"; // non-white page kept with a marker (not dropped)
+                        && BlankPageDetector.isNearWhite(pngBytes, props.getBlankWhiteFraction());
+                if (blank) {
+                    blankCount.incrementAndGet();
+                    return;
                 }
-                keptTexts.add(text);
-            }
+                String kept = text.isBlank()
+                        ? "[page: OCR produced no text]" // non-white page kept with a marker (not dropped)
+                        : text;
+                keptTexts.add(kept);
+            });
 
-            if (visionPagesUsed > 0) {
+            if (visionPagesUsed.get() > 0) {
                 log.info("Vision-OCR fallback used on {} of {} pages for cell {}",
-                        visionPagesUsed, pages.size(), cellId);
+                        visionPagesUsed.get(), totalPages.get(), cellId);
             }
 
             if (keptTexts.isEmpty()) {
-                log.info("OCR: cell {} is entirely blank ({} pages) — soft-deleting", cellId, blankCount);
+                log.info("OCR: cell {} is entirely blank ({} pages) — soft-deleting", cellId, blankCount.get());
                 repo.removeOcrPendingTag(cellId);
                 repo.softDeleteBlankCell(cellId);
                 return;

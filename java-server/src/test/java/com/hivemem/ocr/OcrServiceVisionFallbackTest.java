@@ -59,8 +59,7 @@ class OcrServiceVisionFallbackTest {
         rasterizer = mock(PdfPageRasterizer.class);
 
         when(seaweed.download(anyString())).thenReturn(new ByteArrayInputStream(new byte[]{1, 2, 3}));
-        when(rasterizer.rasterize(any(), anyInt(), anyInt()))
-                .thenReturn(List.of("PAGE1".getBytes(), "PAGE2".getBytes()));
+        stubPages(List.of("PAGE1".getBytes(), "PAGE2".getBytes()));
         when(writeService.reviseCell(any(), any(), anyString(), any()))
                 .thenReturn(Map.of("new_id", UUID.randomUUID().toString()));
         when(visionClient.isEnabled()).thenReturn(true);
@@ -72,6 +71,18 @@ class OcrServiceVisionFallbackTest {
     private OcrService build() {
         return new OcrService(props, repo, seaweed, writeService,
                 visionClient, visionBudget, tesseract, rasterizer, dedup);
+    }
+
+    /** Stubs the streaming rasterize(...) overload OcrService now calls, invoking the given
+     *  consumer once per fake page — mirrors the real rasterizer's page-by-page contract. */
+    private void stubPages(List<byte[]> pages) throws Exception {
+        doAnswer(invocation -> {
+            PdfPageRasterizer.PageConsumer consumer = invocation.getArgument(3);
+            for (int i = 0; i < pages.size(); i++) {
+                consumer.accept(i, pages.get(i));
+            }
+            return null;
+        }).when(rasterizer).rasterize(any(), anyInt(), anyInt(), any());
     }
 
     @Test
@@ -129,7 +140,7 @@ class OcrServiceVisionFallbackTest {
 
     @Test
     void respectsMaxPagesPerDocCap() throws Exception {
-        when(rasterizer.rasterize(any(), anyInt(), anyInt())).thenReturn(List.of(
+        stubPages(List.of(
                 "P1".getBytes(), "P2".getBytes(), "P3".getBytes(),
                 "P4".getBytes(), "P5".getBytes(), "P6".getBytes()));
         props.setVisionFallbackMaxPagesPerDoc(2);
