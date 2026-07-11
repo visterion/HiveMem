@@ -99,6 +99,30 @@ If the archive's Flyway version differs from the target DB's version, the
 restore refuses with a clear message — even with `--force`. Migrate the target
 DB to the matching version first, or use a matching archive.
 
+### Post-restore verification
+
+After import, the restore compares row counts (cells, attachments, facts,
+tunnels) and the attachment object count against what `manifest.json`
+declared.
+
+- **Row-count mismatches are logged as a WARNING, not a failure.** The
+  manifest's counts are read from the app's live DB connection *before*
+  `pg_dump` takes its own later snapshot — backing up an instance that is
+  still being written to (a "live" backup) routinely produces a manifest
+  whose counts differ slightly from what the dump actually contains. That is
+  expected and does not indicate a corrupt archive; the restore completes
+  normally.
+- **The attachment object count (S3 blobs actually restored vs. what the
+  manifest lists) remains a hard failure.** Unlike DB row counts, S3 objects
+  are written once and are not subject to that race, so a mismatch there
+  means the archive is genuinely truncated or corrupt.
+- **`--mode=clone` always rotates the target's identity**, even when
+  verification logs a warning or ultimately fails — the identity rotation
+  runs before verification specifically so a live-backup count mismatch (or a
+  corrupt archive) can never leave a clone restore holding the *source's*
+  `instance_id`/`ops_log`, which would otherwise cause split-brain in the
+  sync network.
+
 ## Encryption
 
 Backups are not encrypted at rest by default. Built-in encryption is on the

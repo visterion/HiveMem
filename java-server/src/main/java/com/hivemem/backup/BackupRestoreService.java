@@ -3,6 +3,9 @@ package com.hivemem.backup;
 import com.hivemem.attachment.AttachmentProperties;
 import com.hivemem.attachment.SeaweedFsClient;
 import org.jooq.DSLContext;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Service;
 import software.amazon.awssdk.services.s3.S3Client;
@@ -21,6 +24,8 @@ import java.util.zip.GZIPInputStream;
 @Service
 public class BackupRestoreService {
 
+    private static final Logger log = LoggerFactory.getLogger(BackupRestoreService.class);
+
     private final BackupProperties props;
     private final DSLContext dsl;
     private final SeaweedFsClient seaweed;
@@ -28,12 +33,24 @@ public class BackupRestoreService {
     private final String dbJdbcUrl;
     private final String dbUser;
     private final String dbPassword;
+    private final SyncStateHandler sync;
 
+    @Autowired
     public BackupRestoreService(BackupProperties props,
                                 DSLContext dsl,
                                 SeaweedFsClient seaweed,
                                 AttachmentProperties attachmentProps,
                                 Environment env) {
+        this(props, dsl, seaweed, attachmentProps, env, new SyncStateHandler(dsl));
+    }
+
+    /** Test seam: allows injecting a mock {@link SyncStateHandler}. */
+    BackupRestoreService(BackupProperties props,
+                         DSLContext dsl,
+                         SeaweedFsClient seaweed,
+                         AttachmentProperties attachmentProps,
+                         Environment env,
+                         SyncStateHandler sync) {
         this.props = props;
         this.dsl = dsl;
         this.seaweed = seaweed;
@@ -41,6 +58,7 @@ public class BackupRestoreService {
         this.dbJdbcUrl = env.getProperty("spring.datasource.url");
         this.dbUser = env.getProperty("spring.datasource.username");
         this.dbPassword = env.getProperty("spring.datasource.password");
+        this.sync = sync;
     }
 
     /**
@@ -63,7 +81,6 @@ public class BackupRestoreService {
 
         S3Client s3 = seaweed.s3Client();
         EmptinessCheck check = new EmptinessCheck(dsl, s3, bucket);
-        SyncStateHandler sync = new SyncStateHandler(dsl);
         UUID currentId = sync.currentInstanceId();
 
         if (mode == RestoreMode.MOVE && currentId != null
@@ -114,19 +131,33 @@ public class BackupRestoreService {
             }
         }
 
-        verifyAgainstManifest(manifest, restoredObjects);
-
+        // IMPORTANT: rotate the clone identity BEFORE verification, and unconditionally —
+        // never let a manifest/count discrepancy (see below) skip this. Doing it after a
+        // verification throw previously left a --mode=clone restore holding the SOURCE
+        // instance_id/ops_log, i.e. exactly the split-brain CLONE exists to prevent.
         if (mode == RestoreMode.CLONE) {
             sync.applyClone();
         }
+
+        verifyAgainstManifest(manifest, restoredObjects);
     }
 
     /**
-     * Fail loudly when the restored state does not match the manifest the archive itself
-     * declared — a truncated or partially-written archive must not restore "successfully"
-     * with silently-missing data.
+     * Verifies the restored state against the manifest the archive itself declared.
+     *
+     * <p>Row-count mismatches for cells/attachments/facts/tunnels are logged as a WARNING,
+     * not a hard failure: the manifest's counts are read from the app's live DB connection
+     * <em>before</em> {@code pg_dump} takes its own later snapshot, so backing up a live,
+     * still-writing instance routinely produces counts that differ slightly from what the
+     * dump actually contains. Treating that as fatal previously made a perfectly good backup
+     * archive report "restore verification failed" after the import had already succeeded.
+     *
+     * <p>The attachment object count (S3 blobs actually streamed into the target bucket vs.
+     * what the manifest lists) is NOT subject to that race — S3 objects are content-addressed
+     * and written once — so a mismatch there still indicates a genuinely truncated/corrupt
+     * archive and remains a hard failure.
      */
-    private void verifyAgainstManifest(Manifest manifest, long restoredObjects) {
+    void verifyAgainstManifest(Manifest manifest, long restoredObjects) {
         Manifest.Counts expected = manifest.counts();
         long cells = countRows("cells");
         long attachments = countRows("attachments");
@@ -134,11 +165,12 @@ public class BackupRestoreService {
         long tunnels = countRows("tunnels");
         if (cells != expected.cells() || attachments != expected.attachments()
                 || facts != expected.facts() || tunnels != expected.tunnels()) {
-            throw new IllegalStateException(String.format(
-                    "Restore verification failed: DB counts differ from manifest "
-                    + "(cells %d/%d, attachments %d/%d, facts %d/%d, tunnels %d/%d)",
+            log.warn("Restore verification: DB row counts differ from manifest "
+                    + "(cells {}/{}, attachments {}/{}, facts {}/{}, tunnels {}/{}). "
+                    + "This is expected for a backup taken against a live (still-writing) "
+                    + "instance and does not indicate a corrupt archive.",
                     cells, expected.cells(), attachments, expected.attachments(),
-                    facts, expected.facts(), tunnels, expected.tunnels()));
+                    facts, expected.facts(), tunnels, expected.tunnels());
         }
         long expectedObjects = manifest.attachments().objectCount();
         if (restoredObjects != expectedObjects) {
