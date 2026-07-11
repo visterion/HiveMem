@@ -11,6 +11,10 @@ export const useQueenStore = defineStore('queen', {
     selectedRun: null as QueenRunDetail | null,
     pending: [] as PendingApproval[],
     loading: false,
+    // Monotonic token: only the latest selectRun() may commit selectedRun, so a
+    // slower earlier queen_run_detail response can't overwrite a later selection
+    // (mirrors cell.ts/scans.ts's loadSeq guard).
+    selectSeq: 0,
   }),
   actions: {
     async refresh() {
@@ -31,7 +35,10 @@ export const useQueenStore = defineStore('queen', {
       }
     },
     async selectRun(runId: string) {
-      this.selectedRun = await useApi().call<QueenRunDetail>('queen_run_detail', { run_id: runId })
+      const seq = ++this.selectSeq
+      const detail = await useApi().call<QueenRunDetail>('queen_run_detail', { run_id: runId })
+      if (seq !== this.selectSeq) return // stale — a newer selectRun() owns the state
+      this.selectedRun = detail
     },
     async approve(id: string, approved: boolean) {
       // Backend `approve_pending` expects a UUID list + a decision enum, not {id, approved}.

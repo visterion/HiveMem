@@ -43,4 +43,24 @@ describe('queen store', () => {
     expect(spy).toHaveBeenCalledWith('approve_pending', { ids: ['p-2'], decision: 'rejected' })
     spy.mockRestore()
   })
+
+  it('a slower earlier selectRun() cannot overwrite a later selection (E6)', async () => {
+    let resolveFirst!: (v: unknown) => void
+    let call = 0
+    const spy = vi.spyOn(MockApiClient.prototype, 'call').mockImplementation((tool: string, args?: Record<string, unknown>) => {
+      if (tool !== 'queen_run_detail') return Promise.resolve({})
+      call++
+      if (call === 1) return new Promise(res => { resolveFirst = res })
+      return Promise.resolve({ run: { id: args?.run_id }, events: [{ id: 'e1' }] })
+    })
+    const store = useQueenStore()
+    const p1 = store.selectRun('run-001') // slower
+    const p2 = store.selectRun('run-002') // faster, resolves first
+    await p2
+    expect(store.selectedRun?.run.id).toBe('run-002')
+    resolveFirst({ run: { id: 'run-001' }, events: [] })
+    await p1
+    expect(store.selectedRun?.run.id).toBe('run-002') // stale response must not win
+    spy.mockRestore()
+  })
 })
