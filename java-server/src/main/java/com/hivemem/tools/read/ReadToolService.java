@@ -205,21 +205,35 @@ public class ReadToolService {
                     int dimension = embeddingClient.dimension();
                     return kgSearchRepository.semanticSearch(vec, subject, predicate, object_, limit, dimension);
                 }
+                // encodeQuery returned null: a legitimate "embedding unavailable" signal
+                // distinct from an exception. Without this branch, execution would fall
+                // through to the unfiltered final search(...) call below, silently dropping
+                // the query text entirely (the same bug the catch-branch fix below closes).
+                log.warn("search_kg semantic path unavailable (null embedding), falling back to ILIKE");
+                return degradedKgFallback(query, subject, predicate, object_, limit);
             } catch (RuntimeException e) {
                 log.warn("search_kg semantic path unavailable, falling back to ILIKE", e);
-                // Without this, the fallback below (with all filters null) would return the
-                // newest N facts in the whole KG, silently dropping the query text entirely.
-                boolean noExplicitFilter = isBlank(subject) && isBlank(predicate) && isBlank(object_);
-                List<Map<String, Object>> results = noExplicitFilter
-                        ? kgSearchRepository.searchText(query, limit)
-                        : kgSearchRepository.search(subject, predicate, object_, limit);
-                for (Map<String, Object> row : results) {
-                    row.put("degraded", true);
-                }
-                return results;
+                return degradedKgFallback(query, subject, predicate, object_, limit);
             }
         }
         return kgSearchRepository.search(subject, predicate, object_, limit);
+    }
+
+    /**
+     * Fallback used when the semantic path can't run (embedding client threw, or returned no
+     * vector). Without this, the fallback (with all filters null) would return the newest N
+     * facts in the whole KG, silently dropping the query text entirely.
+     */
+    private List<Map<String, Object>> degradedKgFallback(
+            String query, String subject, String predicate, String object_, int limit) {
+        boolean noExplicitFilter = isBlank(subject) && isBlank(predicate) && isBlank(object_);
+        List<Map<String, Object>> results = noExplicitFilter
+                ? kgSearchRepository.searchText(query, limit)
+                : kgSearchRepository.search(subject, predicate, object_, limit);
+        for (Map<String, Object> row : results) {
+            row.put("degraded", true);
+        }
+        return results;
     }
 
     private static boolean isBlank(String value) {

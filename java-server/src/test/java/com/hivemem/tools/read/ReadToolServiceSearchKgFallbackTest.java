@@ -57,6 +57,28 @@ class ReadToolServiceSearchKgFallbackTest {
         assertThat(results.get(0)).containsEntry("degraded", true);
     }
 
+    @Test
+    void embeddingReturningNullVectorFallsBackToQueryTextIlikeAndMarksDegraded() {
+        // encodeQuery returning null (not throwing) is a legitimate "embedding unavailable"
+        // signal distinct from an exception. Previously this fell through the if (vec != null)
+        // block without hitting the catch, reaching the unfiltered final search(...) call —
+        // reproducing the M16 bug even though the throw-path fix was already in place.
+        EmbeddingClient embeddingClient = mock(EmbeddingClient.class);
+        when(embeddingClient.encodeQuery("foo")).thenReturn(null);
+
+        KgSearchRepository kgSearchRepository = mock(KgSearchRepository.class);
+        Map<String, Object> matching = row("Foo Corp", "makes", "widgets");
+        when(kgSearchRepository.searchText(eq("foo"), eq(10))).thenReturn(List.of(matching));
+
+        ReadToolService service = ReadToolServiceTestFactory.withEmbeddingAndKgSearch(embeddingClient, kgSearchRepository);
+
+        List<Map<String, Object>> results = service.searchKg("foo", null, null, null, 10);
+
+        assertThat(results).hasSize(1);
+        assertThat(results.get(0)).containsEntry("subject", "Foo Corp");
+        assertThat(results.get(0)).containsEntry("degraded", true);
+    }
+
     private static Map<String, Object> row(String subject, String predicate, String object) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("subject", subject);
