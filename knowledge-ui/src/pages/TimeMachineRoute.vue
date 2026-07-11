@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useCanvasStore } from '../stores/canvas'
 import { useCellStore } from '../stores/cell'
+import { useReaderStore } from '../stores/reader'
 import { sortByValidFrom } from '../composables/timeline'
 import { realmColorFor } from '../composables/realmMeta'
 
@@ -27,8 +28,12 @@ watch(() => sorted.value.length, (n) => {
   if (!touched.value) idx.value = Math.max(0, n - 1)
 }, { immediate: true })
 
+// Load the cell into the store and open the fullscreen reader on the overview tab —
+// the visible payoff of a card click (same reader as Hive's cell open). Reader.vue only
+// writes deep-link params on scans/search (Task 8 allowlist), so no ?cell= here.
 function openCell(id: string) {
   void cellStore.load(id)
+  useReaderStore().openReader(id, 'info')
 }
 
 function onInput(e: Event) {

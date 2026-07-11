@@ -5,6 +5,8 @@ import TimeMachineRoute from '../../src/pages/TimeMachineRoute.vue'
 import { resetApi } from '../../src/api/useApi'
 import { i18n } from '../../src/i18n'
 import { useCanvasStore } from '../../src/stores/canvas'
+import { useCellStore } from '../../src/stores/cell'
+import { useReaderStore } from '../../src/stores/reader'
 import type { Cell } from '../../src/api/types'
 
 function makeCell(id: string, validFrom: string): Cell {
@@ -71,6 +73,24 @@ describe('TimeMachineRoute', () => {
     canvas.cells = [...canvas.cells, makeCell('stream-6', '2030-01-06')]
     await flushPromises()
     expect(Number(range.value)).toBe(before + 6 - 1)
+  })
+
+  it('clicking a card loads the cell and opens the reader (no ?cell= URL write)', async () => {
+    const w = await mountReady()
+    const reader = useReaderStore()
+    const cellStore = useCellStore()
+    expect(reader.open).toBe(false)
+    await w.find('[data-test="tm-card"]').trigger('click')
+    // cellStore.load resolves through the mock client's simulated latency
+    for (let i = 0; i < 40 && cellStore.currentId === null; i++) {
+      await new Promise(r => setTimeout(r, 25)); await flushPromises()
+    }
+    expect(reader.open).toBe(true)
+    expect(reader.activeTab).toBe('info')
+    expect(reader.cellId).toBeTruthy()
+    expect(cellStore.currentId).toBe(reader.cellId)
+    // Task 8 contract: only scans/search write deep-link params — timemachine must not.
+    expect(window.location.search).not.toContain('cell=')
   })
 
   it('renders a list of up to 20 cells valid at the slider position, newest first', async () => {
