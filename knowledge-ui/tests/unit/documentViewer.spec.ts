@@ -126,6 +126,46 @@ describe('DocumentViewer (pdf)', () => {
     }
   })
 
+  it('a stale render superseded by rapid paging does not clash on the canvas or flag a false error (E5)', async () => {
+    // Simulate pdf.js throwing when render() is invoked while a previous render on
+    // the same canvas hasn't settled yet — what actually happens if two renderPage()
+    // calls both reach pdfPage.render() (the pre-fix bug). With the render-generation
+    // guard, only the newest renderPage() call may ever reach render() at all.
+    let renderInFlight = false
+    const clashSafeRender = vi.fn(() => {
+      if (renderInFlight) throw new Error('Cannot use the same canvas during multiple render() operations')
+      renderInFlight = true
+      return { promise: Promise.resolve().then(() => { renderInFlight = false }) }
+    })
+    const pending: Array<() => void> = []
+    getPageMock.mockImplementation((n: number) => new Promise(resolve => {
+      pending.push(() => resolve({
+        getViewport: ({ scale }: { scale: number }) => ({ width: 600 * scale, height: 800 * scale }),
+        render: clashSafeRender,
+      }))
+    }))
+    const w = mountPdf()
+    await flushPromises()
+    pending.shift()!() // resolve the initial load's getPage(1)
+    await flushPromises()
+
+    // Two rapid page changes: both renderPage() calls start and call getPage()
+    // before either's promise resolves.
+    await w.find('[data-test="vt-next"]').trigger('click')
+    await w.find('[data-test="vt-next"]').trigger('click')
+    const [resolveStale, resolveCurrent] = pending.splice(0)
+    // Resolve out of order and back-to-back (no await between them) so both
+    // continuations are still in flight concurrently — anything else lets the
+    // first one fully finish (and reset renderInFlight) before the second starts,
+    // which would hide the race this test exists to catch.
+    resolveCurrent()
+    resolveStale()
+    await flushPromises()
+
+    expect(w.find('[data-test="dv-error"]').exists()).toBe(false)
+    expect(w.find('[data-test="vt-pages"]').text()).toContain('3 / 3')
+  })
+
   it('clears page controls when switching from a multi-page pdf to an image', async () => {
     const w = mountPdf()
     await flushPromises()
