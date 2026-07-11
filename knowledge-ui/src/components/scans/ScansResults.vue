@@ -6,6 +6,7 @@ import { useScansStore } from '../../stores/scans'
 import type { FacetKey } from '../../stores/scans'
 import { useUiStore } from '../../stores/ui'
 import { useApi } from '../../api/useApi'
+import { useLayout } from '../../composables/useLayout'
 import DocCard from './DocCard.vue'
 import DocTable from './DocTable.vue'
 import SortMenu from './SortMenu.vue'
@@ -14,6 +15,7 @@ import HmIcon from '../shell/HmIcon.vue'
 const { t } = useI18n()
 const store = useScansStore()
 const ui = useUiStore()
+const { isMobile } = useLayout()
 // Optional: some unit tests mount ScansResults without a router installed.
 const route = useRoute()
 
@@ -146,7 +148,7 @@ onMounted(async () => {
           v-model="q"
           class="search-input"
           type="text"
-          :placeholder="t('scans.searchPlaceholder')"
+          :placeholder="isMobile ? t('scans.searchShort') : t('scans.searchPlaceholder')"
           @input="onInput"
         />
       </div>
@@ -313,6 +315,10 @@ onMounted(async () => {
   font-size: 13px;
   color: var(--text-1, #eee);
   width: 100%;
+}
+
+@media (max-width: 959px) {
+  .search-input { min-width: 120px; }
 }
 
 .toggle {

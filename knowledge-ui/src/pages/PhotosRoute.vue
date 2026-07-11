@@ -82,7 +82,10 @@ const isEmpty = computed(() => media.loaded && media.photos.length === 0 && !med
       </div>
 
       <div v-if="media.error" class="notice">{{ t('photos.loadError') }}</div>
-      <div v-else-if="isEmpty" class="empty">{{ t('photos.empty') }}</div>
+      <div v-else-if="isEmpty" class="empty">
+        <p>{{ t('photos.empty') }}</p>
+        <p class="empty-hint">{{ t('photos.emptyHint') }}</p>
+      </div>
 
       <div v-for="group in packedGroups" :key="group.key" class="photo-group">
         <div class="photo-date">{{ labelFor(group.key) }}</div>
@@ -114,7 +117,9 @@ const isEmpty = computed(() => media.loaded && media.photos.length === 0 && !med
 .photo-rows { display:flex; flex-direction:column; gap:4px; }
 .photo-row { display:flex; gap:4px; }
 .photo-slot { flex:none; }
-.empty, .notice { display:grid; place-items:center; min-height:200px; color:var(--text-2); }
+.empty, .notice { display:grid; place-items:center; min-height:200px; color:var(--text-2); text-align:center; }
+.empty p { margin:0; }
+.empty-hint { font-size:13px; color:var(--text-3); margin-top:6px; }
 .scroll-sentinel { height:1px; }
 .h-display { font-family:var(--font-display); font-weight:600; letter-spacing:-0.02em; color:var(--text-0); }
 </style>

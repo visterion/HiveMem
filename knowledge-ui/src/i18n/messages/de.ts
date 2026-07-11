@@ -45,6 +45,7 @@ export default {
   photos: {
     sub: 'Aufgenommen & ingestiert',
     empty: 'Noch keine Fotos',
+    emptyHint: 'Fotos erscheinen hier, sobald Bilder ingestiert oder als Attachment hochgeladen wurden.',
     loadError: 'Fotos konnten nicht geladen werden.',
     exif: 'EXIF',
     camera: 'Kamera', resolution: 'Auflösung', location: 'Ort', size: 'Größe', takenAt: 'Aufgenommen',
@@ -184,6 +185,7 @@ export default {
   scans: {
     savedViews: 'Gespeicherte Ansichten', allDocs: 'Alle Dokumente', items: 'Dokumente', searchDocs: 'Dokumente durchsuchen…',
     searchPlaceholder: 'Dokumente suchen…',
+    searchShort: 'Suchen…',
     docType: 'Dokumenttyp', correspondent: 'Korrespondent', year: 'Jahr', date: 'Datum', amount: 'Betrag',
     selected: 'ausgewählt', bulkTag: 'Taggen', bulkRealm: 'Realm', bulkApprove: 'Freigeben', bulkExport: 'Export',
     clearFilter: 'Filter löschen', extracted: 'Extrahierte Felder', subtype: 'Subtyp', archiveNo: 'Archiv-Nr.',

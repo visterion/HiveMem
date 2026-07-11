@@ -110,7 +110,7 @@ onMounted(() => {
         field="status"
         :options="store.facetCounts.status || []"
         :selected="store.facets.status"
-        :labels="{ committed: t('scans.committed'), pending: t('scans.pending') }"
+        :labels="{ committed: t('scans.committed'), pending: t('scans.pending'), rejected: t('scans.statusRejected') }"
         @toggle="onToggle"
       />
       <FacetGroup

@@ -94,4 +94,14 @@ describe('PhotosRoute', () => {
     expect(w.text()).not.toContain('older') // raw i18n key must not leak into the UI
     expect(w.findAll('.photo-date').some(d => d.text().length > 0 && d.text() !== 'older')).toBe(true)
   })
+
+  it('shows a hint on how photos get in when the empty state renders', async () => {
+    const w = mount(PhotosRoute, globalOpts)
+    const media = useMediaStore()
+    for (let i = 0; i < 40 && !media.loaded; i++) await new Promise(r => setTimeout(r, 20))
+    media.photos = []
+    await flushPromises()
+    expect(w.find('.empty-hint').exists()).toBe(true)
+    expect(w.find('.empty-hint').text().length).toBeGreaterThan(0)
+  })
 })

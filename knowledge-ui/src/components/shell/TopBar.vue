@@ -51,6 +51,9 @@ defineEmits<{ (e: 'toggle-panel'): void }>()
   min-width:0; flex:1 1 auto; overflow:hidden; }
 .crumbs > span:first-child { flex:none; } .crumbs .sep { flex:none; }
 .crumbs .sep { color:var(--text-3); display:inline-flex; }
+@media (max-width: 959px) {
+  .crumbs > :first-child, .crumbs > .sep:first-of-type { display:none; }
+}
 .crumbs b { color:var(--text-0); font-weight:600; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .topbar-actions { margin-left:auto; display:flex; align-items:center; gap:8px; flex:none; }
 .toggle { display:inline-flex; background:var(--bg-3); border:1px solid var(--line); border-radius:9px; padding:3px; gap:2px; }
