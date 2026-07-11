@@ -71,4 +71,45 @@ class ExifExtractorTest {
         assertThat(d.gpsLat()).isNull();
         assertThat(d.cameraMake()).isNull();
     }
+
+    /**
+     * FIX D5c: width/height must come from metadata (JPEG SOF segment / EXIF
+     * PixelXDimension/PixelYDimension), NOT from an always-on full {@code ImageIO.read()}
+     * decode of the whole bitmap. Proven here by corrupting the JPEG's entropy-coded scan
+     * data (after the header) so a full decode is unreliable/expensive, while dimensions must
+     * still come back correct because they were read from the header, never from pixels.
+     */
+    @Test
+    void dimensionsSurviveCorruptedScanDataProvingNoFullDecodeIsRequired() throws Exception {
+        byte[] jpeg = baseJpeg(200, 150);
+        byte[] corrupted = jpeg.clone();
+        // Locate the Start-Of-Scan marker (FF DA); scramble everything after its header
+        // (leaving the EOI marker FF D9 at the very end alone) so the compressed pixel data
+        // is garbage while the SOF0 header (which carries width/height) stays intact.
+        int sosIndex = -1;
+        for (int i = 0; i < corrupted.length - 1; i++) {
+            if ((corrupted[i] & 0xFF) == 0xFF && (corrupted[i + 1] & 0xFF) == 0xDA) {
+                sosIndex = i;
+                break;
+            }
+        }
+        assertThat(sosIndex).isGreaterThan(0);
+        int scanDataStart = sosIndex + 14; // past the SOS marker's own header bytes
+        for (int i = scanDataStart; i < corrupted.length - 2; i++) {
+            corrupted[i] = (byte) 0x00;
+        }
+
+        ExifData d = extractor.extract(corrupted);
+        assertThat(d.width()).isEqualTo(200);
+        assertThat(d.height()).isEqualTo(150);
+    }
+
+    @Test
+    void largeImageDimensionsAreCorrectWithoutExif() throws Exception {
+        // A size representative of a real photo — exercises the same header-metadata path a
+        // full decode would have needed a large heap allocation for.
+        ExifData d = extractor.extract(baseJpeg(4000, 3000));
+        assertThat(d.width()).isEqualTo(4000);
+        assertThat(d.height()).isEqualTo(3000);
+    }
 }
