@@ -18,7 +18,8 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
- * V0046 redefines check_duplicate_cell to cast embedding to vector(384) so the HNSW index
+ * V0046 redefines check_duplicate_cell to cast embedding to vector(dim) — dim derived at call
+ * time from vector_dims(query_embedding), never hardcoded — so the HNSW index
  * (idx_cells_embedding, an expression index on embedding::vector(dim)) is actually used instead
  * of bypassed via a bare `embedding <=> query_embedding` comparison. This IT confirms the
  * migration preserves behavior: near-duplicates within threshold are still found, and dissimilar

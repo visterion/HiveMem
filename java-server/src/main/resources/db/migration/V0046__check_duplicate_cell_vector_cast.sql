@@ -6,28 +6,35 @@
 -- `query_embedding`, which bypasses that expression index entirely and forces a sequential
 -- scan of active_cells on every duplicate-check call.
 --
--- The embedding dimension is determined at runtime (self-reported by the embedding service,
--- persisted in identity.embedding_dimension) rather than being a fixed literal anywhere in the
--- codebase, so this function cannot read it dynamically without a larger refactor of its call
--- site (WriteToolRepository.checkDuplicateCell, which does not currently thread a dimension
--- parameter through). The live model is paraphrase-multilingual-MiniLM-L12-v2 with
--- embedding_dimension=384, so this migration hardcodes vector(384) to match the current index —
--- this couples the function to that dimension. If the embedding model/dimension ever changes,
--- this function must be re-migrated in lockstep with the HNSW index rebuild
--- (EmbeddingMigrationService), the same way ranked_search is re-rendered per dimension.
+-- The embedding dimension is determined at runtime (self-reported by the embedding service) and
+-- is NOT a fixed literal anywhere in the codebase — hardcoding e.g. vector(384) here would only
+-- match the specific model in production today (paraphrase-multilingual-MiniLM-L12-v2) and would
+-- silently stop using the index (or error outright on a dimension mismatch) the moment the model
+-- changes, or in any environment running a different-dimension embedding stub (test suites do).
+-- Instead, derive the dimension from the query vector itself via vector_dims(): it is guaranteed
+-- to match whatever the currently active model/index dimension is, because
+-- EmbeddingMigrationService NULLs out every cell's embedding on a model/dimension change (see its
+-- re-encoding invariant) before any caller could produce a query vector of the old dimension.
+-- The cast is applied via dynamic SQL (EXECUTE) so the interpolated dimension literal lines up
+-- textually with the expression index, the same way KgSearchRepository.semanticSearch builds its
+-- SQL string with the dimension inlined as literal text.
 CREATE OR REPLACE FUNCTION check_duplicate_cell(
     query_embedding vector, threshold REAL DEFAULT 0.95
 )
 RETURNS TABLE (id UUID, similarity REAL, summary TEXT) AS $$
+DECLARE
+    dim INTEGER := vector_dims(query_embedding);
 BEGIN
-    RETURN QUERY
-    SELECT sub.id, (1 - sub.dist)::REAL AS similarity, sub.summary
-    FROM (
-        SELECT c.id, c.summary, (c.embedding::vector(384) <=> query_embedding::vector(384)) AS dist
-        FROM active_cells c WHERE c.embedding IS NOT NULL
-        ORDER BY c.embedding::vector(384) <=> query_embedding::vector(384) LIMIT 20
-    ) sub
-    WHERE (1 - sub.dist)::REAL > threshold
-    ORDER BY sub.dist ASC LIMIT 5;
+    RETURN QUERY EXECUTE format($f$
+        SELECT sub.id, (1 - sub.dist)::REAL AS similarity, sub.summary
+        FROM (
+            SELECT c.id, c.summary, (c.embedding::vector(%1$s) <=> $1::vector(%1$s)) AS dist
+            FROM active_cells c WHERE c.embedding IS NOT NULL
+            ORDER BY c.embedding::vector(%1$s) <=> $1::vector(%1$s) LIMIT 20
+        ) sub
+        WHERE (1 - sub.dist)::REAL > $2
+        ORDER BY sub.dist ASC LIMIT 5
+    $f$, dim)
+    USING query_embedding, threshold;
 END;
 $$ LANGUAGE plpgsql;

@@ -43,24 +43,37 @@ public class DocumentDedupRepository {
     public List<Candidate> findSimilarOlderCandidates(UUID cellId, double recallThreshold, int k) {
         // The HNSW index idx_cells_embedding is an expression index on (embedding::vector(dim)); a
         // bare `embedding <=> ...` on the untyped vector column bypasses it and forces a sequential
-        // scan (see KgSearchRepository.semanticSearch for the same fix on facts). The cast must match
-        // the index expression's dimension exactly (currently 384, paraphrase-multilingual-MiniLM-L12-v2 —
-        // see EmbeddingStateRepository.createEmbeddingIndex, the source of truth for the live dimension).
-        String sql = """
+        // scan (see KgSearchRepository.semanticSearch for the same fix on facts). The cast's typmod
+        // must be a literal that textually matches the index expression, so it can't be a bind
+        // parameter — but it also must not be hardcoded (the live dimension is determined at
+        // runtime, not a fixed literal anywhere in the codebase; hardcoding would silently stop
+        // using the index, or error outright, the moment the embedding model/dimension changes).
+        // Instead read the target cell's OWN embedding dimension via vector_dims() and interpolate
+        // it as a literal: it is guaranteed to match the live index dimension, because
+        // EmbeddingMigrationService NULLs out every cell's embedding on a model/dimension change
+        // before any stale-dimension vector could exist.
+        Record dimRow = dsl.fetchOne(
+                "SELECT vector_dims(embedding) AS dim FROM cells WHERE id = ? AND valid_until IS NULL",
+                cellId);
+        Integer dim = dimRow == null ? null : dimRow.get("dim", Integer.class);
+        if (dim == null) {
+            return List.of(); // target has no embedding (or isn't live) — nothing to compare against
+        }
+        String sql = ("""
                 WITH target AS (SELECT embedding, created_at FROM cells WHERE id = ? AND valid_until IS NULL)
-                SELECT c.id, c.content, 1 - (c.embedding::vector(384) <=> t.embedding) AS cosine
+                SELECT c.id, c.content, 1 - (c.embedding::vector(%1$d) <=> t.embedding::vector(%1$d)) AS cosine
                 FROM cells c, target t
                 WHERE c.valid_until IS NULL
                   AND c.status = 'committed'
-                  AND c.source LIKE 'consumption:%'
+                  AND c.source LIKE 'consumption:%%'
                   AND c.embedding IS NOT NULL
                   AND c.id <> ?
                   AND (c.created_at < t.created_at
                        OR (c.created_at = t.created_at AND c.id < ?))
-                  AND (1 - (c.embedding::vector(384) <=> t.embedding)) >= ?
-                ORDER BY c.embedding::vector(384) <=> t.embedding
+                  AND (1 - (c.embedding::vector(%1$d) <=> t.embedding::vector(%1$d))) >= ?
+                ORDER BY c.embedding::vector(%1$d) <=> t.embedding::vector(%1$d)
                 LIMIT ?
-                """;
+                """).formatted(dim);
         List<Candidate> out = new ArrayList<>();
         for (Record r : dsl.fetch(sql, cellId, cellId, cellId, recallThreshold, k)) {
             out.add(new Candidate(

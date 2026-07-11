@@ -12,10 +12,10 @@ import org.junit.jupiter.api.Test;
 class DocumentDedupRepositoryIT extends ConsumptionITSupport {
 
     /**
-     * findSimilarOlderCandidates now casts embedding to vector(384) to match the HNSW index
-     * expression (see DocumentDedupRepository), so test vectors must be exactly 384-dimensional —
-     * a bare "[1,0,0]" would fail with a dimension mismatch. VEC_A/VEC_B are unit vectors on two
-     * different axes (cosine distance 1.0 apart, like the old [1,0,0]/[0,1,0] shorthand).
+     * findSimilarOlderCandidates casts embedding to vector(dim), where dim is derived at query
+     * time from the target cell's own embedding (vector_dims) rather than hardcoded — so any
+     * fixed-size vector works here. VEC_A/VEC_B are 384-dimensional unit vectors on two different
+     * axes (cosine distance 1.0 apart) simply to exercise a realistic, larger dimension.
      */
     private static final String VEC_A = unitVector(0);
     private static final String VEC_B = unitVector(1);
