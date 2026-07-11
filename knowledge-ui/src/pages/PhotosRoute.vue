@@ -85,7 +85,7 @@ const isEmpty = computed(() => media.loaded && media.photos.length === 0 && !med
         <div class="photo-date">{{ labelFor(group.key) }}</div>
         <div class="photo-rows">
           <div v-for="(row, ri) in group.rows" :key="ri" class="photo-row" :style="{ height: row.height + 'px' }">
-            <div v-for="cell in row.items" :key="cell.item.cell_id" class="photo-slot"
+            <div v-for="cell in row.items" :key="cell.item.attachment_id" class="photo-slot"
                  :style="{ width: cell.width + 'px', height: cell.height + 'px' }">
               <PhotoTile :item="cell.item"
                          @open="media.openLightbox(media.photos.indexOf(cell.item))" />

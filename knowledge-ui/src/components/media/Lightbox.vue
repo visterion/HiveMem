@@ -19,8 +19,11 @@ const contentUrl = computed(() =>
 
 // Gradient placeholder behind the full image (shown in mock/dev where /content 404s,
 // and while the real image loads). Reset the failed flag when the photo changes.
+// Keyed on attachment_id (row identity), not cell_id — a cell can have multiple
+// gallery images, so cell_id alone doesn't change when navigating between two
+// photos that share a cell, and the failed flag would wrongly carry over.
 const imgFailed = ref(false)
-watch(() => props.item.cell_id, () => { imgFailed.value = false })
+watch(() => props.item.attachment_id, () => { imgFailed.value = false })
 function gradientFor(seed: string): string {
   let h = 0
   for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0
