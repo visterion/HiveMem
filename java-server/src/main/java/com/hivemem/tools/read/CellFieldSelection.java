@@ -20,12 +20,10 @@ public final class CellFieldSelection {
     );
     /**
      * {@code search} is backed by {@code ranked_search} / {@code CellSearchRepository.RankedRow},
-     * which does not select {@code key_points}, {@code insight}, or {@code source} — they'd be
-     * silently omitted from the response despite being advertised. Only {@code get_cell} (which
-     * reads the full cell row) can serve those fields; see {@link #GET_CELL_ONLY_FIELDS} for the
-     * get_cell-only allow-list additions.
+     * which does not select {@code source} — it'd be silently omitted from the response despite
+     * being advertised. Only {@code get_cell} can serve it.
      */
-    private static final List<String> SEARCH_UNSUPPORTED_FIELDS = List.of("key_points", "insight", "source");
+    private static final List<String> SEARCH_UNSUPPORTED_FIELDS = List.of("source");
     private static final List<String> SEARCH_OPTIONAL_FIELDS = OPTIONAL_FIELDS.stream()
             .filter(field -> !SEARCH_UNSUPPORTED_FIELDS.contains(field))
             .toList();

@@ -449,6 +449,8 @@ public class ReadToolService {
         values.put("summary", row.summary());
         values.put("tags", row.tags());
         values.put("importance", row.importance());
+        values.put("key_points", row.keyPoints());
+        values.put("insight", row.insight());
         values.put("created_at", row.createdAt() == null ? null : row.createdAt().toString());
         values.put("valid_from", row.validFrom() == null ? null : row.validFrom().toString());
         values.put("valid_until", row.validUntil() == null ? null : row.validUntil().toString());

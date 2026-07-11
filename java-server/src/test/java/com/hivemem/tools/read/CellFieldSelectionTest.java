@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class CellFieldSelectionTest {
@@ -89,13 +90,11 @@ class CellFieldSelectionTest {
     }
 
     @Test
-    void searchRejectsKeyPointsInsightAndSourceBecauseTheRankedRowNeverPopulatesThem() {
-        assertThatThrownBy(() -> CellFieldSelection.forSearch(List.of("key_points")))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage("Invalid include field: key_points");
-        assertThatThrownBy(() -> CellFieldSelection.forSearch(List.of("insight")))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage("Invalid include field: insight");
+    void searchRejectsOnlySourceBecauseRankedRowHasNoSourceColumn() {
+        assertThatCode(() -> CellFieldSelection.forSearch(List.of("key_points")))
+                .doesNotThrowAnyException();
+        assertThatCode(() -> CellFieldSelection.forSearch(List.of("insight")))
+                .doesNotThrowAnyException();
         assertThatThrownBy(() -> CellFieldSelection.forSearch(List.of("source")))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("Invalid include field: source");
@@ -104,7 +103,8 @@ class CellFieldSelectionTest {
     @Test
     void searchIncludeFieldsExcludesUnsupportedFields() {
         assertThat(CellFieldSelection.searchIncludeFields())
-                .doesNotContain("key_points", "insight", "source");
+                .contains("key_points", "insight")
+                .doesNotContain("source");
     }
 
     @Test
