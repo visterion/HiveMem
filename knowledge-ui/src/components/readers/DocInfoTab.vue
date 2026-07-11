@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useCellStore } from '../../stores/cell'
 import { useScansStore } from '../../stores/scans'
 import { useUiStore } from '../../stores/ui'
+import { useReaderStore } from '../../stores/reader'
 import { useApi } from '../../api/useApi'
 import { docName } from '../../api/cellLabel'
 import MarkdownTab from './MarkdownTab.vue'
@@ -13,6 +14,7 @@ const { t } = useI18n()
 const cellStore = useCellStore()
 const scans = useScansStore()
 const ui = useUiStore()
+const reader = useReaderStore()
 
 const cell = computed(() => cellStore.current?.cell ?? null)
 
@@ -36,6 +38,14 @@ const dateFormatted = computed(() => {
   const d = row.value?.created_at || cell.value?.created_at || ''
   return d ? d.slice(0, 10).split('-').reverse().join('.') : '—'
 })
+
+// OCR pipelines emit literal `[page=N]` markers to mark page breaks in the raw
+// text; rewrite them into markdown thematic breaks + a caption before handing
+// the content to MarkdownTab, so the reader sees a visual separator instead of
+// the raw marker syntax.
+const textContent = computed(() =>
+  (cell.value?.content ?? '').replace(/\[page=(\d+)\]/g,
+    (_, n) => `\n\n---\n\n**${t('reader.pageMarker', { n })}**\n\n`))
 
 async function addTag() {
   const raw = window.prompt(t('scans.addTagPrompt'))
@@ -100,9 +110,9 @@ async function approve() {
         <span class="mg-label">{{ t('scans.date') }}</span>
         <span class="mg-val">{{ dateFormatted }}</span>
         <span class="mg-label">{{ t('scans.pages') }}</span>
-        <span class="mg-val">{{ row.page_count ?? '—' }}</span>
+        <span class="mg-val">{{ row.page_count ?? reader.pageCount ?? '—' }}</span>
         <span class="mg-label">{{ t('scans.correspondent') }}</span>
-        <span class="mg-val">{{ row.correspondent || cell.topic || '—' }}</span>
+        <span class="mg-val">{{ row.correspondent && row.correspondent !== cell.topic ? row.correspondent : '—' }}</span>
       </div>
     </div>
 
@@ -110,7 +120,11 @@ async function approve() {
     <div class="di-tags" data-test="di-tags">
       <span v-for="tag in tags" :key="tag" class="di-tag">
         {{ tag }}
-        <button class="di-tag-del" data-test="di-tag-del" :title="t('scans.clearAll')" @click="removeTag(tag)">
+        <button
+          class="di-tag-del" data-test="di-tag-del"
+          :title="t('scans.removeTag', { tag })" :aria-label="t('scans.removeTag', { tag })"
+          @click="removeTag(tag)"
+        >
           <HmIcon name="close" :size="9" />
         </button>
       </span>
@@ -143,7 +157,7 @@ async function approve() {
 
     <section v-if="cell.content" class="di-section" data-test="di-text">
       <h3 class="di-h">{{ t('reader.text') }}</h3>
-      <MarkdownTab :content="cell.content" />
+      <MarkdownTab :content="textContent" />
     </section>
   </div>
 </template>

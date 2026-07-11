@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useGestureZoom } from '../../composables/useGestureZoom'
+import { useReaderStore } from '../../stores/reader'
 import ViewerToolbar from './ViewerToolbar.vue'
 
 const props = defineProps<{ url: string; kind: 'pdf' | 'image'; filename?: string }>()
 
+const reader = useReaderStore()
 const z = useGestureZoom({ minScale: 0.25, initialScale: 1, maxScale: 6, doubleTapScale: 2.5 })
 const scalePct = computed(() => Math.round(z.scale.value * 100))
 
@@ -52,6 +54,7 @@ async function loadPdf() {
     if (gen !== loadGen) { doc?.destroy?.(); return } // stale: url changed or unmounted
     pdfDoc = doc
     pageCount.value = pdfDoc.numPages
+    reader.pageCount = pdfDoc.numPages
     await renderPage(1)
   } catch {
     if (gen === loadGen) error.value = true

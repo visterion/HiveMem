@@ -42,6 +42,14 @@ function resolvePlugin(mod: unknown): (md: MarkdownIt, options?: unknown) => Mar
 }
 md.use(resolvePlugin(markdownItKatexNs), { throwOnError: false })
 
+// DocInfoTab rewrites [page=N] OCR markers into markdown `---` thematic breaks
+// before handing us the content (see textContent there). Tag the rendered <hr>
+// with a page-separator class/data-test hook so it reads as a page break instead
+// of a generic rule, without needing `html:true` (which would reopen the
+// code-span/dollar-amount corruption this component's KaTeX handling works
+// around — see the comment above).
+md.renderer.rules.hr = () => '<hr class="page-sep" data-test="page-sep">\n'
+
 const html = computed(() => md.render(props.content || ''))
 </script>
 

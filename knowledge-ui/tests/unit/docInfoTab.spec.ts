@@ -5,6 +5,7 @@ import DocInfoTab from '../../src/components/readers/DocInfoTab.vue'
 import { i18n } from '../../src/i18n'
 import { useCellStore } from '../../src/stores/cell'
 import { useScansStore } from '../../src/stores/scans'
+import { useReaderStore } from '../../src/stores/reader'
 
 const cell: any = {
   id: 'd1', realm: 'documents', signal: 'facts', topic: 'rent', title: '',
@@ -93,5 +94,44 @@ describe('DocInfoTab', () => {
     expect(w.find('[data-test="di-meta"]').exists()).toBe(false)
     // layers still render
     expect(w.find('[data-test="di-summary"]').exists()).toBe(true)
+  })
+
+  it('correspondent falls back to — when equal to the title/topic', () => {
+    const cells = useCellStore()
+    cells.cache.set('d1', { cell: { ...cell, topic: 'Finanzamt Berlin' }, facts: [], tunnels: [] })
+    cells.currentId = 'd1'
+    useScansStore().results = [{ ...row, correspondent: 'Finanzamt Berlin' }]
+    const w = mountTab()
+    const grid = w.get('.meta-grid').text()
+    expect(grid).toContain('—')
+    expect(grid.match(/Finanzamt Berlin/g)?.length ?? 0).toBe(0)
+  })
+
+  it('page count falls back to readerStore.pageCount when the row lacks page_count', () => {
+    seed()
+    useScansStore().results = [{ ...row, page_count: null }]
+    const reader = useReaderStore()
+    reader.pageCount = 4
+    const w = mountTab()
+    expect(w.get('.meta-grid').text()).toContain('4')
+  })
+
+  it('renders [page=N] as a styled separator, not literal text', () => {
+    const cells = useCellStore()
+    cells.cache.set('d1', { cell: { ...cell, content: '[page=1] foo [page=2] bar' }, facts: [], tunnels: [] })
+    cells.currentId = 'd1'
+    useScansStore().results = [row]
+    const w = mountTab()
+    expect(w.text()).not.toContain('[page=')
+    expect(w.findAll('[data-test="page-sep"]').length).toBe(2)
+  })
+
+  it('per-tag remove button is labeled with the tag name', () => {
+    const cells = useCellStore()
+    cells.cache.set('d1', { cell: { ...cell, tags: ['vattenfall'] }, facts: [], tunnels: [] })
+    cells.currentId = 'd1'
+    useScansStore().results = [row]
+    const w = mountTab()
+    expect(w.find('[data-test="di-tag-del"]').attributes('title')).toContain('vattenfall')
   })
 })

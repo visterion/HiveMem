@@ -1,7 +1,9 @@
-import { describe, it, expect, vi, beforeAll } from 'vitest'
+import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
 import DocumentViewer from '../../src/components/readers/DocumentViewer.vue'
 import { i18n } from '../../src/i18n'
+import { useReaderStore } from '../../src/stores/reader'
 
 // Controllable pdf.js mock: 3-page document, render resolves immediately.
 const { getPageMock, getDocumentMock } = vi.hoisted(() => {
@@ -25,6 +27,8 @@ vi.mock('pdfjs-dist', () => ({
   GlobalWorkerOptions: { workerSrc: '' },
   getDocument: getDocumentMock,
 }))
+
+beforeEach(() => { setActivePinia(createPinia()) })
 
 function mountViewer(props: Record<string, unknown>) {
   return mount(DocumentViewer, {
@@ -85,6 +89,13 @@ describe('DocumentViewer (pdf)', () => {
     await flushPromises()
     expect(w.find('canvas[data-test="dv-canvas"]').exists()).toBe(true)
     expect(w.find('[data-test="vt-pages"]').text()).toContain('1 / 3')
+  })
+
+  it('publishes the loaded page count on the reader store', async () => {
+    const w = mountPdf()
+    await flushPromises()
+    expect(w.exists()).toBe(true)
+    expect(useReaderStore().pageCount).toBe(3)
   })
 
   it('next advances the page number and re-renders that page', async () => {
