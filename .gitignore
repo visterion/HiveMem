@@ -31,3 +31,17 @@ java-server/src/main/resources/static/
 todo.md
 # Added by code-review-graph
 .code-review-graph/
+
+# private/local dev files (accidentally committed 2026-07-09, removed 2026-07-11)
+.zshrc
+.zprofile
+.bashrc
+.bash_profile
+.profile
+.gitconfig
+.gitmodules
+.ripgreprc
+.idea
+.vscode
+.opencode/
+.claude/
