@@ -9,6 +9,7 @@ import com.hivemem.write.WriteToolService;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -37,7 +38,9 @@ public class ReviseCellToolHandler implements ToolHandler {
         return ToolInputSchema.object()
                 .requiredUuid("old_id", "UUID of the cell version to close")
                 .requiredString("new_content", "New content for the revised cell")
-                .optionalString("new_summary", "New summary (auto-generated if omitted)")
+                .optionalString("new_summary", "New summary (carried over if omitted)")
+                .optionalStringList("key_points", "Key points (carried over if omitted)")
+                .optionalString("insight", "Insight (carried over if omitted)")
                 .build();
     }
 
@@ -46,6 +49,8 @@ public class ReviseCellToolHandler implements ToolHandler {
         UUID oldId = WriteArgumentParser.requiredUuid(arguments, "old_id");
         String newContent = WriteArgumentParser.requiredText(arguments, "new_content");
         String newSummary = WriteArgumentParser.optionalText(arguments, "new_summary");
-        return writeToolService.reviseCell(principal, oldId, newContent, newSummary);
+        List<String> keyPoints = WriteArgumentParser.optionalTextList(arguments, "key_points");
+        String insight = WriteArgumentParser.optionalText(arguments, "insight");
+        return writeToolService.reviseCell(principal, oldId, newContent, newSummary, keyPoints, insight);
     }
 }

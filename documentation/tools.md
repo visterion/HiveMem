@@ -47,7 +47,7 @@ HiveMem exposes **47 MCP tools** across search, knowledge graph, progressive sum
 
 **Write (20):**
 
-24. `add_cell`: Store a cell with content, summary, key points, and insight; optional `dedupe_threshold` runs an embedding-based dedupe gate in one call.
+24. `add_cell`: Store a cell with content, summary, key points, and insight; optional `dedupe_threshold` runs an embedding-based dedupe gate in one call. Rejects `content`/`summary`/`insight`/any `key_points` entry containing the literal `<parameter name=` (a raw client-side tool-call-XML artifact that has leaked into stored text before) with `IllegalArgumentException("malformed tool-call payload in <field>")`; harmless XML like `<config><param>x</param></config>` is unaffected. `revise_cell` enforces the same guard on `new_content`/`new_summary`/`insight`/`key_points`.
 25. `add_tunnel`: Link two cells together.
 26. `kg_add`: Fact triple. Optional `on_conflict` gates against active conflicts sharing subject+predicate: `insert` (default, no gate), `return` (report conflicts without inserting), `reject` (error on conflict), `supersede` (invalidate conflicting active facts, then insert; response includes `superseded: N`).
 27. `kg_invalidate`: Soft-delete/expire a fact.
@@ -57,7 +57,7 @@ HiveMem exposes **47 MCP tools** across search, knowledge graph, progressive sum
 31. `add_reference`: Store source documents/URLs.
 32. `link_reference`: Cite source for a cell.
 33. `remove_tunnel`: Expire a cell link.
-34. `revise_cell`: Create a new version of a cell.
+34. `revise_cell`: Create a new version of a cell, closing the current one. Required: `old_id`, `new_content`. Optional: `new_summary`, `key_points` (string array), `insight` — each carries the prior revision's value over unchanged when omitted (`new_summary`/`key_points`/`insight` are independent: e.g. passing only `key_points` leaves `new_summary` and `insight` as carried over). Use this to repair a cell whose `summary`/`key_points`/`insight` were corrupted (e.g. by a malformed client-side tool call), not just to update `new_content`.
 35. `revise_fact`: Create a new version of a fact.
 36. `register_agent`: Add an agent to the fleet.
 37. `diary_write`: Agent-private reflection tool.

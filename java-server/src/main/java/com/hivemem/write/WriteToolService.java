@@ -32,6 +32,29 @@ public class WriteToolService {
     private static final int BULK_SELECTOR_CAP = 1000;
     private static final int BULK_CONFIRM_THRESHOLD = 200;
 
+    /**
+     * Signature of a malformed client-side tool-call XML that leaked verbatim into a stored text
+     * field once (a raw {@code </summary>\n<parameter name="key_points">[...]} artifact ended up
+     * in a cell's summary). Any field containing this literal is rejected outright rather than
+     * stored — harmless XML like {@code <config><param>x</param></config>} is unaffected since it
+     * never matches this exact string.
+     */
+    private static final String TOOL_CALL_ARTIFACT = "<parameter name=";
+
+    private static void rejectToolCallArtifacts(String field, String value) {
+        if (value != null && value.contains(TOOL_CALL_ARTIFACT)) {
+            throw new IllegalArgumentException("malformed tool-call payload in " + field);
+        }
+    }
+
+    private static void rejectToolCallArtifactsInList(String field, List<String> values) {
+        if (values != null) {
+            for (String value : values) {
+                rejectToolCallArtifacts(field, value);
+            }
+        }
+    }
+
     private final WriteToolRepository writeToolRepository;
     private final EmbeddingClient embeddingClient;
     private final OpLogWriter opLogWriter;
@@ -82,6 +105,11 @@ public class WriteToolService {
             OffsetDateTime validFrom,
             Double dedupeThreshold
     ) {
+        rejectToolCallArtifacts("content", content);
+        rejectToolCallArtifacts("summary", summary);
+        rejectToolCallArtifacts("insight", insight);
+        rejectToolCallArtifactsInList("key_points", keyPoints);
+
         String status = effectiveStatus(principal.role(), requestedStatus);
         List<Float> embedding = embeddingClient.encodeForCell(content, summary);
 
@@ -471,9 +499,37 @@ public class WriteToolService {
 
     @Transactional
     public Map<String, Object> reviseCell(AuthPrincipal principal, UUID oldId, String newContent, String newSummary) {
+        return reviseCell(principal, oldId, newContent, newSummary, null, null);
+    }
+
+    /**
+     * Revise a cell, optionally replacing its key_points/insight (used by {@code revise_cell} to
+     * repair a cell whose progressive-summary layers were corrupted). A null {@code keyPoints} or
+     * {@code insight} carries the old revision's value over unchanged, mirroring {@link
+     * WriteToolRepository#reviseCell(UUID, String, String, List, String, List, List, String, String)}.
+     * Unlike {@link #reviseCellWithSummary}, tags are never touched here (no {@code newTags}
+     * argument) and needs_summary re-tagging still applies.
+     */
+    @Transactional
+    public Map<String, Object> reviseCell(
+            AuthPrincipal principal,
+            UUID oldId,
+            String newContent,
+            String newSummary,
+            List<String> keyPoints,
+            String insight
+    ) {
+        rejectToolCallArtifacts("new_content", newContent);
+        rejectToolCallArtifacts("new_summary", newSummary);
+        rejectToolCallArtifacts("insight", insight);
+        rejectToolCallArtifactsInList("key_points", keyPoints);
+
         String status = principal.role() == AuthRole.AGENT ? STATUS_PENDING : STATUS_COMMITTED;
         List<Float> embedding = embeddingClient.encodeForCell(newContent, newSummary);
-        Map<String, Object> result = writeToolRepository.reviseCell(oldId, newContent, newSummary, embedding, principal.name(), status);
+        Map<String, Object> result = keyPoints == null && insight == null
+                ? writeToolRepository.reviseCell(oldId, newContent, newSummary, embedding, principal.name(), status)
+                : writeToolRepository.reviseCell(
+                        oldId, newContent, newSummary, keyPoints, insight, null, embedding, principal.name(), status);
 
         if (NeedsSummaryDecider.needsSummary(newContent, newSummary)) {
             Object newIdObj = result.get("new_id");
@@ -489,6 +545,8 @@ public class WriteToolService {
         opPayload.put("new_cell_id", result.get("new_id").toString());
         opPayload.put("new_content", newContent);
         opPayload.put("new_summary", newSummary);
+        opPayload.put("new_key_points", keyPoints);
+        opPayload.put("new_insight", insight);
         opPayload.put("agent_id", principal.name());
         opPayload.put("status", status);
         UUID opId = opLogWriter.append("revise_cell", opPayload);
