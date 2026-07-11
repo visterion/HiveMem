@@ -41,9 +41,14 @@ public class DocumentDedupRepository {
      * target AND that are strictly older (created_at, id tie-break). Ordered by closeness.
      */
     public List<Candidate> findSimilarOlderCandidates(UUID cellId, double recallThreshold, int k) {
+        // The HNSW index idx_cells_embedding is an expression index on (embedding::vector(dim)); a
+        // bare `embedding <=> ...` on the untyped vector column bypasses it and forces a sequential
+        // scan (see KgSearchRepository.semanticSearch for the same fix on facts). The cast must match
+        // the index expression's dimension exactly (currently 384, paraphrase-multilingual-MiniLM-L12-v2 —
+        // see EmbeddingStateRepository.createEmbeddingIndex, the source of truth for the live dimension).
         String sql = """
                 WITH target AS (SELECT embedding, created_at FROM cells WHERE id = ? AND valid_until IS NULL)
-                SELECT c.id, c.content, 1 - (c.embedding <=> t.embedding) AS cosine
+                SELECT c.id, c.content, 1 - (c.embedding::vector(384) <=> t.embedding) AS cosine
                 FROM cells c, target t
                 WHERE c.valid_until IS NULL
                   AND c.status = 'committed'
@@ -52,8 +57,8 @@ public class DocumentDedupRepository {
                   AND c.id <> ?
                   AND (c.created_at < t.created_at
                        OR (c.created_at = t.created_at AND c.id < ?))
-                  AND (1 - (c.embedding <=> t.embedding)) >= ?
-                ORDER BY c.embedding <=> t.embedding
+                  AND (1 - (c.embedding::vector(384) <=> t.embedding)) >= ?
+                ORDER BY c.embedding::vector(384) <=> t.embedding
                 LIMIT ?
                 """;
         List<Candidate> out = new ArrayList<>();

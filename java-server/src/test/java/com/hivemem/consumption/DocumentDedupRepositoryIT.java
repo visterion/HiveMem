@@ -11,6 +11,24 @@ import org.junit.jupiter.api.Test;
 
 class DocumentDedupRepositoryIT extends ConsumptionITSupport {
 
+    /**
+     * findSimilarOlderCandidates now casts embedding to vector(384) to match the HNSW index
+     * expression (see DocumentDedupRepository), so test vectors must be exactly 384-dimensional —
+     * a bare "[1,0,0]" would fail with a dimension mismatch. VEC_A/VEC_B are unit vectors on two
+     * different axes (cosine distance 1.0 apart, like the old [1,0,0]/[0,1,0] shorthand).
+     */
+    private static final String VEC_A = unitVector(0);
+    private static final String VEC_B = unitVector(1);
+
+    private static String unitVector(int hotIndex) {
+        StringBuilder sb = new StringBuilder("[");
+        for (int i = 0; i < 384; i++) {
+            if (i > 0) sb.append(',');
+            sb.append(i == hotIndex ? '1' : '0');
+        }
+        return sb.append(']').toString();
+    }
+
     private UUID seedCell(String content, String embedding, String source,
                           String status, OffsetDateTime createdAt) {
         UUID id = UUID.randomUUID();
@@ -31,9 +49,9 @@ class DocumentDedupRepositoryIT extends ConsumptionITSupport {
     void findsOlderSimilarScanCandidate() {
         DocumentDedupRepository repo = new DocumentDedupRepository(dsl);
         OffsetDateTime t0 = OffsetDateTime.parse("2026-06-01T10:00:00Z");
-        UUID original = seedCell("Rechnung 4711", "[1,0,0]", "consumption:a",
+        UUID original = seedCell("Rechnung 4711", VEC_A, "consumption:a",
                 "committed", t0);
-        UUID dup = seedCell("Rechnung 4711", "[1,0,0]", "consumption:b",
+        UUID dup = seedCell("Rechnung 4711", VEC_A, "consumption:b",
                 "committed", t0.plusMinutes(5));
 
         List<DocumentDedupRepository.Candidate> cands =
@@ -48,10 +66,10 @@ class DocumentDedupRepositoryIT extends ConsumptionITSupport {
     void ignoresNonScanAndNewerAndDissimilar() {
         DocumentDedupRepository repo = new DocumentDedupRepository(dsl);
         OffsetDateTime t0 = OffsetDateTime.parse("2026-06-02T10:00:00Z");
-        UUID dup = seedCell("Rechnung 4711", "[1,0,0]", "consumption:b", "committed", t0);
-        seedCell("Rechnung 4711", "[1,0,0]", "manual:x", "committed", t0.minusMinutes(5)); // not a scan
-        seedCell("Rechnung 4711", "[1,0,0]", "consumption:c", "committed", t0.plusMinutes(5)); // newer
-        seedCell("Mietvertrag", "[0,1,0]", "consumption:d", "committed", t0.minusMinutes(5)); // dissimilar vec
+        UUID dup = seedCell("Rechnung 4711", VEC_A, "consumption:b", "committed", t0);
+        seedCell("Rechnung 4711", VEC_A, "manual:x", "committed", t0.minusMinutes(5)); // not a scan
+        seedCell("Rechnung 4711", VEC_A, "consumption:c", "committed", t0.plusMinutes(5)); // newer
+        seedCell("Mietvertrag", VEC_B, "consumption:d", "committed", t0.minusMinutes(5)); // dissimilar vec
 
         List<DocumentDedupRepository.Candidate> cands =
                 repo.findSimilarOlderCandidates(dup, 0.92, 10);
@@ -67,7 +85,7 @@ class DocumentDedupRepositoryIT extends ConsumptionITSupport {
         dsl.execute("INSERT INTO attachments (id, file_hash, mime_type, original_filename, "
                 + "size_bytes, s3_key_original, uploaded_by) VALUES (?, ?, 'application/pdf', 'x.pdf', 1, ?, 'system')",
                 att, "hash-" + att, "key-" + att);
-        UUID dup = seedCell("Rechnung 4711", "[1,0,0]", "consumption:b", "committed", t0);
+        UUID dup = seedCell("Rechnung 4711", VEC_A, "consumption:b", "committed", t0);
         linkAttachment(dup, att);
 
         assertEquals(1, repo.countOtherLiveCellsForAttachment(att, UUID.randomUUID()));
@@ -85,8 +103,8 @@ class DocumentDedupRepositoryIT extends ConsumptionITSupport {
     void linkAndSoftDeleteWritesTunnelAndSoftDeletesAtomically() {
         DocumentDedupRepository repo = new DocumentDedupRepository(dsl);
         OffsetDateTime t0 = OffsetDateTime.parse("2026-06-04T10:00:00Z");
-        UUID original = seedCell("Rechnung 4711", "[1,0,0]", "consumption:a", "committed", t0);
-        UUID dup = seedCell("Rechnung 4711", "[1,0,0]", "consumption:b", "committed", t0.plusMinutes(5));
+        UUID original = seedCell("Rechnung 4711", VEC_A, "consumption:a", "committed", t0);
+        UUID dup = seedCell("Rechnung 4711", VEC_A, "consumption:b", "committed", t0.plusMinutes(5));
 
         repo.linkAndSoftDelete(dup, original, "auto-dedup note", "system-dedup");
 
@@ -102,7 +120,7 @@ class DocumentDedupRepositoryIT extends ConsumptionITSupport {
     void findTargetIgnoresNonCommitted() {
         DocumentDedupRepository repo = new DocumentDedupRepository(dsl);
         OffsetDateTime t0 = OffsetDateTime.parse("2026-06-05T10:00:00Z");
-        UUID pending = seedCell("Rechnung 4711", "[1,0,0]", "consumption:p", "pending", t0);
+        UUID pending = seedCell("Rechnung 4711", VEC_A, "consumption:p", "pending", t0);
         assertFalse(repo.findTarget(pending).isPresent(), "pending cell is not a valid dedup target");
     }
 }
