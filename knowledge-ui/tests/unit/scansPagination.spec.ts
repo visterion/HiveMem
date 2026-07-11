@@ -94,7 +94,6 @@ describe('scans store — pagination, stale responses, status facet', () => {
     await s.load()
     expect(s.results.length).toBe(5)
     expect(s.filtered.length).toBe(5) // must NOT be filtered to 0 (search rows have no `correspondent`)
-    expect(s.results.every(r => (r as any).isSearchRow)).toBe(true)
   })
 
   it('search mode surfaces truncation instead of paginating (M54)', async () => {

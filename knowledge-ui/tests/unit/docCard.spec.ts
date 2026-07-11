@@ -36,7 +36,7 @@ describe('DocCard + DocTable', () => {
   // M17: a row shaped like what `search` actually returns — no status,
   // attachment_id, mime_type, page_count, has_thumbnail or correspondent.
   const searchRow: any = { id: 's1', realm: 'documents', signal: 'facts', topic: null,
-    summary: 'Mietvertrag 2025', tags: ['contract'], created_at: '2025-03-01T00:00:00Z', isSearchRow: true }
+    summary: 'Mietvertrag 2025', tags: ['contract'], created_at: '2025-03-01T00:00:00Z' }
 
   it('DocCard renders a search-shaped row without throwing on missing fields', () => {
     const w = mount(DocCard, { props: { d: searchRow, q: '', selected: false }, global: { plugins: [i18n] } })

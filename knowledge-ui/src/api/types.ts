@@ -161,10 +161,7 @@ export interface DocumentRow {
  * shaped like this (M17).
  */
 export type SearchDocumentRow = Pick<DocumentRow, 'id' | 'realm' | 'signal' | 'topic' | 'tags' | 'summary' | 'created_at'> &
-  Partial<Pick<DocumentRow, 'status' | 'importance' | 'attachment_id' | 'mime_type' | 'page_count' | 'has_thumbnail' | 'confidence' | 'correspondent'>> & {
-    /** Marks a row as search-sourced so consumers can branch instead of assuming full DocumentRow shape. */
-    isSearchRow: true
-  }
+  Partial<Pick<DocumentRow, 'status' | 'importance' | 'attachment_id' | 'mime_type' | 'page_count' | 'has_thumbnail' | 'confidence' | 'correspondent'>>
 
 export interface MediaItem {
   cell_id: string

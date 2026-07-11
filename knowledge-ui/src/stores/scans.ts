@@ -86,14 +86,15 @@ export const useScansStore = defineStore('scans', {
           // 'summary' must be listed explicitly or every search-mode card/snippet
           // silently loses its text (M17). `status`, `attachment_id`,
           // `has_thumbnail`, `page_count` and `correspondent` are never returned by
-          // search regardless of `include` — rows are stamped isSearchRow so
-          // consumers know not to assume the full DocumentRow shape.
-          const rows = await api.call<DocumentRow[]>('search', {
+          // search regardless of `include` — SearchDocumentRow types those as
+          // optional so card/table rendering degrades gracefully instead of
+          // assuming the full DocumentRow shape.
+          const rows = await api.call<SearchDocumentRow[]>('search', {
             query: this.query, realm: REALM, ...this.serverArgs(),
             include: ['content', 'tags', 'created_at', 'summary'], limit: PAGE_SIZE,
           }) ?? []
           if (seq !== this.loadSeq) return // stale — a newer load() owns the state (M53)
-          this.results = rows.map(r => ({ ...r, isSearchRow: true as const }))
+          this.results = rows
           this.offset = rows.length
           this.hasMore = false // search has no pagination; see searchTruncated getter
         } else {
