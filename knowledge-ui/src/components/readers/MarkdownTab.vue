@@ -26,15 +26,21 @@ const md = new MarkdownIt({
 // and plain-text dollar amounts ("$50 and $60") by treating them as math
 // delimiters, and then got HTML-escaped anyway because `html:false`.
 //
-// This package is CJS with a TS-style `export default`. Vite's dev-time esbuild
-// pre-bundling doesn't unwrap that the way a plain `import x from '...'` expects
-// (`x` ends up bound to the whole `{ default, __esModule }` module object, not
-// the plugin function itself) — `md.use()` then throws "plugin.apply is not a
-// function". Importing the namespace and unwrapping `.default` ourselves works
-// under both that and Vitest's module resolution (which doesn't hit the bug).
-const katexNsAny = markdownItKatexNs as unknown as { default?: (md: MarkdownIt, options?: unknown) => MarkdownIt }
-const markdownItKatex = katexNsAny.default ?? (markdownItKatexNs as unknown as (md: MarkdownIt, options?: unknown) => MarkdownIt)
-md.use(markdownItKatex, { throwOnError: false })
+// This package is CJS with a TS-style `export default`, and the interop wrapping
+// differs by toolchain — sometimes single (`{ default: fn }`), sometimes double
+// (Vite's dev-time esbuild prebundling emits `export default require()`, so the
+// namespace is `{ default: { default: fn } }`). A single `.default` unwrap left
+// an object, and `md.use()` threw "plugin.apply is not a function". Peel
+// `.default` until we actually reach the plugin function — robust across Vite
+// dev prebundling, the production build, and Vitest.
+function resolvePlugin(mod: unknown): (md: MarkdownIt, options?: unknown) => MarkdownIt {
+  let cur: unknown = mod
+  while (cur && typeof cur !== 'function' && typeof (cur as { default?: unknown }).default !== 'undefined') {
+    cur = (cur as { default?: unknown }).default
+  }
+  return cur as (md: MarkdownIt, options?: unknown) => MarkdownIt
+}
+md.use(resolvePlugin(markdownItKatexNs), { throwOnError: false })
 
 const html = computed(() => md.render(props.content || ''))
 </script>
