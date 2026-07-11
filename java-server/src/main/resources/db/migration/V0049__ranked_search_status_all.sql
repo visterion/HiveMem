@@ -1,7 +1,34 @@
--- Template loaded by EmbeddingStateRepository.replaceRankedSearchFunction.
--- {{DIM}} is replaced at runtime with the active embedding dimension.
+-- V0049: extend ranked_search's status predicate with an 'all' sentinel so
+-- callers can pass status='all' to bypass the committed-only default and see
+-- every status (committed, pending, rejected). See
+-- java-server/src/main/resources/db/templates/ranked_search.sql.tmpl for the
+-- runtime-rendered (and authoritative) version of this function:
+-- EmbeddingMigrationService recreates ranked_search from that template on
+-- every startup (see V0017), dropping ALL existing overloads first — so this
+-- migration only needs to produce a signature-compatible function for
+-- environments that migrate without ever booting the app (e.g. a bare Flyway
+-- run against a fresh schema).
+--
+-- Unlike V0048's DO block, this one does NOT restrict pronamespace to
+-- 'public': FlywayMigrationParityTest migrates into a schema that comes
+-- BEFORE 'public' on the search_path, so an unqualified CREATE FUNCTION (as
+-- used here and in V0048) lands in that schema, not 'public'. Filtering on
+-- 'public' would silently miss the function V0048 just created, and the
+-- unqualified CREATE FUNCTION below would then fail with "already exists
+-- with same argument types". Matching by name only (regardless of schema)
+-- still only ever finds/drops the one ranked_search that matters in a
+-- single-schema production deployment.
+DO $do$
+DECLARE r RECORD;
+BEGIN
+    FOR r IN SELECT oid::regprocedure AS sig FROM pg_proc
+             WHERE proname = 'ranked_search' LOOP
+        EXECUTE 'DROP FUNCTION ' || r.sig;
+    END LOOP;
+END
+$do$;
 
-CREATE OR REPLACE FUNCTION ranked_search(
+CREATE FUNCTION ranked_search(
     query_embedding vector,
     query_text TEXT,
     p_realm TEXT DEFAULT NULL,
@@ -51,7 +78,7 @@ LANGUAGE SQL STABLE AS $$
           AND (p_signal IS NULL OR c.signal = p_signal)
           AND (p_topic IS NULL OR c.topic = p_topic)
           AND (p_tags IS NULL OR c.tags && p_tags)
-        ORDER BY (c.embedding::vector({{DIM}})) <=> query_embedding
+        ORDER BY (c.embedding::vector(1024)) <=> query_embedding
         LIMIT 200
     ),
     kw AS (
@@ -81,7 +108,7 @@ LANGUAGE SQL STABLE AS $$
         FROM cells c
         JOIN candidates ca ON ca.id = c.id
         WHERE c.embedding IS NOT NULL AND query_embedding IS NOT NULL
-        ORDER BY (c.embedding::vector({{DIM}})) <=> query_embedding
+        ORDER BY (c.embedding::vector(1024)) <=> query_embedding
         LIMIT 25
     ),
     graph AS (
@@ -99,7 +126,7 @@ LANGUAGE SQL STABLE AS $$
         SELECT c.id, c.content, c.summary, c.realm, c.signal, c.topic,
             c.tags, c.importance, c.key_points, c.insight, c.created_at, c.valid_from, c.valid_until,
             CASE WHEN c.embedding IS NOT NULL AND query_embedding IS NOT NULL
-                 THEN (1 - ((c.embedding::vector({{DIM}})) <=> query_embedding))::REAL
+                 THEN (1 - ((c.embedding::vector(1024)) <=> query_embedding))::REAL
                  ELSE 0::REAL END AS sem,
             CASE WHEN q.tsq IS NOT NULL THEN ts_rank_cd(c.tsv, q.tsq, 32)::REAL
                  ELSE 0::REAL END AS kw,

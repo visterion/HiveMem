@@ -426,6 +426,37 @@ class SearchParityIntegrationTest {
         assertThat(textValues(results, "id")).doesNotContain(pendingDrawerId.toString());
     }
 
+    @Test
+    void searchStatusAllReturnsRejectedAndCommitted() throws Exception {
+        insertDrawer(UUID.fromString("00000000-0000-0000-0000-000000000911"),
+                "vector rejected cell", "eng", "facts", "st", 2, "rejected summary",
+                "rejected", OffsetDateTime.parse("2026-04-03T10:00:00Z"));
+        insertDrawer(UUID.fromString("00000000-0000-0000-0000-000000000912"),
+                "vector committed cell", "eng", "facts", "st", 2, "committed summary",
+                "committed", OffsetDateTime.parse("2026-04-03T11:00:00Z"));
+
+        JsonNode all = callTool("writer-token", "search", Map.of(
+                "query", "vector cell", "status", "all", "limit", 10));
+        JsonNode committedOnly = callTool("writer-token", "search", Map.of(
+                "query", "vector cell", "limit", 10));
+
+        assertThat(textValues(all, "id")).contains("00000000-0000-0000-0000-000000000911",
+                "00000000-0000-0000-0000-000000000912");
+        assertThat(textValues(committedOnly, "id"))
+                .doesNotContain("00000000-0000-0000-0000-000000000911");
+    }
+
+    @Test
+    void browseStatusAllReturnsRejectedAndCommitted() throws Exception {
+        insertDrawer(UUID.fromString("00000000-0000-0000-0000-000000000913"),
+                "browse rejected cell", "eng", "facts", "st", 2, "rejected summary",
+                "rejected", OffsetDateTime.parse("2026-04-03T10:00:00Z"));
+
+        JsonNode all = callTool("writer-token", "search", Map.of(
+                "realm", "eng", "status", "all", "limit", 50));   // no query -> browse path
+        assertThat(textValues(all, "id")).contains("00000000-0000-0000-0000-000000000913");
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // Task 15 hotfix: filter-only browse when query is blank/absent (realm drilldown).
     // ─────────────────────────────────────────────────────────────────────────

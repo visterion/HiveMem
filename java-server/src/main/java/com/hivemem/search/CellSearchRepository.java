@@ -142,7 +142,7 @@ public class CellSearchRepository {
                        key_points, insight, created_at, valid_from, valid_until
                 FROM cells
                 WHERE (valid_until IS NULL OR valid_until > now())
-                  AND status = COALESCE(?, 'committed')
+                  AND (? = 'all' OR status = COALESCE(?, 'committed'))
                   AND (?::text IS NULL OR (?::text = 'none' AND realm IS NULL) OR (?::text <> 'none' AND realm = ?::text))
                   AND (?::text[] IS NULL
                        OR realm = ANY(array_remove(?::text[], 'none'))
@@ -157,7 +157,7 @@ public class CellSearchRepository {
         List<BrowseRow> rows = new ArrayList<>();
         for (Record row : dslContext.fetch(
                 sql,
-                status,
+                status, status,
                 realm, realm, realm, realm,
                 realmsArr, realmsArr, realmsArr,
                 signal, signal,
