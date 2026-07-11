@@ -184,6 +184,7 @@ export default {
   },
   scans: {
     savedViews: 'Saved views', allDocs: 'All documents', items: 'documents', searchDocs: 'Search documents…',
+    itemsOfTotal: '{loaded} of {total} documents',
     searchPlaceholder: 'Search documents…',
     searchShort: 'Search…',
     docType: 'Document type', correspondent: 'Correspondent', year: 'Year', date: 'Date', amount: 'Amount',

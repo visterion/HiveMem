@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useScansStore } from '../../stores/scans'
 import type { FacetKey } from '../../stores/scans'
@@ -10,14 +10,6 @@ import HmIcon from '../shell/HmIcon.vue'
 const { t } = useI18n()
 const store = useScansStore()
 const ui = useUiStore()
-
-const totalDocs = computed(() => {
-  const statusCounts = store.facetCounts.status
-  if (statusCounts && statusCounts.length > 0) {
-    return statusCounts.reduce((n, s) => n + s.count, 0)
-  }
-  return store.results.length
-})
 
 function onToggle(field: string, value: string) {
   store.toggleFacet(field as FacetKey, value)
@@ -65,7 +57,7 @@ onMounted(() => {
     <div class="panel-head">
       <div>
         <div class="panel-title">{{ t('nav.scans') }}</div>
-        <div class="panel-sub">{{ totalDocs }} {{ t('scans.items') }}</div>
+        <div class="panel-sub">{{ store.totalDocs }} {{ t('scans.items') }}</div>
       </div>
     </div>
     <div class="panel-body">
@@ -85,7 +77,7 @@ onMounted(() => {
       >
         <span class="sv-icon"><HmIcon name="scans" :size="15" /></span>
         <span class="sv-name">{{ t('scans.allDocs') }}</span>
-        <span class="sv-ct">{{ totalDocs }}</span>
+        <span class="sv-ct">{{ store.totalDocs }}</span>
       </button>
 
       <!-- Saved view rows -->

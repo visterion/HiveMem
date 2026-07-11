@@ -112,6 +112,33 @@ describe('ScansResults', () => {
     spy.mockRestore()
   })
 
+  describe('res-count "loaded of total" label', () => {
+    it('shows "loaded of total" while more pages exist and no client refinement is active', async () => {
+      const vuetify = createVuetify({ components, directives })
+      const w = mount(ScansResults, { global: { plugins: [i18n, vuetify] } })
+      await vi.advanceTimersByTimeAsync(500); await flushPromises()
+      const s = useScansStore()
+      s.results = Array.from({ length: 100 }, (_, i) => ({ id: `d${i}`, title: `d${i}`, realm: 'documents', created_at: '2024-01-01' } as any))
+      s.hasMore = true
+      s.facetCounts = { status: [{ value: 'committed', count: 121 }] } as any
+      await flushPromises()
+      expect(w.find('.res-count').text()).toContain('100 von 121')
+    })
+
+    it('falls back to plain count when client refinement is active', async () => {
+      const vuetify = createVuetify({ components, directives })
+      const w = mount(ScansResults, { global: { plugins: [i18n, vuetify] } })
+      await vi.advanceTimersByTimeAsync(500); await flushPromises()
+      const s = useScansStore()
+      s.results = Array.from({ length: 100 }, (_, i) => ({ id: `d${i}`, title: `d${i}`, realm: 'documents', created_at: '2024-01-01' } as any))
+      s.hasMore = true
+      s.facetCounts = { status: [{ value: 'committed', count: 121 }] } as any
+      s.facets.year.add('2023')
+      await flushPromises()
+      expect(w.find('.res-count').text()).not.toContain('von')
+    })
+  })
+
   describe('infinite scroll (H8)', () => {
     let observeCb: ((entries: { isIntersecting: boolean }[]) => void) | null = null
     let originalIO: any

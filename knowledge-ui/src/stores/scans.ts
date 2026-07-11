@@ -74,6 +74,15 @@ export const useScansStore = defineStore('scans', {
     searchTruncated(s): boolean {
       return !!s.query.trim() && s.results.length >= PAGE_SIZE
     },
+    /** Total documents across all statuses, from the status facet buckets (which
+     * already cover every status regardless of mode) — falls back to the loaded
+     * result count when facets haven't loaded yet. Consumed by ScansPanel (sidebar
+     * "N Dokumente") and ScansResults (grid "loaded von total" label). */
+    totalDocs(s): number {
+      const buckets = s.facetCounts.status
+      if (buckets && buckets.length > 0) return buckets.reduce((n, b) => n + b.count, 0)
+      return s.results.length
+    },
   },
   actions: {
     // `browse` selects the count basis for list_documents (the Scans grid): with no
@@ -117,9 +126,13 @@ export const useScansStore = defineStore('scans', {
           // (status:'all', same basis as browse) to fill metaById with thumbnail
           // meta for search results to merge against — unless a prior browse/search
           // load already populated it, in which case reuse that (avoids a redundant
-          // round-trip on every keystroke).
+          // round-trip on every keystroke). Search now shares browse's status
+          // basis: 'all' unless a status facet is selected, so the grid/search
+          // count stays consistent with the sidebar facet totals (which already
+          // sum every status bucket) — see totalDocs getter.
+          const searchArgs = this.serverArgs(true)
           const searchPromise = api.call<SearchDocumentRow[]>('search', {
-            query: this.query, realm: REALM, ...this.serverArgs(),
+            query: this.query, realm: REALM, ...searchArgs,
             include: ['content', 'tags', 'created_at', 'summary'], limit: PAGE_SIZE,
           })
           const metaPromise = this.metaById.size === 0

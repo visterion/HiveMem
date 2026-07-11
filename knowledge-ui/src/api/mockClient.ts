@@ -124,7 +124,10 @@ export class MockApiClient implements ApiClient {
 
   private search(args: { query?: string; limit?: number; status?: string; tags?: string[]; realm?: string }): SearchResult[] {
     const q = (args.query || '').toLowerCase()
-    const filterStatus = args.status ?? null
+    // 'all' mirrors the backend sentinel (DocumentListRepository): bypass the
+    // status filter entirely rather than matching the literal string "all"
+    // (same pattern as filterDocCells below).
+    const filterStatus = args.status && args.status !== 'all' ? args.status : null
     const filterTags = args.tags && args.tags.length > 0 ? args.tags : null
     let all = q
       ? mockPalace.cells.filter(c => c.title.toLowerCase().includes(q) || c.content.toLowerCase().includes(q))

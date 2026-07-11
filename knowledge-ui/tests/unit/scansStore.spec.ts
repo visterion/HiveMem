@@ -3,7 +3,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { useScansStore } from '../../src/stores/scans'
 import { useCellStore } from '../../src/stores/cell'
 import { useReaderStore } from '../../src/stores/reader'
-import { resetApi } from '../../src/api/useApi'
+import { resetApi, useApi } from '../../src/api/useApi'
 
 describe('scans store', () => {
   beforeEach(() => {
@@ -49,6 +49,27 @@ describe('scans store', () => {
     expect(s.results.length).toBeGreaterThan(0)
     const withThumb = s.results.find(r => r.attachment_id)
     expect(withThumb?.has_thumbnail).toBe(true)
+  })
+
+  it('search mode requests status all unless a status facet is selected', async () => {
+    const s = useScansStore()
+    const spy = vi.spyOn(useApi(), 'call')
+    s.query = 'Vattenfall'
+    const p1 = s.load(); await vi.advanceTimersByTimeAsync(300); await p1
+    const searchCall = spy.mock.calls.find(c => c[0] === 'search')
+    expect(searchCall?.[1]).toMatchObject({ status: 'all' })
+    spy.mockClear()
+    s.facets.status.add('rejected')
+    const p2 = s.load(); await vi.advanceTimersByTimeAsync(300); await p2
+    const second = spy.mock.calls.find(c => c[0] === 'search')
+    expect(second?.[1]).toMatchObject({ status: 'rejected' })
+  })
+
+  it('totalDocs getter sums the status facet buckets', async () => {
+    const s = useScansStore()
+    const p = s.loadFacets(); await vi.advanceTimersByTimeAsync(300); await p
+    const expected = (s.facetCounts.status ?? []).reduce((n, x) => n + x.count, 0)
+    expect(s.totalDocs).toBe(expected)
   })
 
   it('toggleFacet updates the facet set', () => {

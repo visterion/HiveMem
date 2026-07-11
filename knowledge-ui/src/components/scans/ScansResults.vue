@@ -176,7 +176,10 @@ onMounted(async () => {
     <!-- Result bar -->
     <div class="res-bar">
       <span class="res-count">
-        <b>{{ store.filtered.length }}</b> {{ t('scans.items') }}
+        <template v-if="store.hasMore && store.filtered.length === store.results.length && store.totalDocs > store.results.length">
+          {{ t('scans.itemsOfTotal', { loaded: store.results.length, total: store.totalDocs }) }}
+        </template>
+        <template v-else><b>{{ store.filtered.length }}</b> {{ t('scans.items') }}</template>
       </span>
 
       <div class="filter-chips">
