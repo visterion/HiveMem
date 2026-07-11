@@ -197,6 +197,28 @@ public class ReadToolService {
                 .toList();
     }
 
+    /**
+     * Filter-only browse path for {@code search} when {@code query} is blank but a realm/
+     * signal/topic/tags filter is present. Newest-first, no embedding call, no ranking scores
+     * (no {@code score_total}/{@code confidence_level} — there is nothing to rank against).
+     */
+    public List<Map<String, Object>> searchBrowse(
+            int limit,
+            String realm,
+            String signal,
+            String topic,
+            CellFieldSelection selection,
+            List<String> tags,
+            String status,
+            List<String> realmIn
+    ) {
+        List<CellSearchRepository.BrowseRow> rows = cellSearchRepository.browseByFilter(
+                realm, signal, topic, limit, tags, status, realmIn);
+        return rows.stream()
+                .map(row -> projectBrowseRow(row, selection))
+                .toList();
+    }
+
     public List<Map<String, Object>> searchKg(String query, String subject, String predicate, String object_, int limit) {
         if (query != null && !query.isBlank()) {
             try {
@@ -466,6 +488,27 @@ public class ReadToolService {
         projected.put("score_total", rounded(row.scoreTotal()));
         projected.put("confidence_level", confidenceLevel.name());
         return projected;
+    }
+
+    private static Map<String, Object> projectBrowseRow(
+            CellSearchRepository.BrowseRow row,
+            CellFieldSelection selection
+    ) {
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put("id", row.id().toString());
+        values.put("realm", row.realm());
+        values.put("signal", row.signal());
+        values.put("topic", row.topic());
+        values.put("content", row.content());
+        values.put("summary", row.summary());
+        values.put("tags", row.tags());
+        values.put("importance", row.importance());
+        values.put("key_points", row.keyPoints());
+        values.put("insight", row.insight());
+        values.put("created_at", row.createdAt() == null ? null : row.createdAt().toString());
+        values.put("valid_from", row.validFrom() == null ? null : row.validFrom().toString());
+        values.put("valid_until", row.validUntil() == null ? null : row.validUntil().toString());
+        return new LinkedHashMap<>(selection.project(values));
     }
 
     private static double rounded(double value) {

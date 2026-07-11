@@ -426,6 +426,108 @@ class SearchParityIntegrationTest {
         assertThat(textValues(results, "id")).doesNotContain(pendingDrawerId.toString());
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // Task 15 hotfix: filter-only browse when query is blank/absent (realm drilldown).
+    // ─────────────────────────────────────────────────────────────────────────
+
+    @Test
+    void blankQueryWithRealmFilterBrowsesNewestFirstIncludingKeyPointsAndInsight() throws Exception {
+        UUID older = UUID.fromString("00000000-0000-0000-0000-000000000c01");
+        UUID newer = UUID.fromString("00000000-0000-0000-0000-000000000c02");
+        UUID otherRealm = UUID.fromString("00000000-0000-0000-0000-000000000c03");
+
+        insertDrawer(older, "Older engineering cell", "engineering", "facts", "infra", 2,
+                "older summary", "committed", OffsetDateTime.parse("2026-04-01T10:00:00Z"));
+        insertKeyPointsAndInsight(older, new String[] {"older point"}, "older insight");
+        insertDrawer(newer, "Newer engineering cell", "engineering", "facts", "infra", 2,
+                "newer summary", "committed", OffsetDateTime.parse("2026-04-05T10:00:00Z"));
+        insertKeyPointsAndInsight(newer, new String[] {"newer point"}, "newer insight");
+        insertDrawer(otherRealm, "Personal cell", "personal", "facts", "infra", 2,
+                "personal summary", "committed", OffsetDateTime.parse("2026-04-06T10:00:00Z"));
+
+        JsonNode results = callTool("writer-token", "search", Map.of(
+                "query", "",
+                "realm", "engineering",
+                "include", List.of("key_points", "insight", "content")
+        ));
+
+        assertThat(results).hasSize(2);
+        // newest-first
+        assertThat(results.get(0).path("id").asText()).isEqualTo(newer.toString());
+        assertThat(results.get(1).path("id").asText()).isEqualTo(older.toString());
+        assertThat(results.get(0).path("insight").asText()).isEqualTo("newer insight");
+        assertThat(results.get(0).path("key_points").get(0).asText()).isEqualTo("newer point");
+        assertThat(results.get(0).path("content").asText()).isEqualTo("Newer engineering cell");
+        // no ranking scores on the browse path
+        assertThat(results.get(0).has("score_total")).isFalse();
+        assertThat(results.get(0).has("confidence_level")).isFalse();
+        assertThat(results.get(0).has("score_semantic")).isFalse();
+    }
+
+    @Test
+    void absentQueryWithTagsFilterBrowsesMatchingTagsOnly() throws Exception {
+        UUID tagged = UUID.fromString("00000000-0000-0000-0000-000000000c11");
+        UUID untagged = UUID.fromString("00000000-0000-0000-0000-000000000c12");
+
+        insertDrawer(tagged, "Tagged cell", "eng", "facts", "infra", 2,
+                "tagged summary", "committed", OffsetDateTime.parse("2026-04-01T10:00:00Z"));
+        dslContext.execute("UPDATE cells SET tags = ?::text[] WHERE id = ?",
+                new String[] {"docker"}, tagged);
+        insertDrawer(untagged, "Untagged cell", "eng", "facts", "infra", 2,
+                "untagged summary", "committed", OffsetDateTime.parse("2026-04-02T10:00:00Z"));
+
+        JsonNode results = callTool("writer-token", "search", Map.of(
+                "tags", List.of("docker")
+        ));
+
+        assertThat(results).hasSize(1);
+        assertThat(results.get(0).path("id").asText()).isEqualTo(tagged.toString());
+    }
+
+    @Test
+    void blankQueryWithoutAnyFilterStillFailsWithMissingQuery() throws Exception {
+        MvcResult result = mockMvc.perform(post("/mcp")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer writer-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "jsonrpc", "2.0",
+                                "id", 1,
+                                "method", "tools/call",
+                                "params", Map.of(
+                                        "name", "search",
+                                        "arguments", Map.of("query", "")
+                                )
+                        ))))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        JsonNode body = objectMapper.readTree(result.getResponse().getContentAsString());
+        assertThat(body.path("error").path("code").asInt()).isEqualTo(-32602);
+        assertThat(body.path("error").path("message").asText()).isEqualTo("Missing query");
+    }
+
+    @Test
+    void noQueryNoFilterAtAllStillFailsWithMissingQuery() throws Exception {
+        MvcResult result = mockMvc.perform(post("/mcp")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer writer-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "jsonrpc", "2.0",
+                                "id", 1,
+                                "method", "tools/call",
+                                "params", Map.of(
+                                        "name", "search",
+                                        "arguments", Map.of()
+                                )
+                        ))))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        JsonNode body = objectMapper.readTree(result.getResponse().getContentAsString());
+        assertThat(body.path("error").path("code").asInt()).isEqualTo(-32602);
+        assertThat(body.path("error").path("message").asText()).isEqualTo("Missing query");
+    }
+
     private JsonNode callTool(String token, String toolName, Map<String, Object> arguments) throws Exception {
         MvcResult result = mockMvc.perform(post("/mcp")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)

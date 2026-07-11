@@ -52,7 +52,10 @@ public class SearchToolHandler implements ToolHandler {
     @Override
     public Map<String, Object> inputSchema() {
         return ToolInputSchema.object()
-                .requiredString("query", "Full-text search query")
+                .optionalString("query", "Full-text search query. Optional if a realm or tags filter is present "
+                        + "(via 'where' or the soft-deprecated flat params) — in that case, results are cells "
+                        + "matching the filter, newest first, with no ranking scores. If both query and a filter "
+                        + "are absent, the call fails with 'Missing query'.")
                 .optionalInteger("limit", "Maximum number of results (default 10, max 100)")
                 .optionalEnumStringList("include", "Optional fields to return. Defaults to summary, tags, importance, created_at.", INCLUDE_FIELDS)
                 .optionalString("profile", "Weight preset: balanced (default) | semantic | recent | important | keyword")
@@ -64,7 +67,7 @@ public class SearchToolHandler implements ToolHandler {
 
     @Override
     public Object call(AuthPrincipal principal, JsonNode arguments) {
-        String query = WriteArgumentParser.requiredText(arguments, "query");
+        String query = rawQueryText(arguments);
         int limit = boundedLimit(arguments, "limit", DEFAULT_LIMIT, MAX_LIMIT);
         // Soft-deprecated params: 'realm/signal/topic/tags/status' (use 'where' instead) and the
         // 'weight_*' knobs (use 'profile' instead) are no longer advertised in inputSchema(), but are
@@ -110,6 +113,17 @@ public class SearchToolHandler implements ToolHandler {
             tags = sel.tags() == null ? null : new ArrayList<>(sel.tags());
             status = sel.status();
         }
+        boolean hasFilter = realm != null || realmIn != null || signal != null || topic != null
+                || (tags != null && !tags.isEmpty());
+        if (query == null || query.isBlank()) {
+            if (!hasFilter) {
+                // Full-table-dump-as-default is intentionally not supported: a blank query
+                // with no realm/tags/signal/topic filter still fails, exactly like before
+                // 'query' became optional.
+                throw new IllegalArgumentException("Missing query");
+            }
+            return readToolService.searchBrowse(limit, realm, signal, topic, selection, tags, status, realmIn);
+        }
         return readToolService.search(
                 query,
                 limit,
@@ -128,6 +142,22 @@ public class SearchToolHandler implements ToolHandler {
                 realmIn,
                 includeScores
         );
+    }
+
+    /**
+     * Unlike {@link WriteArgumentParser#optionalText}, this allows an explicitly blank/empty
+     * string (the UI's realm-drilldown sends {@code query: ""} alongside a realm filter) —
+     * blank means "no query", not "invalid argument".
+     */
+    private static String rawQueryText(JsonNode arguments) {
+        if (arguments == null || !arguments.has("query") || arguments.get("query").isNull()) {
+            return null;
+        }
+        JsonNode node = arguments.get("query");
+        if (!node.isTextual()) {
+            throw new IllegalArgumentException("Invalid query");
+        }
+        return node.asText();
     }
 
     private static int boundedLimit(JsonNode arguments, String field, int defaultValue, int max) {

@@ -120,6 +120,87 @@ public class CellSearchRepository {
     ) {
     }
 
+    /**
+     * Filter-only browse path used by {@code search} when {@code query} is blank but a realm/
+     * signal/topic/tags filter is present (e.g. the UI's realm drilldown). No embedding call,
+     * no ranking — plain newest-first listing over the same filter semantics as
+     * {@link #rankedSearch}, minus the scoring columns.
+     */
+    public List<BrowseRow> browseByFilter(
+            String realm,
+            String signal,
+            String topic,
+            int limit,
+            List<String> tags,
+            String status,
+            List<String> realmIn
+    ) {
+        String[] tagsArr = (tags == null || tags.isEmpty()) ? null : tags.toArray(String[]::new);
+        String[] realmsArr = (realmIn == null || realmIn.isEmpty()) ? null : realmIn.toArray(String[]::new);
+        String sql = """
+                SELECT id, content, summary, realm, signal, topic, tags, importance,
+                       key_points, insight, created_at, valid_from, valid_until
+                FROM cells
+                WHERE (valid_until IS NULL OR valid_until > now())
+                  AND status = COALESCE(?, 'committed')
+                  AND (?::text IS NULL OR (?::text = 'none' AND realm IS NULL) OR (?::text <> 'none' AND realm = ?::text))
+                  AND (?::text[] IS NULL
+                       OR realm = ANY(array_remove(?::text[], 'none'))
+                       OR ('none' = ANY(?::text[]) AND realm IS NULL))
+                  AND (?::text IS NULL OR signal = ?::text)
+                  AND (?::text IS NULL OR topic = ?::text)
+                  AND (?::text[] IS NULL OR tags && ?::text[])
+                ORDER BY created_at DESC, id DESC
+                LIMIT ?
+                """;
+
+        List<BrowseRow> rows = new ArrayList<>();
+        for (Record row : dslContext.fetch(
+                sql,
+                status,
+                realm, realm, realm, realm,
+                realmsArr, realmsArr, realmsArr,
+                signal, signal,
+                topic, topic,
+                tagsArr, tagsArr,
+                limit
+        )) {
+            rows.add(new BrowseRow(
+                    row.get("id", UUID.class),
+                    row.get("content", String.class),
+                    row.get("summary", String.class),
+                    row.get("realm", String.class),
+                    row.get("signal", String.class),
+                    row.get("topic", String.class),
+                    textArray(row, "tags"),
+                    row.get("importance", Integer.class),
+                    textArray(row, "key_points"),
+                    row.get("insight", String.class),
+                    row.get("created_at", OffsetDateTime.class),
+                    row.get("valid_from", OffsetDateTime.class),
+                    row.get("valid_until", OffsetDateTime.class)
+            ));
+        }
+        return rows;
+    }
+
+    public record BrowseRow(
+            UUID id,
+            String content,
+            String summary,
+            String realm,
+            String signal,
+            String topic,
+            List<String> tags,
+            Integer importance,
+            List<String> keyPoints,
+            String insight,
+            OffsetDateTime createdAt,
+            OffsetDateTime validFrom,
+            OffsetDateTime validUntil
+    ) {
+    }
+
     public Map<UUID, List<RefRow>> findReferencesForCells(List<UUID> cellIds) {
         if (cellIds == null || cellIds.isEmpty()) return Map.of();
         UUID[] arr = cellIds.toArray(UUID[]::new);
