@@ -3,6 +3,7 @@ package com.hivemem.attachment;
 import org.jooq.DSLContext;
 
 import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /** Daily-cost-cap tracker for Vision-API calls. Mirrors SummarizeBudgetTracker. */
@@ -30,7 +31,7 @@ public class VisionBudgetTracker {
         if (dailyBudgetUsd <= 0) return false;
         double reserved = inFlightCalls.get() * EST_CALL_COST_USD;
         var rec = dsl.fetchOptional(
-                "SELECT total_cost_usd FROM vision_usage WHERE day = ?", LocalDate.now());
+                "SELECT total_cost_usd FROM vision_usage WHERE day = ?", today());
         if (rec.isEmpty()) return reserved < dailyBudgetUsd;
         java.math.BigDecimal spent = rec.get().get(0, java.math.BigDecimal.class);
         return spent == null || spent.doubleValue() + reserved < dailyBudgetUsd;
@@ -57,6 +58,11 @@ public class VisionBudgetTracker {
                         + "  total_input_tokens = vision_usage.total_input_tokens + EXCLUDED.total_input_tokens, "
                         + "  total_output_tokens = vision_usage.total_output_tokens + EXCLUDED.total_output_tokens, "
                         + "  total_cost_usd = vision_usage.total_cost_usd + EXCLUDED.total_cost_usd",
-                LocalDate.now(), inputTokens, outputTokens, cost);
+                today(), inputTokens, outputTokens, cost);
+    }
+
+    /** UTC day boundary — consistent with SummarizeBudgetTracker, regardless of server-local TZ. */
+    private static LocalDate today() {
+        return LocalDate.now(ZoneOffset.UTC);
     }
 }

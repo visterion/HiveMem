@@ -6,6 +6,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Tracks per-day Anthropic call cost in the {@code summarize_usage} table and gates
@@ -23,8 +24,14 @@ public class SummarizeBudgetTracker {
     private static final BigDecimal OUTPUT_PRICE_PER_1M = new BigDecimal("4.00");
     private static final BigDecimal MILLION = new BigDecimal(1_000_000);
 
+    // Estimated worst-case cost of a single summarize call, reserved while a call is in flight
+    // so concurrent workers cannot all pass canSpend() before any cost has actually been
+    // recorded (check-then-act overshoot). Mirrors VisionBudgetTracker.
+    private static final double EST_CALL_COST_USD = 0.01;
+
     private final DSLContext dsl;
     private final double dailyBudgetUsd;
+    private final AtomicInteger inFlightCalls = new AtomicInteger();
 
     public SummarizeBudgetTracker(DSLContext dsl, double dailyBudgetUsd) {
         this.dsl = dsl;
@@ -32,11 +39,22 @@ public class SummarizeBudgetTracker {
     }
 
     public boolean canSpend() {
+        double reserved = inFlightCalls.get() * EST_CALL_COST_USD;
         BigDecimal todaySpent = dsl.fetchOptional(
                 "SELECT total_cost_usd FROM summarize_usage WHERE day = ?", today())
                 .map(r -> r.get(0, BigDecimal.class))
                 .orElse(BigDecimal.ZERO);
-        return todaySpent.doubleValue() < dailyBudgetUsd;
+        return todaySpent.doubleValue() + reserved < dailyBudgetUsd;
+    }
+
+    /** Mark a summarize call as in flight; MUST be paired with {@link #endCall()} in a finally. */
+    public void beginCall() {
+        inFlightCalls.incrementAndGet();
+    }
+
+    /** Release the in-flight reservation taken by {@link #beginCall()}. */
+    public void endCall() {
+        inFlightCalls.decrementAndGet();
     }
 
     public void recordCall(int inputTokens, int outputTokens) {

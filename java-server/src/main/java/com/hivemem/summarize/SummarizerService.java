@@ -140,8 +140,14 @@ public class SummarizerService {
         ExtractionProfile profile = pickProfile(cellId, snap.content());
 
         try {
-            SummaryResult result = anthropic.summarize(snap.content(), profile);
-            budget.recordCall(result.inputTokens(), result.outputTokens());
+            SummaryResult result;
+            budget.beginCall();
+            try {
+                result = anthropic.summarize(snap.content(), profile);
+                budget.recordCall(result.inputTokens(), result.outputTokens());
+            } finally {
+                budget.endCall();
+            }
 
             if (result.summary() == null || result.summary().isBlank()) {
                 // Loop guard: reviseCell(content, null) would re-tag needs_summary on the new
@@ -217,10 +223,16 @@ public class SummarizerService {
             try {
                 String summary = repo.findSummary(id);
                 if (summary == null || summary.isBlank()) continue;
-                AnthropicSummarizer.TitleResult title = anthropic.generateTitle(summary);
-                // Charge the call to the daily budget — even when the title comes back blank —
-                // so the canSpend() gate actually bounds the backfill.
-                budget.recordCall(title.inputTokens(), title.outputTokens());
+                AnthropicSummarizer.TitleResult title;
+                budget.beginCall();
+                try {
+                    title = anthropic.generateTitle(summary);
+                    // Charge the call to the daily budget — even when the title comes back
+                    // blank — so the canSpend() gate actually bounds the backfill.
+                    budget.recordCall(title.inputTokens(), title.outputTokens());
+                } finally {
+                    budget.endCall();
+                }
                 if (title.title() != null && !title.title().isBlank()) {
                     writeService.updateCellMeta(SYSTEM_PRINCIPAL, id, null, title.title().trim(), null, null);
                     titled++;
@@ -257,9 +269,7 @@ public class SummarizerService {
                 List<String> metaTags = new java.util.ArrayList<>();
                 String summary = repo.findSummary(id);
                 if (summary != null && !summary.isBlank()) {
-                    var c = anthropic.classifyTaxRelevance(summary);
-                    // Charge the classifier call to the daily budget (see backfillTitles).
-                    budget.recordCall(c.inputTokens(), c.outputTokens());
+                    var c = classifyWithBudget(summary);
                     if (c.taxRelevant()) {
                         metaTags.add(taxTagFor(c.language(), props.getLanguage()));
                     }
@@ -272,6 +282,19 @@ public class SummarizerService {
             }
         }
         return processed;
+    }
+
+    /** Wraps a classifyTaxRelevance call with the budget's in-flight reservation. */
+    private AnthropicSummarizer.TaxClassification classifyWithBudget(String summary) {
+        budget.beginCall();
+        try {
+            AnthropicSummarizer.TaxClassification c = anthropic.classifyTaxRelevance(summary);
+            // Charge the classifier call to the daily budget (see backfillTitles).
+            budget.recordCall(c.inputTokens(), c.outputTokens());
+            return c;
+        } finally {
+            budget.endCall();
+        }
     }
 
     private ExtractionProfile pickProfile(UUID cellId, String content) {
