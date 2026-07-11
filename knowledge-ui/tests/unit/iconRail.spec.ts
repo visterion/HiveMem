@@ -41,4 +41,17 @@ describe('IconRail', () => {
     await flushPromises()
     expect(w.text()).toContain('Queen')
   })
+
+  it('marks the settings button as desktop-only (hidden on mobile via CSS)', async () => {
+    setActivePinia(createPinia())
+    const auth = useAuthStore(); auth.role = 'admin' as any
+    const router = makeRouter(); router.push('/'); await router.isReady()
+    const w = mount(IconRail, { global: { plugins: [router, i18n] } })
+    await flushPromises()
+    const buttons = w.findAll('.rail-btn')
+    const settingsBtn = buttons.find(b => b.text().includes('Einstellungen'))
+    expect(settingsBtn?.classes()).toContain('rail-btn--desktop-only')
+    const queenBtn = buttons.find(b => b.text().includes('Queen'))
+    expect(queenBtn?.classes()).not.toContain('rail-btn--desktop-only')
+  })
 })

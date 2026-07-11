@@ -1,14 +1,17 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { setLocale } from '../../i18n'
 import { usePrefsStore } from '../../stores/prefs'
+import { useLayout } from '../../composables/useLayout'
 import HmIcon from './HmIcon.vue'
 
 const route = useRoute()
+const router = useRouter()
 const { t, locale } = useI18n()
 const prefs = usePrefsStore()
+const { isMobile } = useLayout()
 const title = computed(() => t((route.meta?.title as string) || 'nav.search'))
 defineProps<{ canFilter?: boolean }>()
 defineEmits<{ (e: 'toggle-panel'): void }>()
@@ -23,6 +26,11 @@ defineEmits<{ (e: 'toggle-panel'): void }>()
       <span>HiveMem</span><span class="sep"><HmIcon name="chevron" :size="14" /></span><b>{{ title }}</b>
     </div>
     <div class="topbar-actions">
+      <button v-if="isMobile" class="tb-icon" data-test="tb-settings"
+              :title="t('nav.settings')" :aria-label="t('nav.settings')"
+              @click="router.push({ name: 'settings' })">
+        <HmIcon name="settings" :size="16" />
+      </button>
       <div class="toggle">
         <button :class="{ on: locale === 'de' }" data-test="lang-de" @click="setLocale('de')">DE</button>
         <button :class="{ on: locale === 'en' }" data-test="lang-en" @click="setLocale('en')">EN</button>
@@ -51,4 +59,7 @@ defineEmits<{ (e: 'toggle-panel'): void }>()
 .toggle button.on { background:var(--bg-0); color:var(--honey); box-shadow:var(--shadow-1); }
 .tb-filter { background:var(--bg-3); border:1px solid var(--line); border-radius:9px; width:38px; height:34px;
   display:grid; place-items:center; color:var(--text-1); cursor:pointer; flex:none; }
+.tb-icon { background:var(--bg-3); border:1px solid var(--line); border-radius:9px; width:34px; height:34px;
+  display:grid; place-items:center; color:var(--text-1); cursor:pointer; flex:none; }
+.tb-icon:hover { color:var(--text-0); }
 </style>

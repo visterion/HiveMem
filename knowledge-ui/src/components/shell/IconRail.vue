@@ -44,7 +44,7 @@ function isActive(name: string) { return route.name === name }
     <div class="rail-group">
       <template v-for="it in bottom" :key="it.name">
         <button v-if="visible(it)"
-                :class="['rail-btn', { active: isActive(it.name) }]" @click="go(it.name)">
+                :class="['rail-btn', { active: isActive(it.name), 'rail-btn--desktop-only': it.name === 'settings' }]" @click="go(it.name)">
           <HmIcon :name="it.icon" :size="21" />
           <span class="rail-tip">{{ t('nav.' + it.name) }}</span>
         </button>
@@ -89,5 +89,6 @@ function isActive(name: string) { return route.name === name }
   .rail-group { flex-direction: row; gap: 2px; }
   .rail-btn { min-width: 44px; height: 44px; flex: none; }
   .rail-tip { display: none; }
+  .rail-btn--desktop-only { display: none; }
 }
 </style>
