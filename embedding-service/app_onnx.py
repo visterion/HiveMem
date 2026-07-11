@@ -219,6 +219,9 @@ def bootstrap_runtime():
 
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
+    # Bound how long a keep-alive connection idles waiting for the next request; without this
+    # a stalled/abandoned client connection ties up a handler thread forever.
+    timeout = 30
 
     def do_POST(self):
         if self.path != "/embeddings":

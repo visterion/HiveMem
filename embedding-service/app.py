@@ -41,4 +41,6 @@ if __name__ == "__main__":
     # queued past the client's read timeout -> BrokenPipe server-side, truncated/octet-stream
     # response client-side, failing the ingest. onnxruntime Run() is thread-safe for concurrent
     # inference on a shared session, so handling requests concurrently is safe here.
+    # Handler.timeout (set in app_onnx.py) bounds how long a keep-alive connection idles
+    # waiting for the next request, so a stalled/abandoned client can't hang a handler thread.
     BoundedThreadingHTTPServer(("0.0.0.0", 80), Handler).serve_forever()
