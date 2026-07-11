@@ -2,11 +2,13 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useCanvasStore } from '../stores/canvas'
+import { useCellStore } from '../stores/cell'
 import { sortByValidFrom } from '../composables/timeline'
 import { realmColorFor } from '../composables/realmMeta'
 
 const { t, locale } = useI18n()
 const canvas = useCanvasStore()
+const cellStore = useCellStore()
 
 const idx = ref(0)
 const touched = ref(false)
@@ -14,11 +16,20 @@ const touched = ref(false)
 const sorted = computed(() => sortByValidFrom(canvas.cells))
 const maxIdx = computed(() => Math.max(0, sorted.value.length - 1))
 const current = computed(() => sorted.value[idx.value] ?? null)
+// Newest-of-the-valid-set first, capped at 20 — cells arrive progressively via the
+// canvas store's stream, so this must re-slice on every batch, not just on mount.
+const visible = computed(() => sorted.value.slice(Math.max(0, idx.value - 19), idx.value + 1).reverse())
 
+// Cells stream in progressively (batches via canvas._longPoll), so the "present"
+// default must be re-applied after every batch — not just once on mount — until the
+// user drags the slider themselves.
 watch(() => sorted.value.length, (n) => {
   if (!touched.value) idx.value = Math.max(0, n - 1)
-  else if (idx.value > n - 1) idx.value = Math.max(0, n - 1)
-})
+}, { immediate: true })
+
+function openCell(id: string) {
+  void cellStore.load(id)
+}
 
 function onInput(e: Event) {
   touched.value = true
@@ -51,13 +62,21 @@ onMounted(() => { if (canvas.cells.length === 0) void load() })
           <span v-for="(c, i) in sorted" :key="c.id" class="tm-tick" :class="{ on: i <= idx }" :title="c.valid_from" />
         </div>
         <div class="tm-count">{{ t('timemachine.cellsAsOf', { n: idx + 1, date: fmtDate(current ? current.valid_from : null) }) }}</div>
-        <div v-if="current" :key="current.id" class="card fade-in tm-card">
-          <div class="tm-chips">
-            <span class="chip" :style="{ borderColor: realmColorFor(current.realm), color: realmColorFor(current.realm) }">{{ current.realm }}</span>
-            <span class="chip">{{ fmtDate(current.valid_from) }}</span>
-          </div>
-          <div class="h-display tm-title">{{ current.title }}</div>
-          <p class="prose">{{ current.summary }}</p>
+        <div class="tm-list">
+          <article
+            v-for="c in visible"
+            :key="c.id"
+            class="card fade-in tm-card"
+            data-test="tm-card"
+            @click="openCell(c.id)"
+          >
+            <div class="tm-chips">
+              <span class="chip" :style="{ borderColor: realmColorFor(c.realm), color: realmColorFor(c.realm) }">{{ c.realm }}</span>
+              <span class="chip">{{ fmtDate(c.valid_from) }}</span>
+            </div>
+            <div class="h-display tm-title">{{ c.title }}</div>
+            <p class="prose">{{ c.summary }}</p>
+          </article>
         </div>
       </template>
       <div v-else-if="loadError" class="tm-empty tm-err">
@@ -89,9 +108,11 @@ onMounted(() => { if (canvas.cells.length === 0) void load() })
 .tm-count { font-size:12px; color:var(--text-2); margin-top:18px; }
 
 .card { background:var(--bg-2); border:1px solid var(--line); border-radius:var(--radius, 14px); box-shadow:var(--shadow-1); }
-.tm-card { padding:22px; margin-top:10px; }
+.tm-list { display:flex; flex-direction:column; gap:10px; margin-top:10px; }
+.tm-card { padding:22px; cursor:pointer; }
+.tm-card:hover { border-color:var(--honey); }
 .tm-chips { display:flex; gap:9px; margin-bottom:12px; }
-.tm-title { font-size:20px; margin-bottom:8px; }
+.tm-title { font-size:20px; margin-bottom:8px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
 .chip { font-size:11px; padding:2px 8px; border-radius:6px; font-weight:500; background:var(--bg-4); color:var(--text-1);
   border:1px solid var(--line); display:inline-flex; align-items:center; gap:5px; white-space:nowrap; }
 .tm-empty { color:var(--text-2); padding:40px 0; }

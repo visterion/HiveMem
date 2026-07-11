@@ -12,22 +12,26 @@ export interface LabelableCell {
 
 const MAX_LABEL = 80
 
-export function contentSnippet(content?: string | null): string {
-  if (!content) return ''
-  // Strip page markers like "[page=1]" injected by the reassembly OCR, collapse
-  // whitespace, and take the first meaningful slice.
-  const cleaned = content
+// Strip page markers like "[page=1]" injected by the reassembly OCR and collapse whitespace.
+function cleanContent(content: string): string {
+  return content
     .replace(/\[page=\d+\]/gi, ' ')
     .replace(/\s+/g, ' ')
     .trim()
-  return cleaned.slice(0, MAX_LABEL)
+}
+
+export function contentSnippet(content?: string | null): string {
+  if (!content) return ''
+  return cleanContent(content).slice(0, MAX_LABEL)
 }
 
 export function cellLabel(c: LabelableCell): string {
   const summary = c.summary?.trim()
   if (summary) return summary.length > MAX_LABEL ? summary.slice(0, MAX_LABEL) + '…' : summary
-  const snippet = contentSnippet(c.content)
-  if (snippet) return snippet
+  if (c.content) {
+    const cleaned = cleanContent(c.content)
+    if (cleaned) return cleaned.length > MAX_LABEL ? cleaned.slice(0, MAX_LABEL) + '…' : cleaned
+  }
   const topic = c.topic?.trim()
   if (topic) return topic
   return '#' + c.id.slice(0, 8)

@@ -25,4 +25,8 @@ describe('cellLabel', () => {
     expect(contentSnippet('  a\n\n  b   c ')).toBe('a b c')
     expect(contentSnippet('y'.repeat(200)).length).toBe(80)
   })
+
+  it('content-snippet labels end with an ellipsis when truncated', () => {
+    expect(cellLabel({ id: 'a', content: 'x'.repeat(200) } as any)).toMatch(/…$/)
+  })
 })
