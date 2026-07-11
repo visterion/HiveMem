@@ -152,7 +152,9 @@ export class MockApiClient implements ApiClient {
     signal?: string; topic?: string
   }): Cell[] {
     const realm = args.realm ?? 'documents'
-    const status = args.status ?? null
+    // 'all' mirrors the backend sentinel (DocumentListRepository): bypass the
+    // status filter entirely rather than matching the literal string "all".
+    const status = args.status && args.status !== 'all' ? args.status : null
     const filterTags = args.tags && args.tags.length > 0 ? args.tags : null
     let cells = mockPalace.cells.filter(c => c.realm === realm)
     if (status) cells = cells.filter(c => (c.status ?? 'committed') === status)

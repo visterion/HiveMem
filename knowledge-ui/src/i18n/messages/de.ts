@@ -207,6 +207,7 @@ export default {
     bulkRealmPrompt: 'Neuen Realm eingeben:',
     addTag: 'Tag hinzufügen',
     addTagPrompt: 'Neuen Tag eingeben:',
+    statusRejected: 'abgelehnt', statusPending: 'ausstehend',
   },
   timemachine: {
     sub: 'Append-only · {from} → {present}',

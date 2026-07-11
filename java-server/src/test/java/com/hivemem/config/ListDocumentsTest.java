@@ -164,6 +164,21 @@ class ListDocumentsTest {
     }
 
     @Test
+    void statusAllBypassesTheStatusFilterAndReturnsEveryStatus() {
+        // 3 committed + 1 pending seeded in @BeforeEach — "all" must return every one of
+        // them, matching facet_count's unfiltered default so header/sidebar/grid counts
+        // share one basis (Task 6).
+        List<Map<String, Object>> rows = documentListRepository.listDocuments(
+                "ldocs", null, null, null, "all", "newest", 50, 0);
+
+        assertThat(rows).hasSize(4);
+        List<String> ids = rows.stream().map(r -> (String) r.get("id")).toList();
+        assertThat(ids).contains(
+                ID_CONTRACT_1.toString(), ID_CONTRACT_2.toString(),
+                ID_INVOICE.toString(), ID_PENDING.toString());
+    }
+
+    @Test
     void docWithAttachmentExposesAttachmentFieldsCorrectly() {
         List<Map<String, Object>> rows = documentListRepository.listDocuments(
                 "ldocs", null, null, null, "committed", "newest", 50, 0);

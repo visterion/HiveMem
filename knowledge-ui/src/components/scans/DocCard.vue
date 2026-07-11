@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import type { DocumentRow, SearchDocumentRow } from '../../api/types'
 import { docName } from '../../api/cellLabel'
 import DocThumb from './DocThumb.vue'
@@ -7,6 +8,7 @@ import HmIcon from '../shell/HmIcon.vue'
 
 const props = defineProps<{ d: DocumentRow | SearchDocumentRow; q: string; selected: boolean }>()
 const emit = defineEmits<{ (e: 'open'): void; (e: 'openInfo'): void; (e: 'select'): void }>()
+const { t } = useI18n()
 
 function formatDate(iso: string): string {
   return iso.slice(0, 10).split('-').reverse().join('.')
@@ -18,7 +20,6 @@ function formatDate(iso: string): string {
     <!-- Thumbnail area -->
     <button class="dc-thumb" @click="emit('open')">
       <DocThumb :d="d" />
-      <span v-if="d.status === 'pending'" class="dc-pending">Pending</span>
     </button>
 
     <!-- Checkbox -->
@@ -40,6 +41,13 @@ function formatDate(iso: string): string {
       </div>
       <div class="dc-foot">
         <span class="dc-date">{{ formatDate(d.created_at) }}</span>
+        <span
+          v-if="d.status && d.status !== 'committed'"
+          :class="['dc-status', d.status === 'rejected' ? 'rejected' : 'pending']"
+          data-test="dc-status"
+        >
+          {{ t(d.status === 'rejected' ? 'scans.statusRejected' : 'scans.statusPending') }}
+        </span>
       </div>
     </div>
   </div>
@@ -66,18 +74,6 @@ function formatDate(iso: string): string {
   cursor: pointer;
   position: relative;
 }
-.dc-pending {
-  position: absolute;
-  top: 8px;
-  left: 8px;
-  font-size: 10px;
-  background: var(--honey, #e5a000);
-  color: #fff;
-  border-radius: 5px;
-  padding: 2px 6px;
-  pointer-events: none;
-}
-
 .dc-check {
   all: unset;
   position: absolute;
@@ -150,5 +146,24 @@ function formatDate(iso: string): string {
   margin-top: 4px;
   font-size: 11px;
   color: var(--text-3, #aaa);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.dc-status {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 8px;
+  line-height: 1.4;
+}
+.dc-status.pending {
+  background: color-mix(in srgb, var(--warn) 18%, transparent);
+  color: var(--warn);
+}
+.dc-status.rejected {
+  background: color-mix(in srgb, var(--danger) 18%, transparent);
+  color: var(--danger);
 }
 </style>

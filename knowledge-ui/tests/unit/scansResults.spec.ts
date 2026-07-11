@@ -60,6 +60,28 @@ describe('ScansResults', () => {
     vi.unstubAllGlobals()
   })
 
+  it('rejected doc card shows a status badge; committed does not (Task 6)', async () => {
+    const vuetify = createVuetify({ components, directives })
+    const w = mount(ScansResults, { global: { plugins: [i18n, vuetify] } })
+    await vi.advanceTimersByTimeAsync(500); await flushPromises()
+    const s = useScansStore()
+    const rejectedRow = s.results.find(r => r.status === 'rejected')
+    const committedRow = s.results.find(r => r.status === 'committed')
+    expect(rejectedRow).toBeTruthy()
+    expect(committedRow).toBeTruthy()
+
+    const cards = w.findAll('.doccard')
+    const rejectedIdx = s.results.findIndex(r => r.id === rejectedRow!.id)
+    const committedIdx = s.results.findIndex(r => r.id === committedRow!.id)
+
+    const rejectedBadge = cards[rejectedIdx].find('[data-test="dc-status"]')
+    expect(rejectedBadge.exists()).toBe(true)
+    expect(rejectedBadge.text()).toBe('abgelehnt')
+
+    const committedBadge = cards[committedIdx].find('[data-test="dc-status"]')
+    expect(committedBadge.exists()).toBe(false)
+  })
+
   it('correspondent facet chips appear in filter chips when set', async () => {
     const vuetify = createVuetify({ components, directives })
     const w = mount(ScansResults, { global: { plugins: [i18n, vuetify] } })

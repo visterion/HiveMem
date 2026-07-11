@@ -36,7 +36,10 @@ public class DocumentListRepository {
      * @param signal  optional signal filter
      * @param topic   optional topic filter
      * @param tags    optional tag-overlap filter (any of these tags)
-     * @param status  optional status filter; defaults to "committed" when null/blank
+     * @param status  optional status filter; defaults to "committed" when null/blank.
+     *                Pass the sentinel {@code "all"} to bypass the status filter entirely
+     *                (all statuses returned) — used by the Scans grid so its count basis
+     *                matches facet_count's unfiltered default.
      * @param sort    sort order: newest | oldest | title (default newest)
      * @param limit   maximum rows to return
      * @param offset  number of rows to skip
@@ -72,7 +75,7 @@ public class DocumentListRepository {
                 "    ORDER BY predicate LIMIT 1) corr ON true " +
                 "WHERE (c.valid_until IS NULL OR c.valid_until > now()) " +
                 "AND c.realm IS NOT DISTINCT FROM ? " +
-                "AND c.status = COALESCE(?, 'committed') " +
+                "AND (? = 'all' OR c.status = COALESCE(?, 'committed')) " +
                 // No cast on c.tags: the column is text[] and a varchar[] cast would defeat
                 // the idx_cells_tags GIN index.
                 "AND (?::text[] IS NULL OR c.tags && ?::text[]) " +
@@ -85,6 +88,7 @@ public class DocumentListRepository {
         // the ?::text[] literal casts rather than auto-casting String[] → varchar[].
         List<Object> binds = new ArrayList<>();
         binds.add(realm);
+        binds.add(status);
         binds.add(status);
         binds.add(tagsArr);  binds.add(tagsArr);
         binds.add(signal);   binds.add(signal);

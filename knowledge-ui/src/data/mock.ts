@@ -816,6 +816,24 @@ const cells: Cell[] = [
     valid_from: t('2024-09-18T17:30:00Z'),
     valid_until: null,
   },
+  {
+    id: 'doc-invoice-003',
+    realm: 'documents',
+    signal: 'finance',
+    topic: 'Invoices',
+    title: 'Invoice #4110 — Duplicate submission (rejected)',
+    content: 'Duplicate invoice submission for an already-paid order; rejected during review.',
+    summary: 'Duplicate invoice, rejected — original already paid.',
+    key_points: ['Duplicate of invoice #4098', 'Rejected on review'],
+    insight: 'Vendor should be asked to stop resending paid invoices.',
+    tags: ['invoice'],
+    importance: 1,
+    status: 'rejected',
+    created_by: 'scan',
+    created_at: t('2025-02-14T10:00:00Z'),
+    valid_from: t('2025-02-14T10:00:00Z'),
+    valid_until: null,
+  },
 ]
 
 const realms: Realm[] = (() => {

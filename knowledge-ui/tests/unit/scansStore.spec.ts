@@ -19,6 +19,14 @@ describe('scans store', () => {
     expect(s.results[0]).toHaveProperty('tags')
   })
 
+  it('browse mode loads all statuses and rows carry status', async () => {
+    const s = useScansStore()
+    const p = s.load(); await vi.advanceTimersByTimeAsync(300); await p
+    expect(s.results.some(r => r.status === 'rejected')).toBe(true)
+    expect(s.results.some(r => r.status === 'pending')).toBe(true)
+    expect(s.results.some(r => r.status === 'committed')).toBe(true)
+  })
+
   it('load() rows include confidence field', async () => {
     const s = useScansStore()
     const p = s.load(); await vi.advanceTimersByTimeAsync(300); await p

@@ -68,9 +68,15 @@ export const useScansStore = defineStore('scans', {
     },
   },
   actions: {
-    serverArgs(): Record<string, unknown> {
+    // `browse` selects the count basis for list_documents (the Scans grid): with no
+    // status facet selected, browse mode requests status='all' (all statuses, matching
+    // facet_count's unfiltered default) instead of the tool's own default of
+    // "committed"-only — otherwise the grid undercounts against the header/sidebar
+    // totals, which already sum every status bucket. `search` keeps its own default
+    // (status omitted) since search results never carry a `status` field anyway.
+    serverArgs(browse = false): Record<string, unknown> {
       const tags = [...this.facets.tag]
-      const status = this.facets.status.size ? [...this.facets.status][0] : undefined
+      const status = this.facets.status.size ? [...this.facets.status][0] : (browse ? 'all' : undefined)
       const args: Record<string, unknown> = { realm: REALM }
       if (tags.length) args.tags = tags
       if (status) args.status = status
@@ -99,7 +105,7 @@ export const useScansStore = defineStore('scans', {
           this.hasMore = false // search has no pagination; see searchTruncated getter
         } else {
           const rows = await api.call<DocumentRow[]>('list_documents', {
-            ...this.serverArgs(), sort: this.sort, limit: PAGE_SIZE, offset: 0,
+            ...this.serverArgs(true), sort: this.sort, limit: PAGE_SIZE, offset: 0,
           }) ?? []
           if (seq !== this.loadSeq) return
           this.results = rows
@@ -118,7 +124,7 @@ export const useScansStore = defineStore('scans', {
       this.loading = true
       try {
         const rows = await useApi().call<DocumentRow[]>('list_documents', {
-          ...this.serverArgs(), sort: this.sort, limit: PAGE_SIZE, offset: this.offset,
+          ...this.serverArgs(true), sort: this.sort, limit: PAGE_SIZE, offset: this.offset,
         }) ?? []
         if (seq !== this.loadSeq) return
         this.results = [...this.results, ...rows]

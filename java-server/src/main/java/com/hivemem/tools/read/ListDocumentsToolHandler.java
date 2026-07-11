@@ -43,7 +43,8 @@ public class ListDocumentsToolHandler implements ToolHandler {
                 .optionalString("signal", "Restrict to this signal")
                 .optionalString("topic", "Restrict to this topic")
                 .optionalStringList("tags", "Filter to documents that have ANY of the given tags")
-                .optionalString("status", "Restrict to a status: committed | pending | rejected (default committed)")
+                .optionalString("status", "Restrict to a status: committed | pending | rejected | all (default committed; " +
+                        "\"all\" bypasses the status filter entirely)")
                 .optionalEnumString("sort", "Sort order (default newest)", "newest", "oldest", "title")
                 .optionalInteger("limit", "Maximum rows to return (default 50, max 200)")
                 .optionalInteger("offset", "Number of rows to skip (default 0)")
