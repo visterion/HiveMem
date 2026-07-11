@@ -35,14 +35,16 @@ const { arm, requestClose, disarm } = useHistoryClose(() => reader.close())
 
 // Arm the history-close sentinel when the reader opens; clean it up if the reader
 // is closed out-of-band (e.g. a route guard) without going through requestClose.
-// The pushed URL carries a deep-link query param so the address bar is shareable:
-// ?doc=<id> on the scans route (the reader shows a scanned document there),
-// ?cell=<id> everywhere else (e.g. the search route's fullscreen reader).
+// The pushed URL carries a deep-link query param so the address bar is shareable —
+// but ONLY on the two routes with a deep-link restore contract: ?doc=<id> on
+// /scans, ?cell=<id> on / (search). The reader also opens from /graph (ScanPanel),
+// /hive (SphereCanvas) and the Enter keybinding; those routes have no restore
+// path, so they keep the plain sentinel (no URL rewrite).
 watch(() => reader.open, (open) => {
   if (!open) { disarm(); return }
-  if (route && reader.cellId) {
+  const param = route?.name === 'scans' ? 'doc' : route?.name === 'search' ? 'cell' : null
+  if (param && reader.cellId) {
     const u = new URL(location.href)
-    const param = route.name === 'scans' ? 'doc' : 'cell'
     u.searchParams.set(param, reader.cellId)
     arm(u.pathname + u.search)
   } else {

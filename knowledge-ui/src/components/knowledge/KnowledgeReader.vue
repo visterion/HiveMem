@@ -33,9 +33,13 @@ const saveError = ref(false)
 watch(() => cell.value?.id, () => { tab.value = 'summary'; editing.value = false; saveError.value = false })
 
 // Deep link: /?cell=<id> restores the selected cell on a fresh page load.
+// A stale/invalid id must not surface as an unhandled rejection — show a toast
+// (like ScansResults' bad-?doc path) and leave the empty state visible.
 onMounted(() => {
   const id = route?.query.cell
-  if (typeof id === 'string' && cellStore.currentId !== id) cellStore.load(id)
+  if (typeof id === 'string' && cellStore.currentId !== id) {
+    cellStore.load(id).catch(() => ui.pushToast('error', t('common.loadFailed')))
+  }
 })
 
 // Mirror the selected cell into the URL (?cell=<id>) so it's shareable, and drop

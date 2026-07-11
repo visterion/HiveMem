@@ -25,6 +25,7 @@ function makeRouter(): Router {
     routes: [
       { path: '/', name: 'search', component: { template: '<div/>' } },
       { path: '/scans', name: 'scans', component: { template: '<div/>' } },
+      { path: '/graph', name: 'graph', component: { template: '<div/>' } },
     ],
   })
 }
@@ -138,6 +139,58 @@ describe('deep links', () => {
       await flushPromises()
 
       expect(useCellStore().currentId).toBe('c1')
+    })
+
+    it('mounting /?cell=<bad-id> does not reject unhandled and shows the empty state', async () => {
+      const router = makeRouter()
+      // NOT seeded and not in the mock palace -> cellStore.load() rejects.
+      await router.push('/?cell=does-not-exist')
+      await router.isReady()
+
+      const rejections: unknown[] = []
+      const onRejection = (e: PromiseRejectionEvent) => { rejections.push(e.reason); e.preventDefault() }
+      window.addEventListener('unhandledrejection', onRejection)
+      try {
+        mount(KnowledgeReader, { global: { plugins: [i18n, router] } })
+        await settleHistory()
+        expect(rejections).toEqual([])
+        expect(useCellStore().currentId).toBeNull()
+      } finally {
+        window.removeEventListener('unhandledrejection', onRejection)
+      }
+    })
+  })
+
+  describe('routes without a deep-link contract', () => {
+    it('opening the reader on /graph does NOT write ?cell and back-close still works', async () => {
+      const router = makeRouter()
+      await router.push('/graph')
+      await router.isReady()
+
+      const cell = useCellStore()
+      cell.cache.set('c1', {
+        cell: { id: 'c1', content: '# hi', attachments: [] } as any,
+        facts: [], tunnels: [],
+      })
+      cell.currentId = 'c1'
+
+      const startHref = location.href
+      const reader = useReaderStore()
+      mount(Reader, { global: { plugins: [i18n, router], stubs: { teleport: true } } })
+      await flushPromises()
+
+      reader.openReader('c1')
+      await settleHistory()
+
+      // Plain sentinel: the URL must NOT gain ?cell (or ?doc) on /graph.
+      expect(new URL(location.href).searchParams.get('cell')).toBeNull()
+      expect(new URL(location.href).searchParams.get('doc')).toBeNull()
+      expect(location.href).toBe(startHref)
+
+      // Browser-back closes only the overlay (sentinel mechanism intact).
+      window.dispatchEvent(new PopStateEvent('popstate'))
+      await flushPromises()
+      expect(reader.open).toBe(false)
     })
   })
 })
