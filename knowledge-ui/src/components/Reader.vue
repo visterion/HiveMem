@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRoute } from 'vue-router'
 import { useReaderStore } from '../stores/reader'
 import { useCellStore } from '../stores/cell'
 import DocInfoTab from './readers/DocInfoTab.vue'
@@ -12,6 +13,9 @@ import { useHistoryClose } from '../composables/useHistoryClose'
 const reader = useReaderStore()
 const cellStore = useCellStore()
 const { t } = useI18n()
+// useRoute() returns undefined when no router is installed (some unit tests mount
+// Reader standalone) — guard every access instead of assuming a route exists.
+const route = useRoute()
 
 const attachments = computed(() => buildAttachmentTabs(cellStore.current?.cell.attachments))
 
@@ -31,7 +35,20 @@ const { arm, requestClose, disarm } = useHistoryClose(() => reader.close())
 
 // Arm the history-close sentinel when the reader opens; clean it up if the reader
 // is closed out-of-band (e.g. a route guard) without going through requestClose.
-watch(() => reader.open, (open) => { if (open) arm(); else disarm() }, { immediate: true })
+// The pushed URL carries a deep-link query param so the address bar is shareable:
+// ?doc=<id> on the scans route (the reader shows a scanned document there),
+// ?cell=<id> everywhere else (e.g. the search route's fullscreen reader).
+watch(() => reader.open, (open) => {
+  if (!open) { disarm(); return }
+  if (route && reader.cellId) {
+    const u = new URL(location.href)
+    const param = route.name === 'scans' ? 'doc' : 'cell'
+    u.searchParams.set(param, reader.cellId)
+    arm(u.pathname + u.search)
+  } else {
+    arm()
+  }
+}, { immediate: true })
 
 // When the reader opens for a cell, make sure its attachments are loaded.
 watch(() => reader.open && cellStore.currentId, (id) => {

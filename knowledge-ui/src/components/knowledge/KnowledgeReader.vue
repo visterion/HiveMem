@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRoute, useRouter } from 'vue-router'
 import { useCellStore } from '../../stores/cell'
 import { useReaderStore } from '../../stores/reader'
 import { useUiStore } from '../../stores/ui'
@@ -18,6 +19,9 @@ const reader = useReaderStore()
 const ui = useUiStore()
 const { t } = useI18n()
 const { isMobile } = useLayout()
+// Optional: some unit tests mount KnowledgeReader without a router installed.
+const route = useRoute()
+const router = useRouter()
 
 const cell = computed(() => cellStore.current?.cell ?? null)
 const tab = ref<'summary' | 'keypoints' | 'insight' | 'text'>('summary')
@@ -27,6 +31,26 @@ const importing = ref(false)
 const saving = ref(false)
 const saveError = ref(false)
 watch(() => cell.value?.id, () => { tab.value = 'summary'; editing.value = false; saveError.value = false })
+
+// Deep link: /?cell=<id> restores the selected cell on a fresh page load.
+onMounted(() => {
+  const id = route?.query.cell
+  if (typeof id === 'string' && cellStore.currentId !== id) cellStore.load(id)
+})
+
+// Mirror the selected cell into the URL (?cell=<id>) so it's shareable, and drop
+// the param again once nothing is selected — regardless of which UI path changed
+// the selection (search result click, inspector close, Escape). Scoped to the
+// search route so other routes that also use cellStore (e.g. scans/hive) aren't
+// affected. Query-only, same route name, so it won't fight Task 11's
+// name-based afterEach cell-store reset.
+watch(() => cellStore.currentId, (id) => {
+  if (!route || !router || route.name !== 'search') return
+  const query = { ...route.query }
+  if (id) query.cell = id
+  else delete query.cell
+  router.replace({ query })
+})
 
 function startEdit() { saveError.value = false; editing.value = true }
 function onCreated() { creating.value = false } // addCell already loads + selects the new cell

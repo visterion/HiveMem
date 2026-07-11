@@ -16,10 +16,13 @@ export function useHistoryClose(onClose: () => void) {
   function handleKey(e: KeyboardEvent) {
     if (e.key === 'Escape') requestClose()
   }
-  function arm() {
+  // url lets callers embed a deep-link query param (e.g. ?doc=<id> / ?cell=<id>) into
+  // the pushed entry, so the address bar reflects what's open and the link is
+  // shareable. Falls back to the current URL when the caller has nothing to add.
+  function arm(url?: string) {
     if (armed) return
     armed = true
-    history.pushState({ hmViewer: true }, '')
+    history.pushState({ hmViewer: true }, '', url ?? location.href)
     window.addEventListener('popstate', handlePop)
     window.addEventListener('keydown', handleKey)
   }

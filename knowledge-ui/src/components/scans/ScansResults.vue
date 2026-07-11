@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRoute } from 'vue-router'
 import { useScansStore } from '../../stores/scans'
 import type { FacetKey } from '../../stores/scans'
 import { useUiStore } from '../../stores/ui'
@@ -13,6 +14,8 @@ import HmIcon from '../shell/HmIcon.vue'
 const { t } = useI18n()
 const store = useScansStore()
 const ui = useUiStore()
+// Optional: some unit tests mount ScansResults without a router installed.
+const route = useRoute()
 
 // reload() can fail (network/backend restart); before this, a failed load left
 // `store.filtered` empty and showed the misleading "no results" empty state
@@ -122,7 +125,15 @@ async function onBulkRealm() {
 // All facet keys that can have active values
 const FACET_KEYS: FacetKey[] = ['tag', 'status', 'realm', 'year', 'signal', 'correspondent']
 
-onMounted(() => { doReload() })
+onMounted(async () => {
+  doReload()
+  // Deep link: /scans?doc=<id> opens the reader for that document directly.
+  const doc = route?.query.doc
+  if (typeof doc === 'string') {
+    await store.load()
+    await store.openDocument(doc, 'document')
+  }
+})
 </script>
 
 <template>
