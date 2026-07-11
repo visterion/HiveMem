@@ -11,10 +11,15 @@
 -- match the specific model in production today (paraphrase-multilingual-MiniLM-L12-v2) and would
 -- silently stop using the index (or error outright on a dimension mismatch) the moment the model
 -- changes, or in any environment running a different-dimension embedding stub (test suites do).
--- Instead, derive the dimension from the query vector itself via vector_dims(): it is guaranteed
--- to match whatever the currently active model/index dimension is, because
--- EmbeddingMigrationService NULLs out every cell's embedding on a model/dimension change (see its
--- re-encoding invariant) before any caller could produce a query vector of the old dimension.
+-- Instead, derive the dimension from the query vector itself via vector_dims(): for a caller using
+-- the CURRENT model this matches the live index dimension. This is narrower than an absolute
+-- guarantee, though: a reencode does NOT bulk-NULL every embedding up front — it overwrites
+-- embeddings in 100-row batches (see EmbeddingStateRepository.fetchCellBatch /
+-- EmbeddingMigrationService), so old- and new-dimension vectors transiently coexist while it
+-- runs, and the HNSW index itself is dropped for that whole window regardless. A caller racing
+-- that window either gets a query vector in the new dimension (matching only the already-migrated
+-- rows) or the old one (matching only the not-yet-migrated rows) — never a crash, just a
+-- self-healing narrower/wider match until the reencode finishes.
 -- The cast is applied via dynamic SQL (EXECUTE) so the interpolated dimension literal lines up
 -- textually with the expression index, the same way KgSearchRepository.semanticSearch builds its
 -- SQL string with the dimension inlined as literal text.

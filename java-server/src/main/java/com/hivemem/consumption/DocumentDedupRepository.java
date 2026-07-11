@@ -49,9 +49,18 @@ public class DocumentDedupRepository {
         // runtime, not a fixed literal anywhere in the codebase; hardcoding would silently stop
         // using the index, or error outright, the moment the embedding model/dimension changes).
         // Instead read the target cell's OWN embedding dimension via vector_dims() and interpolate
-        // it as a literal: it is guaranteed to match the live index dimension, because
-        // EmbeddingMigrationService NULLs out every cell's embedding on a model/dimension change
-        // before any stale-dimension vector could exist.
+        // it as a literal: for a LIVE (already re-encoded, or never-changed) cell it is guaranteed
+        // to match the live index dimension. Note this is narrower than "always guaranteed": a
+        // reencode does NOT bulk-NULL every embedding up front — EmbeddingMigrationService
+        // overwrites embeddings in 100-row batches (see EmbeddingStateRepository.fetchCellBatch),
+        // so old- and new-dimension vectors transiently coexist while it runs, and the HNSW index
+        // itself is dropped for that whole window (see dropEmbeddingIndex/createEmbeddingIndex).
+        // A dedup sweep racing that window can read a target cell whose OWN embedding is still
+        // old-dimension while other cells are already new-dimension (or vice versa); the dynamic
+        // %1$d cast then mismatches those other cells' vectors and Postgres raises a dimension
+        // error for that comparison. DocumentDedupService's best-effort try/catch around this call
+        // swallows it — dedup is skipped for that cell this pass, not a crash — and the sweep is
+        // self-healing: once the reencode finishes, every embedding shares one dimension again.
         Record dimRow = dsl.fetchOne(
                 "SELECT vector_dims(embedding) AS dim FROM cells WHERE id = ? AND valid_until IS NULL",
                 cellId);
