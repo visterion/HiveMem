@@ -173,7 +173,7 @@ export default {
     type: 'Typ', importance: 'Wichtigkeit', validFrom: 'Gültig ab', validUntil: 'Gültig bis', present: 'heute',
   },
   knowledge: {
-    selectCell: 'Zelle wählen', selectCellSub: 'Wähle links einen Treffer, um ihn zu lesen.', results: 'Treffer', allTypes: 'Alle',
+    selectCell: 'Zelle wählen', selectCellSub: 'Wähle links einen Treffer, um ihn zu lesen.', selectCellSubMobile: 'Öffne die Suche und wähle einen Treffer.', results: 'Treffer', allTypes: 'Alle',
     facetsRealm: 'Realm',
     facetsSignal: 'Typ',
     facetsTag: 'Tag',

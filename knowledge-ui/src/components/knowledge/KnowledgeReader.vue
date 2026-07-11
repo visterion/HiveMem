@@ -11,11 +11,13 @@ import NewCellDialog from './NewCellDialog.vue'
 import ObsidianImportDialog from './ObsidianImportDialog.vue'
 import TunnelEditor from './TunnelEditor.vue'
 import { cellToMarkdown, cellMarkdownFilename } from '../../composables/cellMarkdown'
+import { useLayout } from '../../composables/useLayout'
 
 const cellStore = useCellStore()
 const reader = useReaderStore()
 const ui = useUiStore()
 const { t } = useI18n()
+const { isMobile } = useLayout()
 
 const cell = computed(() => cellStore.current?.cell ?? null)
 const tab = ref<'summary' | 'keypoints' | 'insight' | 'text'>('summary')
@@ -95,7 +97,7 @@ function openDoc() { if (cellStore.currentId) reader.openReader(cellStore.curren
     <div>
       <div class="hexbig"><HmIcon name="reader" :size="40" /></div>
       <div class="h-display" style="font-size:21px;color:var(--text-1)">{{ t('knowledge.selectCell') }}</div>
-      <div style="margin-top:8px;font-size:14px;color:var(--text-2)">{{ t('knowledge.selectCellSub') }}</div>
+      <div style="margin-top:8px;font-size:14px;color:var(--text-2)">{{ t(isMobile ? 'knowledge.selectCellSubMobile' : 'knowledge.selectCellSub') }}</div>
       <button class="new-btn" data-test="reader-new" @click="creating = true">＋ {{ t('editor.newCell') }}</button>
       <button class="new-btn ghost" data-test="reader-import" @click="importing = true">📥 {{ t('editor.importVault') }}</button>
     </div>

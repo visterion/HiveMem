@@ -2,12 +2,16 @@
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '../../stores/auth'
+import { useUiStore } from '../../stores/ui'
+import { useLayout } from '../../composables/useLayout'
 import HmIcon from './HmIcon.vue'
 
 const route = useRoute()
 const router = useRouter()
 const { t } = useI18n()
 const auth = useAuthStore()
+const ui = useUiStore()
+const { isMobile } = useLayout()
 
 interface NavItem { name: string; icon: string; role?: string }
 const primary: NavItem[] = [
@@ -24,7 +28,10 @@ const bottom: NavItem[] = [
   { name: 'settings', icon: 'settings' },
 ]
 function visible(it: NavItem) { return !it.role || auth.role === it.role }
-function go(name: string) { router.push({ name }) }
+function go(name: string) {
+  if (isMobile.value && route.name === name && name === 'search') { ui.toggleDrawer(); return }
+  router.push({ name })
+}
 function isActive(name: string) { return route.name === name }
 </script>
 

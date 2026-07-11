@@ -14,10 +14,10 @@ const { isMobile } = useLayout()
 const full = computed(() => !!route.meta?.full)
 const hasPanel = computed(() => !!(route.matched[0]?.components as Record<string, unknown> | undefined)?.panel)
 
-// On mobile, auto-open the panel drawer for panel-primary routes (search); close otherwise.
+// Drawer always starts closed on mobile; every route change closes it again
+// (the search tab re-opens it explicitly via IconRail's re-tap toggle).
 watch(() => route.fullPath, () => {
-  if (!isMobile.value) return
-  ui.setDrawer(route.meta?.mobilePrimary === 'panel')
+  if (isMobile.value) ui.setDrawer(false)
 }, { immediate: true })
 // Leaving mobile (resize to desktop) clears the drawer flag so desktop is unaffected.
 watch(isMobile, m => { if (!m) ui.setDrawer(false) })

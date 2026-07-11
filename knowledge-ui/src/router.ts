@@ -2,7 +2,7 @@ import { createRouter, createWebHistory, type RouteRecordRaw, type RouteLocation
 import { useAuthStore } from './stores/auth'
 
 const routes: RouteRecordRaw[] = [
-  { path: '/', name: 'search', meta: { title: 'nav.search', icon: 'search', full: false, mobilePrimary: 'panel' },
+  { path: '/', name: 'search', meta: { title: 'nav.search', icon: 'search', full: false },
     components: {
       default: () => import('./components/knowledge/KnowledgeReader.vue'),
       panel: () => import('./components/knowledge/SearchPanel.vue'),

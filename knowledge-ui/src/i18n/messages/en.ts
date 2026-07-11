@@ -173,7 +173,7 @@ export default {
     type: 'Type', importance: 'Importance', validFrom: 'Valid from', validUntil: 'Valid until', present: 'present',
   },
   knowledge: {
-    selectCell: 'Select a cell', selectCellSub: 'Pick a result on the left to read it.', results: 'results', allTypes: 'All',
+    selectCell: 'Select a cell', selectCellSub: 'Pick a result on the left to read it.', selectCellSubMobile: 'Open search and pick a result.', results: 'results', allTypes: 'All',
     facetsRealm: 'Realm',
     facetsSignal: 'Type',
     facetsTag: 'Tag',
