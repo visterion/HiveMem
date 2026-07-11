@@ -180,10 +180,13 @@ class EmbeddingMigrationIntegrationTest {
         insertDrawer("batch content 2", "eng", "facts", "infra");
         insertDrawer("batch content 3", "eng", "facts", "infra");
 
-        var batch1 = stateRepository.fetchCellBatch(0, 2);
+        // Target dimension 999 differs from the drawers' actual (1024) dimension, so the
+        // "still needs work" predicate matches all three rows, same as a real reencode.
+        var batch1 = stateRepository.fetchCellBatch(null, 999, 2);
         assertThat(batch1).hasSize(2);
 
-        var batch2 = stateRepository.fetchCellBatch(2, 2);
+        var afterId = batch1.get(batch1.size() - 1).id();
+        var batch2 = stateRepository.fetchCellBatch(afterId, 999, 2);
         assertThat(batch2).hasSize(1);
     }
 
@@ -194,7 +197,7 @@ class EmbeddingMigrationIntegrationTest {
         stateRepository.dropEmbeddingIndex();
 
         insertDrawer("embedding update test", "eng", "facts", "infra");
-        var rows = stateRepository.fetchCellBatch(0, 1);
+        var rows = stateRepository.fetchCellBatch(null, 999, 1);
         assertThat(rows).hasSize(1);
 
         FixedEmbeddingClient client = new FixedEmbeddingClient(512, "new-model");

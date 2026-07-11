@@ -71,13 +71,26 @@ public class EmbeddingStateRepository {
         return row == null ? 0 : row.get("cnt", Number.class).intValue();
     }
 
-    public List<CellRow> fetchCellBatch(int offset, int batchSize) {
+    /**
+     * Keyset-paginated batch of cells still needing re-encoding to {@code targetDimension}: id
+     * strictly greater than {@code afterId} (null on the first call), and either no embedding yet
+     * or an embedding whose dimension doesn't match the target. Unlike {@code ORDER BY created_at
+     * LIMIT ? OFFSET ?}, this is immune to concurrent {@code UPDATE}s rewriting rows between page
+     * fetches: {@code created_at} is non-unique and each batch's write shifts what OFFSET N means,
+     * which could silently skip a row and leave it at the old (now-invalid) dimension, breaking
+     * the HNSW index cast on the model this method serves. The {@code id > ?} cursor guarantees
+     * every row is visited exactly once per full scan regardless of embedding writes elsewhere,
+     * and the dimension predicate makes a restarted (crash-resumed) scan skip rows already fixed.
+     */
+    public List<CellRow> fetchCellBatch(UUID afterId, int targetDimension, int batchSize) {
         return dslContext.fetch("""
                 SELECT id, content, summary FROM cells
                 WHERE content IS NOT NULL AND status = 'committed'
-                ORDER BY created_at ASC
-                LIMIT ? OFFSET ?
-                """, batchSize, offset)
+                  AND (? ::uuid IS NULL OR id > ?)
+                  AND (embedding IS NULL OR vector_dims(embedding) <> ?)
+                ORDER BY id ASC
+                LIMIT ?
+                """, afterId, afterId, targetDimension, batchSize)
                 .map(r -> new CellRow(r.get("id", UUID.class), r.get("content", String.class),
                         r.get("summary", String.class)));
     }
@@ -107,13 +120,17 @@ public class EmbeddingStateRepository {
         return row == null ? 0 : row.get("cnt", Number.class).intValue();
     }
 
-    public List<FactRow> fetchFactBatch(int offset, int batchSize) {
+    /** Keyset-paginated batch of facts still needing re-encoding to {@code targetDimension}.
+     *  See {@link #fetchCellBatch} for why this replaces OFFSET pagination. */
+    public List<FactRow> fetchFactBatch(UUID afterId, int targetDimension, int batchSize) {
         return dslContext.fetch("""
                 SELECT id, subject, predicate, "object" FROM facts
                 WHERE status = 'committed'
-                ORDER BY created_at ASC
-                LIMIT ? OFFSET ?
-                """, batchSize, offset)
+                  AND (? ::uuid IS NULL OR id > ?)
+                  AND (embedding IS NULL OR vector_dims(embedding) <> ?)
+                ORDER BY id ASC
+                LIMIT ?
+                """, afterId, afterId, targetDimension, batchSize)
                 .map(r -> new FactRow(r.get("id", UUID.class), r.get("subject", String.class),
                         r.get("predicate", String.class), r.get("object", String.class)));
     }

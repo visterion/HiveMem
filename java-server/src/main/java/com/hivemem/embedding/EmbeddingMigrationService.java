@@ -103,6 +103,11 @@ public class EmbeddingMigrationService implements ApplicationRunner {
         try {
             runBackup();
 
+            // total is informational only (progress reporting) — loop termination below is
+            // driven exclusively by an empty batch, never by this precomputed count, since a
+            // count taken before the loop starts cannot account for the id-keyset predicate's
+            // own view of "still needs work" (nor would it need to: the predicate loop is
+            // self-terminating).
             int total = stateRepository.countCellsWithContent();
             log.info("Reencoding {} cells: {} → {}", total, from.model(), to.model());
 
@@ -110,8 +115,10 @@ public class EmbeddingMigrationService implements ApplicationRunner {
             log.info("Dropped HNSW index");
 
             int done = 0;
-            while (done < total) {
-                List<EmbeddingStateRepository.CellRow> batch = stateRepository.fetchCellBatch(done, BATCH_SIZE);
+            java.util.UUID afterCellId = null;
+            while (true) {
+                List<EmbeddingStateRepository.CellRow> batch =
+                        stateRepository.fetchCellBatch(afterCellId, to.dimension(), BATCH_SIZE);
                 if (batch.isEmpty()) {
                     break;
                 }
@@ -128,6 +135,7 @@ public class EmbeddingMigrationService implements ApplicationRunner {
                     stateRepository.updateEmbedding(row.id(), embedding);
                 }
                 done += batch.size();
+                afterCellId = batch.get(batch.size() - 1).id();
                 stateRepository.saveProgress(done, total);
                 log.info("Reencoding progress: {}/{}", done, total);
             }
@@ -142,8 +150,10 @@ public class EmbeddingMigrationService implements ApplicationRunner {
             log.info("Dropped facts HNSW index");
 
             int doneFacts = 0;
-            while (doneFacts < totalFacts) {
-                List<EmbeddingStateRepository.FactRow> batch = stateRepository.fetchFactBatch(doneFacts, BATCH_SIZE);
+            java.util.UUID afterFactId = null;
+            while (true) {
+                List<EmbeddingStateRepository.FactRow> batch =
+                        stateRepository.fetchFactBatch(afterFactId, to.dimension(), BATCH_SIZE);
                 if (batch.isEmpty()) {
                     break;
                 }
@@ -153,6 +163,7 @@ public class EmbeddingMigrationService implements ApplicationRunner {
                     stateRepository.updateFactEmbedding(row.id(), embedding);
                 }
                 doneFacts += batch.size();
+                afterFactId = batch.get(batch.size() - 1).id();
                 log.info("Reencoding facts progress: {}/{}", doneFacts, totalFacts);
             }
 

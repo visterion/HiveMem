@@ -86,7 +86,7 @@ class EmbeddingMigrationServiceUnitTest {
 
         verify(repo, never()).dropEmbeddingIndex();
         verify(repo, never()).countCellsWithContent();
-        verify(repo, never()).fetchCellBatch(anyInt(), anyInt());
+        verify(repo, never()).fetchCellBatch(any(), anyInt(), anyInt());
         // After failure, the active flag should be reset
         assertThat(service.isReencodingActive()).isFalse();
     }
