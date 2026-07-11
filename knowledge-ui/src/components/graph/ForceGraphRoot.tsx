@@ -48,6 +48,17 @@ export function ForceGraphRoot(props: {
     nodeColor: 'color',
     nodeCanvasObject: (node: ForceGraphNode, ctx: CanvasRenderingContext2D, globalScale: number) => {
       const id = typeof node.id === 'string' ? node.id : String(node.id)
+      // Cull labels for nodes outside the visible canvas (±80px x / ±20px y margin) instead of
+      // drawing every label on every frame — this is what keeps a dense cluster from turning
+      // into unreadable label soup once it's zoomed past LABEL_ZOOM. Falls back to "visible"
+      // when the ForceGraph2D ref isn't wired up yet (e.g. first frames, or unit tests that
+      // construct ForceGraphRoot directly without a forceGraphRef).
+      const fg = props.forceGraphRef?.current
+      let inViewport = true
+      if (fg?.graph2ScreenCoords) {
+        const { x: sx, y: sy } = fg.graph2ScreenCoords(node.x ?? 0, node.y ?? 0)
+        inViewport = sx >= -80 && sx <= props.width + 80 && sy >= -20 && sy <= props.height + 20
+      }
       const isFocused = id === props.focusedId
       const isHovered = id === props.hoveredId
       const dim = hasActive && !highlightIds.has(id) ? DIM : 1
@@ -69,8 +80,12 @@ export function ForceGraphRoot(props: {
       ctx.fill()
       ctx.shadowBlur = 0
 
-      if (shouldShowLabel(id, { globalScale, highlightIds, hasActive })) {
-        const fontSize = 12 / globalScale
+      if (shouldShowLabel(id, { globalScale, highlightIds, hasActive, inViewport })) {
+        // 12 / globalScale renders screen-constant (the canvas ctx is pre-scaled by
+        // globalScale before this callback runs), so this floor is defensive hygiene per
+        // the brief rather than the fix for the reported bug — see the root-cause note in
+        // ForceGraphBridge.vue's zoomTimer for what actually made labels vanish on zoom-in.
+        const fontSize = Math.max(12 / globalScale, 2.5)
         ctx.font = `${fontSize}px sans-serif`
         ctx.textAlign = 'center'
         ctx.textBaseline = 'top'

@@ -51,4 +51,10 @@ describe('shouldShowLabel', () => {
   it('hides labels below zoom when nothing is active', () => {
     expect(shouldShowLabel('a', { globalScale: 1, highlightIds: new Set(), hasActive: false })).toBe(false)
   })
+  it('hides labels for nodes outside the viewport', () => {
+    expect(shouldShowLabel('a', { globalScale: 3, highlightIds: new Set(), hasActive: false, inViewport: false })).toBe(false)
+  })
+  it('shows labels for visible nodes at any zoom-in level', () => {
+    expect(shouldShowLabel('a', { globalScale: 5, highlightIds: new Set(), hasActive: false, inViewport: true })).toBe(true)
+  })
 })

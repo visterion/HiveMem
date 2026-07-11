@@ -203,6 +203,79 @@ describe('graph interactions', () => {
     expect(focusedCtx.arc).toHaveBeenCalledWith(10, 20, 9, 0, 2 * Math.PI)
   })
 
+  it('culls labels for nodes the wired ForceGraph2D ref reports off-screen', () => {
+    const node = makeGraphNode('cell-1', { val: 5, x: 10, y: 20 })
+    const forceGraphRef = { current: { graph2ScreenCoords: vi.fn(() => ({ x: -500, y: -500 })) } } as any
+
+    const element = ForceGraphRoot({
+      graph: { nodes: [node], links: [] },
+      width: 640,
+      height: 480,
+      focusedId: null,
+      hoveredId: null,
+      onNodeHover: vi.fn(),
+      onNodeClick: vi.fn(),
+      forceGraphRef
+    })
+
+    const ctx = {
+      beginPath: vi.fn(),
+      arc: vi.fn(),
+      fill: vi.fn(),
+      fillText: vi.fn(),
+      save: vi.fn(),
+      restore: vi.fn(),
+      fillStyle: '',
+      font: '',
+      textAlign: '',
+      textBaseline: '',
+      globalAlpha: 1,
+      shadowColor: '',
+      shadowBlur: 0
+    }
+
+    // Zoomed in well past LABEL_ZOOM: without culling this would draw the label anyway.
+    ;(element.props as any).nodeCanvasObject(node, ctx, 3)
+    expect(forceGraphRef.current.graph2ScreenCoords).toHaveBeenCalledWith(10, 20)
+    expect(ctx.fillText).not.toHaveBeenCalled()
+  })
+
+  it('shows labels for on-screen nodes even at extreme zoom, with a floored font size', () => {
+    const node = makeGraphNode('cell-1', { val: 5, x: 10, y: 20 })
+    const forceGraphRef = { current: { graph2ScreenCoords: vi.fn(() => ({ x: 300, y: 200 })) } } as any
+
+    const element = ForceGraphRoot({
+      graph: { nodes: [node], links: [] },
+      width: 640,
+      height: 480,
+      focusedId: null,
+      hoveredId: null,
+      onNodeHover: vi.fn(),
+      onNodeClick: vi.fn(),
+      forceGraphRef
+    })
+
+    const ctx = {
+      beginPath: vi.fn(),
+      arc: vi.fn(),
+      fill: vi.fn(),
+      fillText: vi.fn(),
+      save: vi.fn(),
+      restore: vi.fn(),
+      fillStyle: '',
+      font: '',
+      textAlign: '',
+      textBaseline: '',
+      globalAlpha: 1,
+      shadowColor: '',
+      shadowBlur: 0
+    }
+
+    ;(element.props as any).nodeCanvasObject(node, ctx, 1000)
+    expect(ctx.fillText).toHaveBeenCalled()
+    expect(ctx.font).toBe('2.5px sans-serif')
+  })
+
   it('wires bridge hover and click through shared interaction state', async () => {
     const canvas = useCanvasStore()
     const cell = useCellStore()

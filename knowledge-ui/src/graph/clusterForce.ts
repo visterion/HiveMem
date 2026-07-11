@@ -44,11 +44,18 @@ export function neighborIds(activeId: string | null, links: GraphLink[]): Set<st
   return ids
 }
 
-/** Show a label when zoomed in past the threshold, or for highlighted nodes while something is active. */
+/**
+ * Show a label when zoomed in past the threshold, or for highlighted nodes while something
+ * is active. `inViewport` (default true, for call-site back-compat) lets the caller cull
+ * labels for nodes it has already determined are off-screen — this is what actually fixes
+ * the "labels vanish on zoom-in" symptom: the auto zoom-to-fit was clobbering the user's
+ * manual zoom (see ForceGraphBridge.vue), not this gate's zoom math.
+ */
 export function shouldShowLabel(
   nodeId: string,
-  opts: { globalScale: number; highlightIds: Set<string>; hasActive: boolean },
+  opts: { globalScale: number; highlightIds: Set<string>; hasActive: boolean; inViewport?: boolean },
 ): boolean {
+  if (opts.inViewport === false) return false
   if (opts.globalScale >= LABEL_ZOOM) return true
   return opts.hasActive && opts.highlightIds.has(nodeId)
 }
