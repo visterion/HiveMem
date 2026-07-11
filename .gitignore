@@ -45,3 +45,6 @@ todo.md
 .vscode
 .opencode/
 .claude/
+
+# design prose stays local (images in docs/images/ remain tracked for the README)
+knowledge-ui/docs/*.md
