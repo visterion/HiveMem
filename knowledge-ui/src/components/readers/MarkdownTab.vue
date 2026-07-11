@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import MarkdownIt from 'markdown-it'
-import markdownItKatex from '@vscode/markdown-it-katex'
+import * as markdownItKatexNs from '@vscode/markdown-it-katex'
 import 'katex/dist/katex.min.css'
 import hljs from 'highlight.js'
 import 'highlight.js/styles/github-dark.css'
@@ -25,6 +25,15 @@ const md = new MarkdownIt({
 // the raw source before parsing — which corrupted code spans (`` `$HOME` ``)
 // and plain-text dollar amounts ("$50 and $60") by treating them as math
 // delimiters, and then got HTML-escaped anyway because `html:false`.
+//
+// This package is CJS with a TS-style `export default`. Vite's dev-time esbuild
+// pre-bundling doesn't unwrap that the way a plain `import x from '...'` expects
+// (`x` ends up bound to the whole `{ default, __esModule }` module object, not
+// the plugin function itself) — `md.use()` then throws "plugin.apply is not a
+// function". Importing the namespace and unwrapping `.default` ourselves works
+// under both that and Vitest's module resolution (which doesn't hit the bug).
+const katexNsAny = markdownItKatexNs as unknown as { default?: (md: MarkdownIt, options?: unknown) => MarkdownIt }
+const markdownItKatex = katexNsAny.default ?? (markdownItKatexNs as unknown as (md: MarkdownIt, options?: unknown) => MarkdownIt)
 md.use(markdownItKatex, { throwOnError: false })
 
 const html = computed(() => md.render(props.content || ''))
