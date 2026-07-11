@@ -18,6 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
@@ -122,8 +123,8 @@ class UploadAttachmentToolHandlerTest {
                 {"realm":"work","filename":"a.txt","mime_type":"text/plain","data":"%s"}""", oversized));
 
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> handler.call(alice, args));
-        assertEquals("Inline upload too large; use POST /api/attachments for files larger than 1MB",
-                ex.getMessage());
+        assertTrue(ex.getMessage().contains("too large") && ex.getMessage().contains("/api/attachments"),
+                "expected an over-size rejection pointing at the HTTP endpoint, got: " + ex.getMessage());
         verifyNoInteractions(service);
     }
 

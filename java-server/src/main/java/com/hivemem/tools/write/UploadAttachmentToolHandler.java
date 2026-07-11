@@ -41,7 +41,8 @@ public class UploadAttachmentToolHandler implements ToolHandler {
         return "Upload a file and store extracted content in a new Cell. " +
                "Pass file content as Base64 in `data`. " +
                "`realm` is required. Provide `cell_id` to tunnel the new Cell to an existing one. " +
-               "For files >1 MB prefer the HTTP endpoint POST /api/attachments (multipart).";
+               "For files larger than ~1 MB prefer the HTTP endpoint POST /api/attachments (multipart); " +
+               "inline Base64 payloads are hard-capped at " + (MAX_INLINE_BASE64 / (1024 * 1024)) + " MB.";
     }
 
     @Override
@@ -70,7 +71,8 @@ public class UploadAttachmentToolHandler implements ToolHandler {
         String data     = WriteArgumentParser.requiredText(arguments, "data");
         if (data.length() > MAX_INLINE_BASE64) {
             throw new IllegalArgumentException(
-                    "Inline upload too large; use POST /api/attachments for files larger than 1MB");
+                    "Inline upload too large (Base64 payload capped at "
+                            + (MAX_INLINE_BASE64 / (1024 * 1024)) + " MB); use POST /api/attachments for larger files");
         }
         byte[] bytes;
         try {
