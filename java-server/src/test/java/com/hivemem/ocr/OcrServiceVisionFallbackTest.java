@@ -50,6 +50,7 @@ class OcrServiceVisionFallbackTest {
         props.setVisionFallbackMaxPagesPerDoc(5);
 
         repo = mock(OcrRepository.class);
+        when(repo.tryClaim(any())).thenReturn(true); // open the concurrency-claim gate
         seaweed = mock(SeaweedFsClient.class);
         writeService = mock(WriteToolService.class);
         visionClient = mock(VisionClient.class);

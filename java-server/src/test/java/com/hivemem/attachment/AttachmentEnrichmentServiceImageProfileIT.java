@@ -55,6 +55,7 @@ class AttachmentEnrichmentServiceImageProfileIT {
 
         when(visionClient.isEnabled()).thenReturn(true);
         when(budget.canSpend()).thenReturn(true);
+        when(attachmentRepo.tryClaim(any())).thenReturn(true); // open the concurrency-claim gate
         when(seaweed.download(anyString()))
                 .thenReturn(new ByteArrayInputStream(new byte[]{1, 2, 3}));
         when(writeService.reviseCell(any(), any(), anyString(), any()))

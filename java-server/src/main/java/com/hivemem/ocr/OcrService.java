@@ -101,6 +101,21 @@ public class OcrService {
     }
 
     void processOne(UUID cellId, String s3Key) {
+        // Atomic claim: the AFTER_COMMIT event worker (onOcrRequested) and the scheduled hourly
+        // backfill can race on the same cell — without the claim both run OCR (and possibly
+        // Vision fallback) and produce competing revisions. Mirrors SummarizerService.summarizeOne.
+        if (!repo.tryClaim(cellId)) {
+            log.debug("OCR: cell {} already claimed by another worker, skipping", cellId);
+            return;
+        }
+        try {
+            processClaimed(cellId, s3Key);
+        } finally {
+            repo.clearClaim(cellId);
+        }
+    }
+
+    private void processClaimed(UUID cellId, String s3Key) {
         try {
             byte[] pdfBytes;
             try (InputStream in = seaweed.download(s3Key)) {

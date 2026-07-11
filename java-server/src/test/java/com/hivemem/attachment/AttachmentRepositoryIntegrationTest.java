@@ -179,6 +179,48 @@ class AttachmentRepositoryIntegrationTest {
         assertThat(repo.findCellsWithVisionPending(100)).doesNotContain(untaggedCellId);
     }
 
+    /** D2/M13: exactly one of two concurrent claims on the same cell must win. */
+    @Test
+    void onlyOneConcurrentVisionClaimSucceeds() throws Exception {
+        UUID cellId = insertMinimalCell();
+
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(2);
+        try {
+            java.util.concurrent.Callable<Boolean> attempt = () -> repo.tryClaim(cellId);
+            List<java.util.concurrent.Future<Boolean>> futures = pool.invokeAll(List.of(attempt, attempt));
+            long wins = futures.stream().mapToInt(f -> {
+                try {
+                    return f.get() ? 1 : 0;
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            }).sum();
+            assertThat(wins).isEqualTo(1);
+        } finally {
+            pool.shutdown();
+        }
+    }
+
+    @Test
+    void visionClaimIsReleasedByClearClaim() {
+        UUID cellId = insertMinimalCell();
+
+        assertThat(repo.tryClaim(cellId)).isTrue();
+        assertThat(repo.tryClaim(cellId)).isFalse(); // still held
+
+        repo.clearClaim(cellId);
+
+        assertThat(repo.tryClaim(cellId)).isTrue(); // reclaimable after clear
+    }
+
+    @Test
+    void staleVisionClaimOlderThan30MinutesIsReclaimable() {
+        UUID cellId = insertMinimalCell();
+        dsl.execute("UPDATE cells SET vision_claimed_at = now() - interval '31 minutes' WHERE id = ?", cellId);
+
+        assertThat(repo.tryClaim(cellId)).isTrue();
+    }
+
     private UUID insertMinimalCell() {
         UUID id = UUID.randomUUID();
         dsl.execute("""

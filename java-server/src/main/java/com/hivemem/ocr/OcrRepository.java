@@ -39,6 +39,27 @@ public class OcrRepository {
         return ids;
     }
 
+    /**
+     * Atomically claim a cell for OCR so the AFTER_COMMIT event worker ({@link
+     * com.hivemem.ocr.OcrService#onOcrRequested}) and the scheduled hourly backfill ({@link
+     * com.hivemem.ocr.OcrService#backfill}) cannot process the same cell concurrently — each pays
+     * a Tesseract/Vision-fallback call and would otherwise produce a duplicate revision. Mirrors
+     * {@code SummarizerRepository.tryClaim}. Stale claims (> 30 minutes, e.g. a crashed worker)
+     * are reclaimable. Returns false if another worker holds a fresh claim.
+     */
+    public boolean tryClaim(UUID id) {
+        int rows = dsl.execute(
+                "UPDATE cells SET ocr_claimed_at = now() WHERE id = ? "
+                + "AND (ocr_claimed_at IS NULL OR ocr_claimed_at < now() - interval '30 minutes')",
+                id);
+        return rows > 0;
+    }
+
+    /** Release an OCR claim (always called, in a finally block). */
+    public void clearClaim(UUID id) {
+        dsl.execute("UPDATE cells SET ocr_claimed_at = NULL WHERE id = ?", id);
+    }
+
     public Optional<AttachmentInfo> findAttachmentForCell(UUID cellId) {
         var rec = dsl.fetchOptional(
                 "SELECT a.id, a.s3_key_original FROM attachments a "

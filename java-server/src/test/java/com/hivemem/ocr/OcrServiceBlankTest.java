@@ -48,6 +48,7 @@ class OcrServiceBlankTest {
         UUID cellId = UUID.randomUUID();
         UUID newId = UUID.randomUUID();
         OcrRepository repo = mock(OcrRepository.class);
+        when(repo.tryClaim(any())).thenReturn(true); // open the concurrency-claim gate
         WriteToolService writeService = mock(WriteToolService.class);
         SeaweedFsClient seaweed = mock(SeaweedFsClient.class);
         when(seaweed.download(anyString())).thenReturn(new ByteArrayInputStream(new byte[] {1}));
@@ -69,6 +70,7 @@ class OcrServiceBlankTest {
     void softDeletesCellWhenAllPagesBlank() throws Exception {
         UUID cellId = UUID.randomUUID();
         OcrRepository repo = mock(OcrRepository.class);
+        when(repo.tryClaim(any())).thenReturn(true); // open the concurrency-claim gate
         WriteToolService writeService = mock(WriteToolService.class);
         SeaweedFsClient seaweed = mock(SeaweedFsClient.class);
         when(seaweed.download(anyString())).thenReturn(new ByteArrayInputStream(new byte[] {1}));

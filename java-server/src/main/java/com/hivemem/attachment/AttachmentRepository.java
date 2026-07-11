@@ -144,6 +144,27 @@ public class AttachmentRepository {
         return out;
     }
 
+    /**
+     * Atomically claim a cell for Vision description so the AFTER_COMMIT event worker ({@link
+     * AttachmentEnrichmentService#onVisionRequested}) and the scheduled hourly backfill ({@link
+     * AttachmentEnrichmentService#backfillVisionDescriptions}) cannot process the same cell
+     * concurrently — each pays a Vision LLM call and would otherwise produce a duplicate
+     * revision. Mirrors {@code SummarizerRepository.tryClaim} / {@code OcrRepository.tryClaim}.
+     * Stale claims (> 30 minutes, e.g. a crashed worker) are reclaimable.
+     */
+    public boolean tryClaim(UUID cellId) {
+        int rows = dsl.execute(
+                "UPDATE cells SET vision_claimed_at = now() WHERE id = ? "
+                + "AND (vision_claimed_at IS NULL OR vision_claimed_at < now() - interval '30 minutes')",
+                cellId);
+        return rows > 0;
+    }
+
+    /** Release a Vision claim (always called, in a finally block). */
+    public void clearClaim(UUID cellId) {
+        dsl.execute("UPDATE cells SET vision_claimed_at = NULL WHERE id = ?", cellId);
+    }
+
     public record StorageKeys(UUID id, String mimeType, String s3KeyOriginal, String s3KeyThumbnail) {}
 
     /** All live attachments with their S3 keys — used by the aws-chunked repair sweep. */

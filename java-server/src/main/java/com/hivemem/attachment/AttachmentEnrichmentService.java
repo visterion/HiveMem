@@ -130,6 +130,22 @@ public class AttachmentEnrichmentService {
     }
 
     void describeAndRevise(UUID attId, UUID cellId, String s3KeyOriginal, String mimeType) {
+        // Atomic claim: the AFTER_COMMIT event worker (onVisionRequested) and the scheduled
+        // hourly backfill can race on the same cell — without the claim both pay a Vision LLM
+        // call and produce competing revisions. Mirrors SummarizerService.summarizeOne /
+        // OcrService.processOne.
+        if (!attachmentRepo.tryClaim(cellId)) {
+            log.debug("Vision: cell {} already claimed by another worker, skipping", cellId);
+            return;
+        }
+        try {
+            describeAndReviseClaimed(attId, cellId, s3KeyOriginal, mimeType);
+        } finally {
+            attachmentRepo.clearClaim(cellId);
+        }
+    }
+
+    private void describeAndReviseClaimed(UUID attId, UUID cellId, String s3KeyOriginal, String mimeType) {
         byte[] imageBytes;
         try (InputStream s = seaweedFs.download(s3KeyOriginal)) {
             imageBytes = s.readAllBytes();

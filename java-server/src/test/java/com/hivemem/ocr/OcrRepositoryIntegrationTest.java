@@ -67,6 +67,48 @@ class OcrRepositoryIntegrationTest {
         assertThat(ids).doesNotContain(permanentlyFailed);
     }
 
+    /** D2/M13: exactly one of two concurrent claims on the same cell must win. */
+    @Test
+    void onlyOneConcurrentClaimSucceeds() throws Exception {
+        UUID cellId = insertCell(new String[]{"ocr_pending"});
+
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(2);
+        try {
+            java.util.concurrent.Callable<Boolean> attempt = () -> repo.tryClaim(cellId);
+            List<java.util.concurrent.Future<Boolean>> futures = pool.invokeAll(List.of(attempt, attempt));
+            long wins = futures.stream().mapToInt(f -> {
+                try {
+                    return f.get() ? 1 : 0;
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            }).sum();
+            assertThat(wins).isEqualTo(1);
+        } finally {
+            pool.shutdown();
+        }
+    }
+
+    @Test
+    void claimIsReleasedByClearClaim() {
+        UUID cellId = insertCell(new String[]{"ocr_pending"});
+
+        assertThat(repo.tryClaim(cellId)).isTrue();
+        assertThat(repo.tryClaim(cellId)).isFalse(); // still held
+
+        repo.clearClaim(cellId);
+
+        assertThat(repo.tryClaim(cellId)).isTrue(); // reclaimable after clear
+    }
+
+    @Test
+    void staleClaimOlderThan30MinutesIsReclaimable() {
+        UUID cellId = insertCell(new String[]{"ocr_pending"});
+        dsl.execute("UPDATE cells SET ocr_claimed_at = now() - interval '31 minutes' WHERE id = ?", cellId);
+
+        assertThat(repo.tryClaim(cellId)).isTrue();
+    }
+
     private UUID insertCell(String[] tags) {
         UUID id = UUID.randomUUID();
         dsl.execute("""

@@ -61,6 +61,7 @@ class AttachmentEnrichmentServiceUnitTest {
         dsl = mock(DSLContext.class);
         profileRegistry = mock(ExtractionProfileRegistry.class);
         visionBudget = mock(VisionBudgetTracker.class);
+        lenient().when(attachmentRepo.tryClaim(any())).thenReturn(true); // open the concurrency-claim gate
         svc = new AttachmentEnrichmentService(props, krokiClient, visionClient, seaweedFs,
                 attachmentRepo, writeService, dsl, profileRegistry, visionBudget);
     }
