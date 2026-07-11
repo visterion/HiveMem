@@ -20,9 +20,14 @@ describe('scans bits', () => {
     expect(w.find('mark').exists()).toBe(true)
     expect(w.find('mark').text().toLowerCase()).toBe('world')
   })
-  it('Snippet renders nothing when query absent or not found', () => {
+  it('Snippet renders nothing when query is absent', () => {
     expect(mount(Snippet, { props: { text: 'abc', q: '' } }).find('.ocr-snip').exists()).toBe(false)
-    expect(mount(Snippet, { props: { text: 'abc', q: 'zzz' } }).find('.ocr-snip').exists()).toBe(false)
+  })
+  it('Snippet falls back to the summary head when the query has no literal match', () => {
+    const w = mount(Snippet, { props: { text: 'abc', q: 'zzz' } })
+    expect(w.find('.ocr-snip').exists()).toBe(true)
+    expect(w.find('mark').text()).toBe('')
+    expect(w.text()).toContain('abc')
   })
   it('FacetGroup renders rows with counts and emits toggle', async () => {
     const w = mount(FacetGroup, { props: {

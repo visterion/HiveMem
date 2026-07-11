@@ -42,6 +42,15 @@ describe('scans store', () => {
     expect(Array.isArray(s.results)).toBe(true)
   })
 
+  it('search results are enriched with thumbnail meta from list_documents', async () => {
+    const s = useScansStore()
+    s.query = 'Acme'
+    const p = s.load(); await vi.advanceTimersByTimeAsync(300); await p
+    expect(s.results.length).toBeGreaterThan(0)
+    const withThumb = s.results.find(r => r.attachment_id)
+    expect(withThumb?.has_thumbnail).toBe(true)
+  })
+
   it('toggleFacet updates the facet set', () => {
     const s = useScansStore()
     s.toggleFacet('tag','contract'); expect(s.facets.tag.has('contract')).toBe(true)

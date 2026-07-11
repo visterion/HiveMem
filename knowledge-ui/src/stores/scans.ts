@@ -37,6 +37,14 @@ export const useScansStore = defineStore('scans', {
     // older, slower response can't overwrite a newer one (M53).
     loadSeq: 0,
     savedViews: [] as SavedView[],
+    // Meta collected from every successful list_documents load (browse load()/
+    // loadMore()), keyed by cell id. `search` never returns has_thumbnail/
+    // attachment_id/page_count/status/correspondent (see SearchDocumentRow), so
+    // search-mode results are enriched from this map instead. Limitation: only
+    // docs seen via a list_documents page (capped at PAGE_SIZE=100, newest first)
+    // are covered — a search hit outside the newest 100 browse rows keeps the
+    // placeholder (no thumbnail meta available client-side).
+    metaById: new Map<string, { has_thumbnail?: boolean; attachment_id?: string | null; page_count?: number | null; status?: string; correspondent?: string | null }>(),
   }),
   getters: {
     /**
@@ -82,6 +90,17 @@ export const useScansStore = defineStore('scans', {
       if (status) args.status = status
       return args
     },
+    // Record has_thumbnail/attachment_id/page_count/status/correspondent for every
+    // row of a list_documents page, so search-mode results (which never carry these
+    // fields) can be enriched later via `metaById.get(id)`.
+    updateMetaById(rows: DocumentRow[]) {
+      for (const r of Array.isArray(rows) ? rows : []) {
+        this.metaById.set(r.id, {
+          has_thumbnail: r.has_thumbnail, attachment_id: r.attachment_id,
+          page_count: r.page_count, status: r.status, correspondent: r.correspondent,
+        })
+      }
+    },
     async load() {
       const seq = ++this.loadSeq
       this.loading = true
@@ -94,20 +113,35 @@ export const useScansStore = defineStore('scans', {
           // `has_thumbnail`, `page_count` and `correspondent` are never returned by
           // search regardless of `include` — SearchDocumentRow types those as
           // optional so card/table rendering degrades gracefully instead of
-          // assuming the full DocumentRow shape.
-          const rows = await api.call<SearchDocumentRow[]>('search', {
+          // assuming the full DocumentRow shape. Fetch list_documents in parallel
+          // (status:'all', same basis as browse) to fill metaById with thumbnail
+          // meta for search results to merge against — unless a prior browse/search
+          // load already populated it, in which case reuse that (avoids a redundant
+          // round-trip on every keystroke).
+          const searchPromise = api.call<SearchDocumentRow[]>('search', {
             query: this.query, realm: REALM, ...this.serverArgs(),
             include: ['content', 'tags', 'created_at', 'summary'], limit: PAGE_SIZE,
-          }) ?? []
+          })
+          const metaPromise = this.metaById.size === 0
+            ? api.call<DocumentRow[]>('list_documents', { realm: REALM, status: 'all', sort: 'newest', limit: PAGE_SIZE })
+            : Promise.resolve(null)
+          const [searchRows, metaRows] = await Promise.all([searchPromise, metaPromise])
           if (seq !== this.loadSeq) return // stale — a newer load() owns the state (M53)
-          this.results = rows
-          this.offset = rows.length
+          if (metaRows) this.updateMetaById(metaRows)
+          // Meta first, search fields last, so summary/score always win over any
+          // stale browse-derived value (there shouldn't be an overlap, but this is
+          // the documented precedence). NOTE: only covers docs within the newest
+          // PAGE_SIZE (100) list_documents rows — a search hit outside that window
+          // keeps the placeholder (no thumbnail meta available client-side).
+          this.results = (searchRows ?? []).map(r => ({ ...this.metaById.get(r.id), ...r }))
+          this.offset = this.results.length
           this.hasMore = false // search has no pagination; see searchTruncated getter
         } else {
           const rows = await api.call<DocumentRow[]>('list_documents', {
             ...this.serverArgs(true), sort: this.sort, limit: PAGE_SIZE, offset: 0,
           }) ?? []
           if (seq !== this.loadSeq) return
+          this.updateMetaById(rows)
           this.results = rows
           this.offset = rows.length
           this.hasMore = rows.length >= PAGE_SIZE
@@ -127,6 +161,7 @@ export const useScansStore = defineStore('scans', {
           ...this.serverArgs(true), sort: this.sort, limit: PAGE_SIZE, offset: this.offset,
         }) ?? []
         if (seq !== this.loadSeq) return
+        this.updateMetaById(rows)
         this.results = [...this.results, ...rows]
         this.offset += rows.length
         this.hasMore = rows.length >= PAGE_SIZE
