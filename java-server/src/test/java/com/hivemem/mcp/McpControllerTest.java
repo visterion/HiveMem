@@ -258,6 +258,45 @@ class McpControllerTest {
     }
 
     @Test
+    void initializeEchoesASupportedRequestedProtocolVersion() throws Exception {
+        // 2025-03-26 is also a supported version (Streamable HTTP, pre-batching-removal wire
+        // format is unaffected); the server must echo it back rather than always answering with
+        // the latest ("2025-06-18") regardless of what was requested.
+        mockMvc.perform(post("/mcp")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer good-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"jsonrpc":"2.0","id":14,"method":"initialize","params":{"protocolVersion":"2025-03-26"}}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.result.protocolVersion").value("2025-03-26"));
+    }
+
+    @Test
+    void initializeWithUnsupportedRequestedProtocolVersionReturnsLatestSupported() throws Exception {
+        mockMvc.perform(post("/mcp")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer good-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"jsonrpc":"2.0","id":15,"method":"initialize","params":{"protocolVersion":"1999-01-01"}}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.result.protocolVersion").value("2025-06-18"));
+    }
+
+    @Test
+    void initializeWithMissingProtocolVersionReturnsLatestSupported() throws Exception {
+        mockMvc.perform(post("/mcp")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer good-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"jsonrpc":"2.0","id":16,"method":"initialize","params":{}}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.result.protocolVersion").value("2025-06-18"));
+    }
+
+    @Test
     void initializeResponseOmitsErrorField() throws Exception {
         mockMvc.perform(post("/mcp")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer good-token")

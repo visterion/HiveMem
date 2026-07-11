@@ -6,6 +6,7 @@ import com.hivemem.auth.AuthFilter;
 import com.hivemem.auth.AuthPrincipal;
 import com.hivemem.auth.ToolPermissionService;
 import com.hivemem.embedding.EmbeddingMigrationService;
+import java.util.List;
 import java.util.Set;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
@@ -34,6 +35,15 @@ public class McpController {
     /** Tools that require live embeddings and must be gated while re-encoding runs. */
     private static final Set<String> EMBEDDING_TOOLS =
             Set.of("search", "entity_overview", "search_kg", "data_quality_report", "add_cell");
+
+    /**
+     * MCP protocol versions this server can serve. 2025-06-18 is the latest (and default);
+     * 2025-03-26 (Streamable HTTP, pre-batching-removal) is also compatible since this server
+     * never implemented JSON-RPC batching regardless of declared version. A client requesting
+     * one of these gets it echoed back; anything else falls back to the latest.
+     */
+    private static final List<String> SUPPORTED_PROTOCOL_VERSIONS = List.of("2025-06-18", "2025-03-26");
+    private static final String LATEST_PROTOCOL_VERSION = SUPPORTED_PROTOCOL_VERSIONS.get(0);
 
     /** SSE emitter lifetime; bounds how long a dead client connection can linger. */
     private static final long SSE_TIMEOUT_MS = 5 * 60 * 1000L;
@@ -107,7 +117,7 @@ public class McpController {
                     .body(McpResponse.success(
                             request.id(),
                             Map.of(
-                                    "protocolVersion", "2025-06-18",
+                                    "protocolVersion", negotiateProtocolVersion(request.params()),
                                     "capabilities", Map.of("tools", Map.of()),
                                     "serverInfo", Map.of("name", "hivemem", "version", "4.0.0")
                             )
@@ -120,6 +130,20 @@ public class McpController {
             case "tools/call" -> handleToolCall(request, principal);
             default -> ResponseEntity.ok(McpResponse.methodNotFound(request.id(), method));
         };
+    }
+
+    /**
+     * Echoes the client's requested {@code protocolVersion} when this server supports it;
+     * otherwise (missing, blank, or an unsupported version) falls back to the latest supported
+     * version. Previously this always returned the latest hardcoded string regardless of what
+     * the client asked for.
+     */
+    private static String negotiateProtocolVersion(JsonNode params) {
+        if (params == null || !params.hasNonNull("protocolVersion")) {
+            return LATEST_PROTOCOL_VERSION;
+        }
+        String requested = params.get("protocolVersion").asText();
+        return SUPPORTED_PROTOCOL_VERSIONS.contains(requested) ? requested : LATEST_PROTOCOL_VERSION;
     }
 
     private ResponseEntity<McpResponse> handleToolCall(McpRequest request, AuthPrincipal principal) {
