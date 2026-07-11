@@ -23,7 +23,7 @@ defineEmits<{ (e: 'toggle-panel'): void }>()
       <HmIcon name="scans" :size="18" />
     </button>
     <div class="crumbs">
-      <span>HiveMem</span><span class="sep"><HmIcon name="chevron" :size="14" /></span><b>{{ title }}</b>
+      <span class="root">HiveMem</span><span class="sep"><HmIcon name="chevron" :size="14" /></span><b>{{ title }}</b>
     </div>
     <div class="topbar-actions">
       <button v-if="isMobile" class="tb-icon" data-test="tb-settings"
@@ -52,7 +52,10 @@ defineEmits<{ (e: 'toggle-panel'): void }>()
 .crumbs > span:first-child { flex:none; } .crumbs .sep { flex:none; }
 .crumbs .sep { color:var(--text-3); display:inline-flex; }
 @media (max-width: 959px) {
-  .crumbs > :first-child, .crumbs > .sep:first-of-type { display:none; }
+  /* Hide the root segment AND its separator so the page title gets the space.
+     NOTE: `.sep:first-of-type` would NOT match here — :first-of-type is per tag
+     name, and the first <span> sibling is the root segment, not the separator. */
+  .crumbs > .root, .crumbs > .sep { display:none; }
 }
 .crumbs b { color:var(--text-0); font-weight:600; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .topbar-actions { margin-left:auto; display:flex; align-items:center; gap:8px; flex:none; }

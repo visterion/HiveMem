@@ -52,6 +52,24 @@ describe('TopBar', () => {
     expect(router.currentRoute.value.name).toBe('settings')
   })
 
+  it('marks the breadcrumb root segment and separator so the mobile hide rule matches both', async () => {
+    // The mobile media rule is `.crumbs > .root, .crumbs > .sep { display:none }`.
+    // The test DOM does not evaluate media queries, so pin the selector targets:
+    // both marker classes must exist as direct children of .crumbs, and the
+    // page-title <b> must not carry either (it has to stay visible).
+    stubMatchMedia(true)
+    await router.push('/scans'); await router.isReady()
+    const w = mount(TopBar, { global: { plugins: [router, i18n] } })
+    await flushPromises()
+
+    expect(w.find('.crumbs > .root').exists()).toBe(true)
+    expect(w.find('.crumbs > .sep').exists()).toBe(true)
+    const title = w.find('.crumbs > b')
+    expect(title.exists()).toBe(true)
+    expect(title.classes()).not.toContain('root')
+    expect(title.classes()).not.toContain('sep')
+  })
+
   it('hides settings gear on desktop', async () => {
     stubMatchMedia(false)
     await router.push('/scans'); await router.isReady()
