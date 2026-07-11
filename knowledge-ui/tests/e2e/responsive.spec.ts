@@ -66,6 +66,10 @@ test.describe('mobile flows (390)', () => {
 
   test('search → tap result → inspector overlay on-screen (regression: "click opens nothing")', async ({ page }) => {
     await gotoMock(page, '/')
+    // Since the drawer-default change the search panel starts CLOSED on mobile —
+    // open it via the topbar filter button before interacting with it.
+    await page.locator('[data-test="mobile-filter"]').click()
+    await expect(page.locator('.panel.open')).toBeVisible()
     await page.locator('.panel input').first().fill('a')
     await page.waitForTimeout(700)
     await page.locator('.panel .panel-body .rows .row').first().click()
