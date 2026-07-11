@@ -112,6 +112,8 @@ test.describe('mobile flows (390)', () => {
 
   test('settings reachable via topbar gear; rail fits viewport', async ({ page }) => {
     await gotoMock(page, '/')
+    // Guard against a vacuous pass: the rail must actually render buttons.
+    expect(await page.locator('.rail-btn').count()).toBeGreaterThan(0)
     // Bar passt: kein rail-btn ragt raus
     const overflow = await page.$$eval('.rail-btn', (els, vw) =>
       els.filter(e => { const r = e.getBoundingClientRect(); return r.width > 0 && r.x + r.width > vw + 1 }).length,
@@ -121,7 +123,7 @@ test.describe('mobile flows (390)', () => {
     await expect(page).toHaveURL(/settings/)
   })
 
-  test('search drawer starts closed and toggles via search tab', async ({ page }) => {
+  test('search drawer starts closed by default', async ({ page }) => {
     await gotoMock(page, '/')
     await expect(page.locator('.panel.open')).toHaveCount(0)
   })
