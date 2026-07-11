@@ -136,7 +136,7 @@ public class AttachmentRepository {
     public List<UUID> findCellsWithVisionPending(int limit) {
         var rows = dsl.fetch(
                 "SELECT id FROM cells "
-                + "WHERE 'vision_pending' = ANY(tags) "
+                + "WHERE tags @> ARRAY['vision_pending']::text[] "
                 + "  AND status = 'committed' AND valid_until IS NULL "
                 + "ORDER BY created_at LIMIT ?", limit);
         List<UUID> out = new ArrayList<>();

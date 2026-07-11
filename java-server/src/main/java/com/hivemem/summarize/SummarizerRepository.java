@@ -21,7 +21,7 @@ public class SummarizerRepository {
 
     public List<UUID> findCellsNeedingSummary(int limit) {
         var rows = dsl.fetch(
-                "SELECT id FROM cells WHERE 'needs_summary' = ANY(tags) "
+                "SELECT id FROM cells WHERE tags @> ARRAY['needs_summary']::text[] "
                 + "AND status='committed' AND valid_until IS NULL "
                 + "AND (summarize_throttled_until IS NULL OR summarize_throttled_until <= now()) "
                 + "ORDER BY created_at LIMIT ?", limit);

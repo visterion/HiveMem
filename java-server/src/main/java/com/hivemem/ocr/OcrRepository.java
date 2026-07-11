@@ -27,12 +27,12 @@ public class OcrRepository {
     public List<UUID> findCellsPendingOcr(int limit) {
         var rows = dsl.fetch(
                 "SELECT id FROM cells WHERE "
-                + "  ('ocr_pending' = ANY(tags) "
-                + "    OR ('ocr_failed' = ANY(tags) "
-                + "        AND NOT ('ocr_failed_permanent' = ANY(tags)) "
+                + "  (tags @> ARRAY['ocr_pending']::text[] "
+                + "    OR (tags @> ARRAY['ocr_failed']::text[] "
+                + "        AND NOT (tags @> ARRAY['ocr_failed_permanent']::text[]) "
                 + "        AND created_at < now() - interval '1 hour')) "
                 + "AND status = 'committed' AND valid_until IS NULL "
-                + "ORDER BY CASE WHEN 'ocr_failed' = ANY(tags) THEN 1 ELSE 0 END, created_at "
+                + "ORDER BY CASE WHEN tags @> ARRAY['ocr_failed']::text[] THEN 1 ELSE 0 END, created_at "
                 + "LIMIT ?", limit);
         List<UUID> ids = new ArrayList<>();
         for (Record r : rows) ids.add(r.get(0, UUID.class));

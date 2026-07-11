@@ -173,6 +173,10 @@ class AttachmentRepositoryIntegrationTest {
 
         List<UUID> ids = repo.findCellsWithVisionPending(10);
         assertThat(ids).contains(cellId);
+
+        // a cell without the tag must not be picked up by the sweep
+        UUID untaggedCellId = insertMinimalCell();
+        assertThat(repo.findCellsWithVisionPending(100)).doesNotContain(untaggedCellId);
     }
 
     private UUID insertMinimalCell() {
