@@ -50,7 +50,13 @@ export const useMediaStore = defineStore('media', {
         const rows = await useApi().call<MediaItem[]>('list_media', {
           sort: 'newest', limit: PAGE_SIZE, offset: this.photos.length,
         }) ?? []
-        this.photos = [...this.photos, ...rows]
+        // Paging by `offset: photos.length` over a newest-sorted feed: a photo
+        // ingested between two loadMore() pages shifts every subsequent offset
+        // by one, duplicating whichever row now straddles the page boundary.
+        // De-duplicate on append by attachment_id (row identity).
+        const seen = new Set(this.photos.map(p => p.attachment_id))
+        const fresh = rows.filter(r => !seen.has(r.attachment_id))
+        this.photos = [...this.photos, ...fresh]
         this.hasMore = rows.length >= PAGE_SIZE
       } catch (e) {
         this.error = e instanceof Error ? e.message : 'load failed'
