@@ -1,0 +1,14 @@
+#!/bin/sh
+# .githooks/pre-commit — WARNING ONLY, never blocks
+CHANGED_FILES=$(git diff --cached --name-only)
+STRUCTURAL=$(echo "$CHANGED_FILES" | grep -E '(pom\.xml|package\.json|Dockerfile|\.ya?ml)' || true)
+NEW=$(git diff --cached --diff-filter=A --name-only | grep -E '\.(java|ts|tsx|js|vue|py)$' || true)
+DELETED=$(git diff --cached --diff-filter=D --name-only | grep -E '\.(java|ts|tsx|js|vue|py)$' || true)
+
+if [ -n "$STRUCTURAL" ] || [ -n "$NEW" ] || [ -n "$DELETED" ]; then
+  if [ -f CLAUDE.md ] && [ -n "$(find . -maxdepth 3 \( -name '*.java' -o -name '*.ts' -o -name '*.vue' -o -name '*.py' \) -newer CLAUDE.md 2>/dev/null | head -1)" ]; then
+    echo "  Structure changed but local CLAUDE.md looks stale."
+    echo "   Run: 'Update CLAUDE.md to reflect recent changes'"
+  fi
+fi
+exit 0
