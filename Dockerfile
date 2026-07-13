@@ -8,7 +8,7 @@ RUN npm ci
 COPY knowledge-ui/ ./
 RUN npm run build
 
-FROM maven:3.9.13-eclipse-temurin-25 AS build
+FROM maven:3.9.15-eclipse-temurin-26 AS build
 
 WORKDIR /workspace
 COPY java-server/pom.xml java-server/mvnw java-server/mvnw.cmd ./
