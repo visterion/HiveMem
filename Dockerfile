@@ -1,4 +1,4 @@
-# Pinned to the toolchain versions CI tests against (Node 20, JDK 25) — keep in
+# Pinned to the toolchain versions CI tests against (Node 20, JDK 26) — keep in
 # sync with .github/workflows/ci.yml when bumping.
 FROM node:20-alpine AS ui-build
 
@@ -21,7 +21,7 @@ COPY --from=ui-build /ui/dist src/main/resources/static
 
 RUN ./mvnw -q -B -DskipTests package
 
-FROM eclipse-temurin:25-jre
+FROM eclipse-temurin:26-jre
 
 RUN apt-get update && apt-get install -y --no-install-recommends curl gnupg lsb-release \
     && echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
