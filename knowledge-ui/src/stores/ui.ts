@@ -12,6 +12,8 @@ export const useUiStore = defineStore('ui', {
     showLoginDialog: false,
     toast: null as null | { kind: 'info' | 'success' | 'error'; text: string },
     mobileDrawerOpen: false,
+    swUpdateReady: false,
+    swUpdater: null as (() => void) | null,
   }),
   actions: {
     pushToast(kind: 'info' | 'success' | 'error', text: string) {
@@ -19,5 +21,7 @@ export const useUiStore = defineStore('ui', {
     },
     setDrawer(open: boolean) { this.mobileDrawerOpen = open },
     toggleDrawer() { this.mobileDrawerOpen = !this.mobileDrawerOpen },
+    setSwUpdate(fn: () => void) { this.swUpdater = fn; this.swUpdateReady = true },
+    applySwUpdate() { this.swUpdater?.(); this.swUpdateReady = false },
   }
 })

@@ -7,6 +7,7 @@ import IconRail from './IconRail.vue'
 import TopBar from './TopBar.vue'
 import TweaksPanel from './TweaksPanel.vue'
 import Reader from '../Reader.vue'
+import PwaReloadPrompt from './PwaReloadPrompt.vue'
 
 const route = useRoute()
 const ui = useUiStore()
@@ -40,6 +41,7 @@ watch(isMobile, m => { if (!m) ui.setDrawer(false) })
     <div v-if="isMobile && ui.mobileDrawerOpen" class="drawer-scrim" @click="ui.setDrawer(false)" />
     <TweaksPanel />
     <Reader />
+    <PwaReloadPrompt />
   </div>
 </template>
 
