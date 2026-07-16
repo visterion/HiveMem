@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.slf4j.Logger;
@@ -180,6 +181,12 @@ public class McpController {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(
                     McpResponse.forbidden(request.id(), toolName));
         }
+        Optional<String> realmDenied =
+                toolPermissionService.realmDenial(principal, toolName, params.path("arguments"));
+        if (realmDenied.isPresent()) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(
+                    McpResponse.forbidden(request.id(), toolName));
+        }
 
         if (EMBEDDING_TOOLS.contains(toolName) && embeddingMigrationService.isReencodingActive()) {
             String progress = embeddingMigrationService.getProgress().orElse("unknown");
@@ -191,8 +198,12 @@ public class McpController {
         return toolRegistry.resolve(toolName)
                 .map(handler -> {
                     try {
-                        Object result = handler.call(principal, params.path("arguments"));
-                        String json = MAPPER.writeValueAsString(result);
+                        JsonNode callArgs = toolPermissionService.rewriteReadArgs(
+                                principal, toolName, params.path("arguments"));
+                        Object result = handler.call(principal, callArgs);
+                        JsonNode filtered = toolPermissionService.filterReadResponse(
+                                principal, toolName, callArgs, MAPPER.valueToTree(result));
+                        String json = MAPPER.writeValueAsString(filtered);
                         return ResponseEntity.ok(
                                 McpResponse.toolResult(request.id(), json));
                     } catch (IllegalArgumentException e) {

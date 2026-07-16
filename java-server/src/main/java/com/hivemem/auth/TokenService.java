@@ -26,9 +26,12 @@ public interface TokenService {
      * @param name            unique token identifier
      * @param role            authorisation role
      * @param expiresInDays   optional validity window in days; null for no expiry
+     * @param readRealms      optional realm ACL for reads; null for unrestricted
+     * @param writeRealms     optional realm ACL for writes; null for unrestricted
      * @throws IllegalStateException if the name is already taken
      */
-    String createToken(String name, AuthRole role, Integer expiresInDays);
+    String createToken(String name, AuthRole role, Integer expiresInDays,
+                       List<String> readRealms, List<String> writeRealms);
 
     /**
      * List tokens ordered by creation time. Never includes the plaintext or hash.

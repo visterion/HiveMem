@@ -38,7 +38,8 @@ class FlywayMigrationParityTest {
         try (SchemaHarness harness = migrateFreshSchema()) {
             assertThat(harness.flyway().info().pending()).isEmpty();
             assertThat(harness.dsl().fetchCount(DSL.table("migration_baseline"))).isEqualTo(1);
-            assertThat(harness.dsl().fetchCount(DSL.table("flyway_schema_history"))).isEqualTo(45);
+            // V0050 (api token realm scope) added by the realm-scoped-tokens branch; bump 45 -> 46.
+            assertThat(harness.dsl().fetchCount(DSL.table("flyway_schema_history"))).isEqualTo(46);
         }
     }
 
@@ -46,7 +47,7 @@ class FlywayMigrationParityTest {
     void migrationsAreIdempotentOnSecondRun() throws SQLException {
         try (SchemaHarness harness = migrateFreshSchema()) {
             assertThat(harness.flyway().migrate().migrationsExecuted).isZero();
-            assertThat(harness.dsl().fetchCount(DSL.table("flyway_schema_history"))).isEqualTo(45);
+            assertThat(harness.dsl().fetchCount(DSL.table("flyway_schema_history"))).isEqualTo(46);
         }
     }
 

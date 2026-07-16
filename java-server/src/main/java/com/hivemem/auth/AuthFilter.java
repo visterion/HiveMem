@@ -152,7 +152,18 @@ public class AuthFilter extends OncePerRequestFilter {
         }
 
         rateLimiter.clearFailures(clientIp);
-        request.setAttribute(PRINCIPAL_ATTRIBUTE, principal.get());
+        AuthPrincipal resolved = principal.get();
+        // Realm-scoped tokens are confined to /mcp: /sync (op replay) and /hooks (all-realm
+        // search) have no per-realm enforcement, so a scoped token there would be silently
+        // unrestricted. Fail closed rather than leak. /admin is already admin-only.
+        // Use the same context-path-stripped path that shouldNotFilter derives, so the route
+        // guard can't be side-stepped by a raw getRequestURI() that differs from the routed path.
+        String requestPath = request.getRequestURI().substring(request.getContextPath().length());
+        if (resolved.isRealmScoped() && !requestPath.startsWith("/mcp")) {
+            response.sendError(403);
+            return;
+        }
+        request.setAttribute(PRINCIPAL_ATTRIBUTE, resolved);
         filterChain.doFilter(request, response);
     }
 
@@ -240,7 +251,9 @@ public class AuthFilter extends OncePerRequestFilter {
         if (backing.isEmpty()) return Optional.empty();
 
         AuthRole effective = effectiveOauthRole(backing.get().role(), t.scope());
-        return Optional.of(new AuthPrincipal(backing.get().name(), effective, backing.get().tokenId()));
+        return Optional.of(new AuthPrincipal(
+                backing.get().name(), effective, backing.get().tokenId(),
+                backing.get().readRealms(), backing.get().writeRealms()));
     }
 
     static AuthRole scopeToRole(String scope) {

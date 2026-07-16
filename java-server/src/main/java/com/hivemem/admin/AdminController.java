@@ -13,6 +13,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -52,7 +53,8 @@ public class AdminController {
             return ResponseEntity.badRequest().body(Map.of("error", "invalid role"));
         }
         try {
-            String token = tokenService.createToken(body.name(), role, body.expiresInDays());
+            String token = tokenService.createToken(
+                    body.name(), role, body.expiresInDays(), body.readRealms(), body.writeRealms());
             return ResponseEntity.ok(Map.of("name", body.name(), "role", role.wireValue(), "token", token));
         } catch (IllegalStateException e) {
             return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", e.getMessage()));
@@ -133,5 +135,12 @@ public class AdminController {
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", "admin role required"));
     }
 
-    public record CreateTokenRequest(String name, String role, Integer expiresInDays) {}
+    public record CreateTokenRequest(String name, String role, Integer expiresInDays,
+                                     List<String> readRealms, List<String> writeRealms) {
+
+        /** Backward-compat: unscoped token creation (no realm ACL). */
+        public CreateTokenRequest(String name, String role, Integer expiresInDays) {
+            this(name, role, expiresInDays, null, null);
+        }
+    }
 }

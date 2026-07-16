@@ -410,7 +410,7 @@ class TokenManagementIntegrationTest {
 
     @Test
     void createTokenReturnsUsablePlaintextAndPersistsHashOnly() {
-        String plaintext = dbTokenService.createToken("alpha", AuthRole.WRITER, null);
+        String plaintext = dbTokenService.createToken("alpha", AuthRole.WRITER, null, null, null);
 
         assertThat(plaintext).isNotBlank();
         // Validating the returned plaintext succeeds
@@ -429,7 +429,7 @@ class TokenManagementIntegrationTest {
 
     @Test
     void createTokenWithExpiryPersistsExpiresAt() {
-        dbTokenService.createToken("ephemeral", AuthRole.READER, 7);
+        dbTokenService.createToken("ephemeral", AuthRole.READER, 7, null, null);
 
         OffsetDateTime expiresAt = dslContext.fetchOne(
                 "SELECT expires_at FROM api_tokens WHERE name = ?",
@@ -443,9 +443,9 @@ class TokenManagementIntegrationTest {
 
     @Test
     void createTokenWithDuplicateNameRaises() {
-        dbTokenService.createToken("clash", AuthRole.READER, null);
+        dbTokenService.createToken("clash", AuthRole.READER, null, null, null);
 
-        assertThatThrownBy(() -> dbTokenService.createToken("clash", AuthRole.WRITER, null))
+        assertThatThrownBy(() -> dbTokenService.createToken("clash", AuthRole.WRITER, null, null, null))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("clash");
     }
@@ -454,7 +454,7 @@ class TokenManagementIntegrationTest {
     void createTokenProducesUniqueHashesForBulkInserts() {
         Set<String> plaintexts = new HashSet<>();
         for (int i = 0; i < 50; i++) {
-            plaintexts.add(dbTokenService.createToken("bulk-" + i, AuthRole.READER, null));
+            plaintexts.add(dbTokenService.createToken("bulk-" + i, AuthRole.READER, null, null, null));
         }
         assertThat(plaintexts).hasSize(50);
 
@@ -466,9 +466,9 @@ class TokenManagementIntegrationTest {
 
     @Test
     void listTokensReturnsAllInCreationOrder() {
-        dbTokenService.createToken("first", AuthRole.READER, null);
-        dbTokenService.createToken("second", AuthRole.WRITER, null);
-        dbTokenService.createToken("third", AuthRole.ADMIN, 30);
+        dbTokenService.createToken("first", AuthRole.READER, null, null, null);
+        dbTokenService.createToken("second", AuthRole.WRITER, null, null, null);
+        dbTokenService.createToken("third", AuthRole.ADMIN, 30, null, null);
 
         var summaries = dbTokenService.listTokens(true, 100);
 
@@ -481,7 +481,7 @@ class TokenManagementIntegrationTest {
     @Test
     void listTokensRespectsLimit() {
         for (int i = 0; i < 10; i++) {
-            dbTokenService.createToken("limit-" + i, AuthRole.READER, null);
+            dbTokenService.createToken("limit-" + i, AuthRole.READER, null, null, null);
         }
 
         var summaries = dbTokenService.listTokens(true, 3);
@@ -491,8 +491,8 @@ class TokenManagementIntegrationTest {
 
     @Test
     void listTokensExcludeRevokedHidesRevoked() {
-        dbTokenService.createToken("keep", AuthRole.READER, null);
-        dbTokenService.createToken("gone", AuthRole.READER, null);
+        dbTokenService.createToken("keep", AuthRole.READER, null, null, null);
+        dbTokenService.createToken("gone", AuthRole.READER, null, null, null);
         dbTokenService.revokeToken("gone");
 
         var all = dbTokenService.listTokens(true, 100);
@@ -505,9 +505,9 @@ class TokenManagementIntegrationTest {
     @Test
     void listTokensMarksStatusCorrectly() throws Exception {
         // active
-        dbTokenService.createToken("fresh", AuthRole.READER, null);
+        dbTokenService.createToken("fresh", AuthRole.READER, null, null, null);
         // revoked
-        dbTokenService.createToken("killed", AuthRole.READER, null);
+        dbTokenService.createToken("killed", AuthRole.READER, null, null, null);
         dbTokenService.revokeToken("killed");
         // expired: insert directly with past expires_at
         insertToken("old", "old-plaintext", "reader",
@@ -531,7 +531,7 @@ class TokenManagementIntegrationTest {
 
     @Test
     void revokeTokenStopsFutureValidation() {
-        String plaintext = dbTokenService.createToken("ephem", AuthRole.WRITER, null);
+        String plaintext = dbTokenService.createToken("ephem", AuthRole.WRITER, null, null, null);
         assertThat(dbTokenService.validateToken(plaintext)).isPresent();
 
         dbTokenService.revokeToken("ephem");
@@ -548,7 +548,7 @@ class TokenManagementIntegrationTest {
 
     @Test
     void doubleRevokeRaises() {
-        dbTokenService.createToken("once", AuthRole.READER, null);
+        dbTokenService.createToken("once", AuthRole.READER, null, null, null);
         dbTokenService.revokeToken("once");
 
         assertThatThrownBy(() -> dbTokenService.revokeToken("once"))
@@ -558,7 +558,7 @@ class TokenManagementIntegrationTest {
 
     @Test
     void getTokenInfoReturnsMetadataWithoutPlaintextOrHash() {
-        dbTokenService.createToken("inspect", AuthRole.ADMIN, 14);
+        dbTokenService.createToken("inspect", AuthRole.ADMIN, 14, null, null);
 
         var info = dbTokenService.getTokenInfo("inspect");
 
@@ -580,7 +580,7 @@ class TokenManagementIntegrationTest {
     @Test
     void e2eTokenLifecycle() {
         // Create → validate → info → revoke → info (revoked) → validate (empty) → list (excludes when filtered)
-        String plaintext = dbTokenService.createToken("lifecycle", AuthRole.WRITER, 30);
+        String plaintext = dbTokenService.createToken("lifecycle", AuthRole.WRITER, 30, null, null);
 
         assertThat(dbTokenService.validateToken(plaintext)).isPresent();
         assertThat(dbTokenService.getTokenInfo("lifecycle")

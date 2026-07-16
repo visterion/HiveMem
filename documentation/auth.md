@@ -45,11 +45,57 @@ docker exec hivemem hivemem-token create <name> --role admin|writer|reader|agent
 Available commands:
 
 ```bash
-hivemem-token create <name> --role admin|writer|reader|agent [--expires 90d]
+hivemem-token create <name> --role admin|writer|reader|agent [--expires 90d] \
+                             [--read-realms a,b] [--write-realms a]
 hivemem-token list
 hivemem-token revoke <name>
 hivemem-token info <name>
 ```
+
+### Realm-scoped tokens
+
+Every token can carry two optional, independent realm sets: `read_realms` and
+`write_realms`. Both default to `NULL`, which means **unrestricted** — this is the
+behavior every token had before this feature, so existing tokens are unaffected.
+
+- **`read_realms`** — when set, the token's *tenant view*: realms outside the set are
+  invisible to it. Realms not in the set do not show up in listings/search results at all,
+  rather than erroring.
+- **`write_realms`** — when set, *write confinement*: the token can only create/modify
+  content in those realms; writes targeting a realm outside the set are rejected. Realm-
+  bearing writes (`add_cell`, `update_blueprint`, `upload_attachment`) must name an explicit
+  `realm` in the set — an omitted/blank realm is rejected (it would otherwise persist a
+  null-realm cell that escapes the confinement), never silently defaulted.
+
+A token can be scoped on one dimension and unrestricted on the other (e.g. read broadly,
+write narrowly) — the two sets are independent.
+
+Realm-scoped tokens are additionally **confined to `/mcp`** — they cannot authenticate
+against `/sync/ops`, `/hooks/context`, or other non-MCP routes, regardless of role.
+
+Within `/mcp`, enforcement differs by tool surface (v1):
+
+- **Realm-filtered**: ordinary reads/writes (`search`, `add_cell`, `list`, etc.) are
+  rewritten/filtered to the token's `read_realms`/`write_realms`.
+- **Global, not realm-filtered**: the knowledge-graph triple surfaces — `search_kg` and
+  `time_machine` — operate across all realms regardless of token scope.
+- **Blocked (403) for scoped tokens in v1**: graph-traversal reads (`traverse`, `history`,
+  `entity_overview`) and any report that mixes multiple realms. These are deferred to a
+  later version rather than partially filtered, to avoid leaking cross-realm structure.
+
+Create a realm-scoped token with the CLI:
+
+```bash
+hivemem-token create dracul-research-agent --role writer \
+  --write-realms dracul-research --read-realms dracul-research,dracul
+```
+
+This mints a `writer` token that can read the `dracul-research` and `dracul` realms but
+write only to `dracul-research`. Realm names passed via `--read-realms`/`--write-realms`
+are comma-separated, lowercased, and spaces are turned into dashes to match server-side
+normalization. After normalization each realm must match `^[a-z0-9-]+$` — this allowlist is
+enforced identically by the CLI and by the token-creation API, so odd/empty realm strings
+are rejected up front.
 
 ## OAuth 2.0 Connector Access
 
