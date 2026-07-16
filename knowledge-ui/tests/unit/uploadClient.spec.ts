@@ -60,6 +60,18 @@ describe('uploadAttachment', () => {
     await expect(p).rejects.toThrow('storage off')
   })
 
+  it('prefers error over detail/message, and detail over message', async () => {
+    withFakeXhr()
+    const p1 = uploadAttachment(new File(['x'], 'a.png'), { realm: 'inbox' })
+    FakeXhr.last.respond(400, JSON.stringify({ error: 'A', detail: 'B', message: 'C' }))
+    await expect(p1).rejects.toThrow('A')
+
+    withFakeXhr()
+    const p2 = uploadAttachment(new File(['x'], 'a.png'), { realm: 'inbox' })
+    FakeXhr.last.respond(400, JSON.stringify({ detail: 'B', message: 'C' }))
+    await expect(p2).rejects.toThrow('B')
+  })
+
   it('treats a network error as a retryable failure', async () => {
     withFakeXhr()
     const p = uploadAttachment(new File(['x'], 'a.png'), { realm: 'inbox' })
