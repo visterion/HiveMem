@@ -27,6 +27,8 @@ public class QueenWebhookService {
     private static final Logger log = LoggerFactory.getLogger(QueenWebhookService.class);
     private static final Set<String> RELATIONS = Set.of("related_to", "builds_on", "contradicts", "refines");
     private static final AuthPrincipal QUEEN = new AuthPrincipal("queen", AuthRole.AGENT);
+    private static final AuthPrincipal ARCHIVIST = new AuthPrincipal("inbox-archivist", AuthRole.AGENT);
+    private static final List<String> SIGNALS = List.of("facts", "events", "discoveries", "preferences", "advice");
 
     private final QueenProperties props;
     private final QueenRepository repo;
@@ -57,6 +59,53 @@ public class QueenWebhookService {
                 UUID.fromString(cellId),
                 CellFieldSelection.forGetCell(List.of("content", "summary", "key_points", "insight")));
         return cell.orElseGet(Map::of);
+    }
+
+    public Map<String, Object> findInboxCells(int requestedLimit) {
+        int limit = Math.min(Math.max(requestedLimit, 1), props.getInboxBatchLimit());
+        List<String> ids = new ArrayList<>();
+        for (UUID id : repo.findInboxCellIds(limit)) ids.add(id.toString());
+        return Map.of("cell_ids", ids);
+    }
+
+    public Map<String, Object> listTaxonomy() {
+        Map<String, Map<String, Object>> byRealm = new LinkedHashMap<>();
+        for (Map<String, Object> row : repo.listTaxonomy()) {
+            String realm = (String) row.get("realm");
+            Map<String, Object> r = byRealm.computeIfAbsent(realm, k -> {
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("realm", k);
+                m.put("cell_count", 0L);
+                m.put("topics", new ArrayList<Map<String, Object>>());
+                return m;
+            });
+            long count = ((Number) row.get("cell_count")).longValue();
+            r.put("cell_count", ((Number) r.get("cell_count")).longValue() + count);
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> topics = (List<Map<String, Object>>) r.get("topics");
+            Map<String, Object> topic = new LinkedHashMap<>();
+            topic.put("topic", row.get("topic"));
+            topic.put("cell_count", count);
+            topics.add(topic);
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("signals", SIGNALS);
+        out.put("realms", new ArrayList<>(byRealm.values()));
+        return out;
+    }
+
+    public Map<String, Object> reclassifyInboxCell(String cellId, String realm, String signal, String topic, String reason) {
+        if (realm != null && realm.trim().equalsIgnoreCase("inbox")) {
+            throw new IllegalArgumentException("cannot reclassify into the inbox staging realm");
+        }
+        if (reason == null || reason.isBlank()) {
+            throw new IllegalArgumentException("reason is required");
+        }
+        return writes.reclassifyCell(ARCHIVIST, UUID.fromString(cellId), realm, topic, signal, reason);
+    }
+
+    public Map<String, Object> skipInboxCell(String cellId, String reason) {
+        return writes.skipInboxCell(ARCHIVIST, UUID.fromString(cellId), reason);
     }
 
     public Map<String, Object> searchSimilarCells(String cellId, int requestedLimit) {
