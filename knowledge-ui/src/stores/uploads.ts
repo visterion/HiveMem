@@ -12,7 +12,20 @@ export interface UploadJob {
   progress: number
   result?: UploadResult
   error?: string
+  errorKey?: string
+  authFailure?: boolean
   retryable: boolean
+}
+
+function errorKeyFor(status: number): string {
+  switch (status) {
+    case 401: return 'upload.errSession'
+    case 403: return 'upload.errForbidden'
+    case 413: return 'upload.tooLarge'
+    case 503: return 'upload.errStorage'
+    case 400: return 'upload.errBad'
+    default: return 'upload.errGeneric'
+  }
 }
 
 interface UploadsState { jobs: UploadJob[]; running: boolean; authError: boolean; seq: number }
@@ -30,7 +43,7 @@ export const useUploadsStore = defineStore('uploads', {
         const id = `u${++this.seq}`
         const base = { id, file, fileName: file.name, size: file.size, progress: 0 }
         if (file.size > MAX_UPLOAD_BYTES) {
-          this.jobs.push({ ...base, status: 'error', error: 'File too large', retryable: false })
+          this.jobs.push({ ...base, status: 'error', error: 'File too large', errorKey: 'upload.tooLarge', retryable: false })
         } else {
           this.jobs.push({ ...base, status: 'queued', retryable: false })
         }
@@ -51,20 +64,28 @@ export const useUploadsStore = defineStore('uploads', {
             job.status = 'done'
             job.progress = 1
           } catch (e) {
-            const err = e as UploadError
             job.status = 'error'
-            job.error = err.message
-            job.retryable = err.retryable ?? true
-            if (err.status === 401) {
-              // Do NOT hard-redirect mid-queue — it would discard the still-queued File
-              // objects (e.g. photos just taken). Fail the rest; let the user re-login.
-              this.authError = true
-              for (const rest of this.jobs) {
-                if (rest.status === 'queued') {
-                  rest.status = 'error'; rest.error = 'Session expired'; rest.retryable = true
+            if (e instanceof UploadError) {
+              job.error = e.message
+              job.errorKey = errorKeyFor(e.status)
+              job.retryable = e.retryable ?? true
+              if (e.status === 401) {
+                // Do NOT hard-redirect mid-queue — it would discard the still-queued File
+                // objects (e.g. photos just taken). Fail the rest; let the user re-login.
+                this.authError = true
+                job.authFailure = true
+                for (const rest of this.jobs) {
+                  if (rest.status === 'queued') {
+                    rest.status = 'error'; rest.error = 'Session expired'
+                    rest.errorKey = 'upload.errSession'; rest.retryable = true; rest.authFailure = true
+                  }
                 }
+                break
               }
-              break
+            } else {
+              job.retryable = true
+              job.errorKey = 'upload.errGeneric'
+              job.error = (e as Error)?.message ?? String(e)
             }
           }
         }
@@ -76,7 +97,7 @@ export const useUploadsStore = defineStore('uploads', {
       const job = this.jobs.find(j => j.id === id)
       if (!job || job.status !== 'error') return
       job.status = 'queued'; job.error = undefined; job.progress = 0
-      this.authError = this.jobs.some(j => j.status === 'error' && j.error === 'Session expired')
+      this.authError = this.jobs.some(j => j.status === 'error' && j.authFailure)
       void this.run()
     },
     clearDone() {

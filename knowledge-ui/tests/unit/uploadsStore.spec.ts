@@ -62,6 +62,7 @@ describe('uploads store', () => {
     s.enqueue([big])
     await flush()
     expect(s.jobs[0].status).toBe('error')
+    expect(s.jobs[0].errorKey).toBe('upload.tooLarge')
     expect(deferreds.length).toBe(0)
   })
 
@@ -75,5 +76,55 @@ describe('uploads store', () => {
     s.retry(s.jobs[0].id)
     await flush()
     expect(s.jobs[0].status).toBe('uploading')
+  })
+
+  it('maps error statuses to i18n errorKey', async () => {
+    const s = useUploadsStore()
+    s.enqueue([new File(['a'], 'a.pdf'), new File(['b'], 'b.pdf'), new File(['c'], 'c.pdf'),
+      new File(['d'], 'd.pdf'), new File(['e'], 'e.pdf')])
+    await flush()
+    deferreds[0].reject(new UploadError(403, 'forbidden', false))
+    await flush()
+    expect(s.jobs[0].errorKey).toBe('upload.errForbidden')
+    deferreds[1].reject(new UploadError(413, 'too big', false))
+    await flush()
+    expect(s.jobs[1].errorKey).toBe('upload.tooLarge')
+    deferreds[2].reject(new UploadError(503, 'storage off', false))
+    await flush()
+    expect(s.jobs[2].errorKey).toBe('upload.errStorage')
+    deferreds[3].reject(new UploadError(400, 'bad', false))
+    await flush()
+    expect(s.jobs[3].errorKey).toBe('upload.errBad')
+    deferreds[4].reject(new UploadError(500, 'boom', true))
+    await flush()
+    expect(s.jobs[4].errorKey).toBe('upload.errGeneric')
+  })
+
+  it('flags 401 failures with authFailure instead of matching the message string', async () => {
+    const s = useUploadsStore()
+    s.enqueue([new File(['a'], 'a.pdf'), new File(['b'], 'b.pdf')])
+    await flush()
+    deferreds[0].reject(new UploadError(401, 'Session expired', true))
+    await flush()
+    expect(s.jobs[0].authFailure).toBe(true)
+    expect(s.jobs[0].errorKey).toBe('upload.errSession')
+    expect(s.jobs[1].authFailure).toBe(true)               // sibling flipped in the 401 branch
+    // retry recomputes authError purely from the authFailure flag
+    s.jobs[0].error = 'something else entirely'
+    s.retry(s.jobs[0].id)
+    expect(s.authError).toBe(true)
+  })
+
+  it('treats a non-UploadError rejection as a generic retryable failure', async () => {
+    const s = useUploadsStore()
+    s.enqueue([new File(['a'], 'a.pdf')])
+    await flush()
+    deferreds[0].reject(new Error('boom'))
+    await flush()
+    expect(s.jobs[0].status).toBe('error')
+    expect(s.jobs[0].retryable).toBe(true)
+    expect(s.jobs[0].errorKey).toBe('upload.errGeneric')
+    expect(s.jobs[0].error).toBe('boom')
+    expect(s.authError).toBe(false)
   })
 })
