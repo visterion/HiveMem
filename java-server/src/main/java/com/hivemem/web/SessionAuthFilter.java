@@ -16,6 +16,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.util.Optional;
+import java.util.Set;
 
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
@@ -33,7 +34,7 @@ public class SessionAuthFilter extends OncePerRequestFilter {
      * user data stays behind /api and /mcp. Names mirror the @vite-pwa/assets-generator
      * "minimal-2023" preset output — reconcile with the real dist/ output in Task 2.
      */
-    private static final java.util.Set<String> PWA_PUBLIC_ASSETS = java.util.Set.of(
+    private static final Set<String> PWA_PUBLIC_ASSETS = Set.of(
             "/manifest.webmanifest",
             "/sw.js",
             "/pwa-64x64.png",
