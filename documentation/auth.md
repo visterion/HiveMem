@@ -62,7 +62,10 @@ behavior every token had before this feature, so existing tokens are unaffected.
   invisible to it. Realms not in the set do not show up in listings/search results at all,
   rather than erroring.
 - **`write_realms`** — when set, *write confinement*: the token can only create/modify
-  content in those realms; writes targeting a realm outside the set are rejected.
+  content in those realms; writes targeting a realm outside the set are rejected. Realm-
+  bearing writes (`add_cell`, `update_blueprint`, `upload_attachment`) must name an explicit
+  `realm` in the set — an omitted/blank realm is rejected (it would otherwise persist a
+  null-realm cell that escapes the confinement), never silently defaulted.
 
 A token can be scoped on one dimension and unrestricted on the other (e.g. read broadly,
 write narrowly) — the two sets are independent.
@@ -90,7 +93,9 @@ hivemem-token create dracul-research-agent --role writer \
 This mints a `writer` token that can read the `dracul-research` and `dracul` realms but
 write only to `dracul-research`. Realm names passed via `--read-realms`/`--write-realms`
 are comma-separated, lowercased, and spaces are turned into dashes to match server-side
-normalization.
+normalization. After normalization each realm must match `^[a-z0-9-]+$` — this allowlist is
+enforced identically by the CLI and by the token-creation API, so odd/empty realm strings
+are rejected up front.
 
 ## OAuth 2.0 Connector Access
 

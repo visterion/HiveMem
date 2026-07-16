@@ -189,6 +189,85 @@ class McpControllerRealmScopeTest {
                 .andExpect(status().isForbidden());
     }
 
+    // ── C1: read-enumeration isolation (list / facet_count / list_cell_ids / status) ──
+
+    /** Seed one cell in each of four realms; two visible (dracul-research, dracul), two foreign. */
+    private void seedFourRealms() {
+        insertCell(UUID.fromString("00000000-0000-0000-0000-0000000c0001"),
+                "cell in dracul-research", "dracul-research");
+        insertCell(UUID.fromString("00000000-0000-0000-0000-0000000c0002"),
+                "cell in dracul", "dracul");
+        insertCell(UUID.fromString("00000000-0000-0000-0000-0000000c0003"),
+                "cell in personal", "personal");
+        insertCell(UUID.fromString("00000000-0000-0000-0000-0000000c0004"),
+                "cell in work", "work");
+        dslContext.execute("REFRESH MATERIALIZED VIEW cell_popularity");
+    }
+
+    @Test
+    void listNoArgsReturnsOnlyVisibleRealms() throws Exception {
+        seedFourRealms();
+        JsonNode realms = callToolResultArray(SCOPED_WRITER_TOKEN, "list", Map.of());
+        assertThat(realms).isNotEmpty();
+        for (JsonNode row : realms) {
+            assertThat(row.path("value").asText()).isIn("dracul-research", "dracul");
+        }
+    }
+
+    @Test
+    void facetCountOverRealmReturnsNoForeignRealm() throws Exception {
+        seedFourRealms();
+        JsonNode tree = callToolResultArray(SCOPED_WRITER_TOKEN, "facet_count",
+                Map.of("fields", List.of("realm")));
+        JsonNode realmBuckets = tree.path("realm");
+        assertThat(realmBuckets.isArray()).isTrue();
+        assertThat(realmBuckets).isNotEmpty();
+        for (JsonNode bucket : realmBuckets) {
+            assertThat(bucket.path("value").asText()).isIn("dracul-research", "dracul");
+        }
+    }
+
+    @Test
+    void listCellIdsNoWhereReturnsNoForeignRows() throws Exception {
+        seedFourRealms();
+        JsonNode tree = callToolResultArray(SCOPED_WRITER_TOKEN, "list_cell_ids", Map.of());
+        JsonNode ids = tree.path("ids");
+        assertThat(ids.isArray()).isTrue();
+        assertThat(ids).isNotEmpty();
+        for (JsonNode row : ids) {
+            assertThat(row.path("realm").asText()).isIn("dracul-research", "dracul");
+        }
+    }
+
+    @Test
+    void listCellIdsForeignWhereRealmInIsForbidden() throws Exception {
+        seedFourRealms();
+        mockMvc.perform(toolCallRequest(SCOPED_WRITER_TOKEN, "list_cell_ids",
+                        Map.of("where", Map.of("realm_in", List.of("personal")))))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void statusRealmsAreFilteredToVisibleRealms() throws Exception {
+        seedFourRealms();
+        JsonNode body = callTool(SCOPED_WRITER_TOKEN, "status", Map.of());
+        String text = body.path("result").path("content").get(0).path("text").asText();
+        JsonNode snapshot = objectMapper.readTree(text);
+        JsonNode realms = snapshot.path("realms");
+        assertThat(realms.isArray()).isTrue();
+        for (JsonNode realm : realms) {
+            String value = realm.isObject() ? realm.path("value").asText() : realm.asText();
+            assertThat(value).isIn("dracul-research", "dracul");
+        }
+    }
+
+    @Test
+    void addCellWithMissingRealmIsForbiddenForScopedWriter() throws Exception {
+        mockMvc.perform(toolCallRequest(SCOPED_WRITER_TOKEN, "add_cell",
+                        Map.of("content", "no realm named")))
+                .andExpect(status().isForbidden());
+    }
+
     // ── reads: READ_DENY_WHEN_SCOPED ───────────────────────────────────────
 
     @Test

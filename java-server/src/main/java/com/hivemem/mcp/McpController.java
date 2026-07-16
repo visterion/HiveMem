@@ -202,7 +202,7 @@ public class McpController {
                                 principal, toolName, params.path("arguments"));
                         Object result = handler.call(principal, callArgs);
                         JsonNode filtered = toolPermissionService.filterReadResponse(
-                                principal, toolName, MAPPER.valueToTree(result));
+                                principal, toolName, callArgs, MAPPER.valueToTree(result));
                         String json = MAPPER.writeValueAsString(filtered);
                         return ResponseEntity.ok(
                                 McpResponse.toolResult(request.id(), json));
