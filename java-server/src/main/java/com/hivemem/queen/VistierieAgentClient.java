@@ -58,6 +58,29 @@ public class VistierieAgentClient {
         }
     }
 
+    /**
+     * Trigger an on-demand run of the named agent (Vistierie {@code POST /agents/{name}/run},
+     * trigger="manual"). Tolerant: a 409 (agent paused) or 403 (budget exceeded) is a normal
+     * "not now" and is swallowed — the safety-net cron still covers those cells. Other error
+     * statuses (e.g. 5xx) rethrow.
+     */
+    public void triggerRun(String name, Map<String, Object> payload) {
+        try {
+            client.post().uri("/agents/{name}/run", name)
+                    .header("Authorization", "Bearer " + tenantToken)
+                    .header("content-type", "application/json")
+                    .body(Map.of("payload", payload == null ? Map.of() : payload))
+                    .retrieve()
+                    .toBodilessEntity();
+        } catch (RestClientResponseException e) {
+            HttpStatus status = HttpStatus.resolve(e.getStatusCode().value());
+            if (status == HttpStatus.CONFLICT || status == HttpStatus.FORBIDDEN) {
+                return; // paused (409) or budget-exceeded (403) — safety-net cron will pick these up
+            }
+            throw e;
+        }
+    }
+
     private boolean agentExists(String name) {
         try {
             client.get().uri("/agents/{name}", name)
