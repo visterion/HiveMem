@@ -35,7 +35,8 @@ public class VistierieAgentBootstrap implements ApplicationRunner {
             client.upsertAgent(AgentDefinitions.BEE_NAME, defs.isolatedCellBee());
             client.upsertAgent(AgentDefinitions.QUEEN_NAME, defs.queen());
             client.upsertAgent(AgentDefinitions.SEPARATOR_NAME, defs.documentSeparator());
-            log.info("Registered Queen + Bee + Separator agents in Vistierie at {}", props.getVistierieBaseUrl());
+            client.upsertAgent(AgentDefinitions.ARCHIVIST_NAME, defs.inboxArchivist());
+            log.info("Registered Queen + Bee + Separator + Archivist agents in Vistierie at {}", props.getVistierieBaseUrl());
         } catch (RuntimeException e) {
             log.warn("Vistierie agent bootstrap failed ({}); will retry on next start", e.toString());
         }

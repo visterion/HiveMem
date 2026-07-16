@@ -13,6 +13,7 @@ public class AgentDefinitions {
     public static final String BEE_NAME = "isolated-cell-bee";
     public static final String QUEEN_NAME = "queen";
     public static final String SEPARATOR_NAME = "document-separator";
+    public static final String ARCHIVIST_NAME = "inbox-archivist";
 
     private static final String BEE_SYSTEM = """
             You are an isolated-cell Bee in HiveMem, a personal knowledge graph.
@@ -37,6 +38,19 @@ public class AgentDefinitions {
             3. Collect every Bee's proposals. For each proposal, set from_cell to the Bee's
                input cell_id and copy to_cell, relation, note from the Bee output.
             Return all collected proposals plus the count of cells you surveyed.
+            """;
+
+    private static final String ARCHIVIST_SYSTEM = """
+            You are the HiveMem inbox archivist. Each run, call find_inbox_cells to get cells in the
+            inbox staging realm that are ready to file. For each cell: read_cell for its full content
+            and summary, and call list_taxonomy once to see existing realms/topics with counts.
+            Decide realm, signal and topic:
+            - Prefer an existing realm/topic that fits; only invent a new one when nothing fits.
+            - signal MUST be exactly one of: facts, events, discoveries, preferences, advice.
+            - Never file into the 'inbox' realm.
+            Then call reclassify_cell with a one-sentence reason (what it is + why that filing).
+            If a cell's content is empty, unreadable or genuinely ambiguous, do NOT guess — call
+            skip_inbox_cell with a short reason; it leaves the inbox backlog so you won't re-see it.
             """;
 
     private final QueenProperties props;
@@ -178,6 +192,44 @@ public class AgentDefinitions {
         def.put("schedule", props.getSchedule());
         def.put("completion_webhook", props.getHivememBaseUrl() + "/vistierie/runs/done");
         def.put("completion_webhook_token", props.getCompletionWebhookToken());
+        return def;
+    }
+
+    public Map<String, Object> inboxArchivist() {
+        Map<String, Object> emptyIn = objectSchema(Map.of(), List.of());
+        Map<String, Object> limitIn = objectSchema(
+                Map.of("limit", Map.of("type", "integer")), List.of());
+        Map<String, Object> readIn = objectSchema(Map.of("cell_id", stringProp()), List.of("cell_id"));
+        Map<String, Object> reclassifyIn = objectSchema(
+                Map.of("cell_id", stringProp(), "realm", stringProp(),
+                        "signal", Map.of("type", "string",
+                                "enum", List.of("facts", "events", "discoveries", "preferences", "advice")),
+                        "topic", stringProp(), "reason", stringProp()),
+                List.of("cell_id", "reason"));
+        Map<String, Object> skipIn = objectSchema(
+                Map.of("cell_id", stringProp(), "reason", stringProp()),
+                List.of("cell_id", "reason"));
+        Map<String, Object> outputSchema = objectSchema(
+                Map.of("classified", Map.of("type", "integer"),
+                        "skipped", Map.of("type", "integer"),
+                        "notes", stringProp()),
+                List.of());
+
+        Map<String, Object> def = new LinkedHashMap<>();
+        def.put("name", ARCHIVIST_NAME);
+        def.put("system_prompt", ARCHIVIST_SYSTEM);
+        def.put("model_purpose", "archivist");
+        def.put("tools", List.of(
+                httpTool("find_inbox_cells", "List inbox cells ready to classify", limitIn),
+                httpTool("read_cell", "Read a HiveMem cell by id", readIn),
+                httpTool("list_taxonomy", "List existing realms/topics (with counts) and the fixed signals", emptyIn),
+                httpTool("reclassify_cell", "Move an inbox cell to a realm/signal/topic with a reason", reclassifyIn),
+                httpTool("skip_inbox_cell", "Mark an inbox cell as not-classifiable with a reason", skipIn)));
+        def.put("output_schema", outputSchema);
+        def.put("max_turns", 20);
+        def.put("max_run_seconds", 120);
+        def.put("webhook_token", props.getWebhookToken());
+        def.put("schedule", props.getArchivistSchedule());
         return def;
     }
 }

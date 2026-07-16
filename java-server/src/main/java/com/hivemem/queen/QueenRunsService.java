@@ -29,7 +29,9 @@ public class QueenRunsService {
         if (itemsNode != null && itemsNode.isArray()) {
             for (JsonNode r : itemsNode) {
                 String agent = text(r, "agent");
-                if (!AgentDefinitions.QUEEN_NAME.equals(agent) && !AgentDefinitions.BEE_NAME.equals(agent)) {
+                if (!AgentDefinitions.QUEEN_NAME.equals(agent)
+                        && !AgentDefinitions.BEE_NAME.equals(agent)
+                        && !AgentDefinitions.ARCHIVIST_NAME.equals(agent)) {
                     continue;
                 }
                 items.add(new QueenRunView.RunSummary(

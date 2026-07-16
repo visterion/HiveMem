@@ -16,10 +16,6 @@ import java.util.concurrent.atomic.AtomicLong;
  * per-instance, thread-safe debounce collapses concurrent AFTER_COMMIT enrichment callbacks into
  * at most one trigger per window. Never throws -- a failed trigger must not break enrichment; the
  * safety-net cron still catches anything missed.
- *
- * <p>Note: the agent name is the literal {@code "inbox-archivist"} for now;
- * {@code AgentDefinitions.ARCHIVIST_NAME} does not exist yet (added in Task 10, which will unify
- * this call site to the constant).
  */
 @Component
 public class ArchivistTrigger {
@@ -42,7 +38,7 @@ public class ArchivistTrigger {
             if (!props.isEnabled() || cellId == null) return;
             if (!isReadyInboxCell(cellId)) return;
             if (!claimDebounceWindow()) return;
-            client.triggerRun("inbox-archivist", Map.of());
+            client.triggerRun(AgentDefinitions.ARCHIVIST_NAME, Map.of());
         } catch (RuntimeException e) {
             log.warn("Archivist trigger failed for cell {} (cron will still cover it): {}", cellId, e.toString());
         }
