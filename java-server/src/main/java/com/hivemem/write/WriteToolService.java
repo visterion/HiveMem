@@ -664,6 +664,23 @@ public class WriteToolService {
         return result;
     }
 
+    /** Archivist marks an inbox cell as deliberately not-classifiable: tag it out of the
+     *  survey and record the reason in the op-log (surfaced in the archivist move-log). */
+    @Transactional
+    public Map<String, Object> skipInboxCell(AuthPrincipal principal, UUID cellId, String reason) {
+        if (reason == null || reason.isBlank()) {
+            throw new IllegalArgumentException("reason is required");
+        }
+        writeToolRepository.tagArchivistSkipped(cellId);
+        Map<String, Object> opPayload = new java.util.LinkedHashMap<>();
+        opPayload.put("cell_id", cellId.toString());
+        opPayload.put("reason", reason);
+        opPayload.put("agent_id", principal.name());
+        UUID opId = opLogWriter.append("archivist_skip", opPayload);
+        pushDispatcher.dispatch(opId);
+        return Map.of("skipped", true);
+    }
+
     @Transactional
     public Map<String, Object> rejectCell(AuthPrincipal principal, UUID cellId, String reason) {
         Map<String, Object> result = writeToolRepository.rejectCell(cellId);

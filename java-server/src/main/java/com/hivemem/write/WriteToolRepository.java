@@ -188,6 +188,13 @@ public class WriteToolRepository {
                 + "WHERE id = ?", id);
     }
 
+    public void tagArchivistSkipped(UUID id) {
+        dslContext.execute(
+                "UPDATE cells SET tags = "
+                + "  CASE WHEN 'archivist_skipped' = ANY(tags) THEN tags ELSE array_append(tags, 'archivist_skipped') END "
+                + "WHERE id = ?", id);
+    }
+
     public int upsertIdentity(String key, String content, int tokenCount) {
         return dslContext.execute("""
                 INSERT INTO identity (key, content, token_count, updated_at)
