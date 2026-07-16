@@ -6,7 +6,7 @@ async function gotoMock(page: Page, path: string) {
     localStorage.setItem('hivemem_locale', 'en')
   })
   await page.goto(path)
-  await page.waitForTimeout(500)
+  await page.locator('.rail-btn').first().waitFor()
 }
 
 test.describe('upload page', () => {
@@ -24,7 +24,7 @@ test.describe('upload page', () => {
     })
     const job = page.locator('[data-test="upload-job"]')
     await expect(job).toContainText('note.pdf')
-    await expect(job.locator('.up-status')).toHaveText('done', { timeout: 5000 })
+    await expect(job.locator('.up-status')).toHaveText('Done', { timeout: 5000 })
     await expect(page.getByText('Open cell')).toBeVisible()
   })
 
@@ -38,7 +38,7 @@ test.describe('upload page', () => {
     await page.locator('[data-test="upload-fab-file"]').setInputFiles({
       name: 'x.png', mimeType: 'image/png', buffer: Buffer.from('89504e47', 'hex'),
     })
-    await expect(page.locator('[data-test="upload-job"] .up-status')).toHaveText('error')
+    await expect(page.locator('[data-test="upload-job"] .up-status')).toHaveText('Failed')
     await expect(page.getByText('Retry')).toBeVisible()
     expect(calls).toBeGreaterThanOrEqual(1)
   })
