@@ -156,14 +156,14 @@ public class ToolPermissionService {
     }
 
     private Optional<String> writeRealmDenial(AuthPrincipal principal, String toolName, JsonNode arguments) {
+        if (principal.writeRealms() == null) {
+            return Optional.empty(); // write-unrestricted (only read-scoped)
+        }
         if (KG_GLOBAL_WRITES.contains(toolName)) {
             return Optional.empty();
         }
         if (WRITE_REALM_ARG_TOOLS.contains(toolName)) {
             List<String> writeRealms = principal.writeRealms();
-            if (writeRealms == null) {
-                return Optional.empty(); // write-unrestricted (only read-scoped)
-            }
             JsonNode realm = arguments.path("realm");
             if (realm.isMissingNode() || realm.asText("").isBlank()) {
                 // add_cell may omit realm iff exactly one write realm (caller then defaults it)

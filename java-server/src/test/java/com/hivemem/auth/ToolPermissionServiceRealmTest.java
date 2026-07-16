@@ -82,6 +82,45 @@ class ToolPermissionServiceRealmTest {
         assertThat(filtered.get("realms").get(0).get("value").asText()).isEqualTo("dracul-research");
     }
 
+    // ---- ONE-SIDED SCOPE (read-only-scoped and write-only-scoped) ----
+    private AuthPrincipal readOnlyScoped() {
+        return new AuthPrincipal("t", AuthRole.WRITER, null, List.of("dracul-research"), null);
+    }
+    private AuthPrincipal writeOnlyScoped() {
+        return new AuthPrincipal("t", AuthRole.WRITER, null, null, List.of("dracul-research"));
+    }
+
+    @Test void readOnlyScopedReclassifyNotDenied_writesUnrestricted() throws Exception {
+        assertThat(svc.realmDenial(readOnlyScoped(), "reclassify", args("{\"realm\":\"dracul-research\"}"))).isEmpty();
+    }
+    @Test void readOnlyScopedAddCellForeignRealmNotDenied_writesUnrestricted() throws Exception {
+        assertThat(svc.realmDenial(readOnlyScoped(), "add_cell", args("{\"realm\":\"personal\"}"))).isEmpty();
+    }
+    @Test void readOnlyScopedReviseCellNotDenied_writesUnrestricted() throws Exception {
+        assertThat(svc.realmDenial(readOnlyScoped(), "revise_cell", args("{}"))).isEmpty();
+    }
+    @Test void readOnlyScopedTraverseStillDenied_readsAreFiltered() throws Exception {
+        assertThat(svc.realmDenial(readOnlyScoped(), "traverse", args("{}"))).isPresent();
+    }
+    @Test void readOnlyScopedSearchResponseDropsForeignRows_readsAreFiltered() throws Exception {
+        JsonNode result = mapper.readTree(
+                "[{\"id\":\"1\",\"realm\":\"dracul-research\"},{\"id\":\"2\",\"realm\":\"personal\"}]");
+        JsonNode filtered = svc.filterReadResponse(readOnlyScoped(), "search", result);
+        assertThat(filtered).hasSize(1);
+        assertThat(filtered.get(0).get("realm").asText()).isEqualTo("dracul-research");
+    }
+
+    @Test void writeOnlyScopedAddCellForeignRealmDenied() throws Exception {
+        assertThat(svc.realmDenial(writeOnlyScoped(), "add_cell", args("{\"realm\":\"personal\"}"))).isPresent();
+    }
+    @Test void writeOnlyScopedTraverseNotDenied_readsAreUnrestricted() throws Exception {
+        assertThat(svc.realmDenial(writeOnlyScoped(), "traverse", args("{}"))).isEmpty();
+    }
+    @Test void writeOnlyScopedSearchResponseUnchanged_readsAreUnrestricted() throws Exception {
+        JsonNode result = mapper.readTree("[{\"id\":\"2\",\"realm\":\"personal\"}]");
+        assertThat(svc.filterReadResponse(writeOnlyScoped(), "search", result)).isEqualTo(result);
+    }
+
     // ---- BACKWARD COMPAT (NULL/NULL = no-op) ----
     @Test void unscopedNeverDenied() throws Exception {
         for (String t : List.of("add_cell","reclassify","traverse","data_quality_report","list")) {
