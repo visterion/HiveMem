@@ -53,10 +53,11 @@ public class QueenRepository {
                 FROM active_cells c
                 WHERE c.realm = 'inbox'
                   AND NOT ('archivist_skipped' = ANY(c.tags))
-                  AND (
-                        NOT (c.tags && ARRAY['ocr_pending','vision_pending','kroki_pending','needs_summary']::text[])
-                        OR 'ocr_failed_permanent' = ANY(c.tags)
-                      )
+                  -- settled: no non-OCR stage pending, AND OCR either not pending or terminally failed.
+                  -- The ocr_failed_permanent rescue is scoped ONLY to the ocr_pending clause -- it must NOT
+                  -- bypass a still-running vision/kroki/summary stage.
+                  AND NOT (c.tags && ARRAY['vision_pending','kroki_pending','needs_summary']::text[])
+                  AND (NOT ('ocr_pending' = ANY(c.tags)) OR 'ocr_failed_permanent' = ANY(c.tags))
                 ORDER BY c.created_at ASC
                 LIMIT ?
                 """, limit)) {

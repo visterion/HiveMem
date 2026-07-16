@@ -86,6 +86,7 @@ class QueenRepositoryInboxTest {
         insertCell("inbox", "needs_summary");                         // summary pending -> excluded
         insertCell("inbox", "ocr_pending");                           // OCR still running -> excluded
         insertCell("inbox", "vision_pending");                        // vision running -> excluded
+        insertCell("inbox", "ocr_failed_permanent", "vision_pending"); // OCR terminal BUT vision still running -> excluded (OR-scoping)
         insertCell("inbox", "archivist_skipped");                     // already declined -> excluded
         insertCell("work");                                           // wrong realm -> excluded
 
