@@ -2,6 +2,7 @@ package com.hivemem.attachment;
 
 import com.hivemem.extraction.ExtractionProfile;
 import com.hivemem.extraction.ExtractionProfileRegistry;
+import com.hivemem.queen.ArchivistTrigger;
 import com.hivemem.write.WriteToolService;
 import org.jooq.DSLContext;
 import org.junit.jupiter.api.BeforeEach;
@@ -64,7 +65,7 @@ class AttachmentEnrichmentServiceImageProfileIT {
         svc = new AttachmentEnrichmentService(
                 props, /*krokiClient*/ mock(KrokiClient.class), visionClient,
                 seaweed, attachmentRepo, writeService, dsl,
-                registry, budget);
+                registry, budget, mock(ArchivistTrigger.class));
     }
 
     @Test

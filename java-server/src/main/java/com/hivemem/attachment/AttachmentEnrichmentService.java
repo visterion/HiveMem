@@ -3,6 +3,7 @@ package com.hivemem.attachment;
 import com.hivemem.auth.AuthPrincipal;
 import com.hivemem.auth.AuthRole;
 import com.hivemem.extraction.ExtractionProfileRegistry;
+import com.hivemem.queen.ArchivistTrigger;
 import com.hivemem.write.WriteToolService;
 import org.jooq.DSLContext;
 import org.slf4j.Logger;
@@ -36,6 +37,7 @@ public class AttachmentEnrichmentService {
     private final DSLContext dsl;
     private final ExtractionProfileRegistry profileRegistry;
     private final VisionBudgetTracker visionBudget;
+    private final ArchivistTrigger archivistTrigger;
 
     public AttachmentEnrichmentService(AttachmentProperties props,
                                        KrokiClient krokiClient,
@@ -45,7 +47,8 @@ public class AttachmentEnrichmentService {
                                        WriteToolService writeService,
                                        DSLContext dsl,
                                        ExtractionProfileRegistry profileRegistry,
-                                       VisionBudgetTracker visionBudget) {
+                                       VisionBudgetTracker visionBudget,
+                                       ArchivistTrigger archivistTrigger) {
         this.props = props;
         this.krokiClient = krokiClient;
         this.visionClient = visionClient;
@@ -55,6 +58,7 @@ public class AttachmentEnrichmentService {
         this.dsl = dsl;
         this.profileRegistry = profileRegistry;
         this.visionBudget = visionBudget;
+        this.archivistTrigger = archivistTrigger;
     }
 
     // ── Event listeners (after-commit) ─────────────────────────────────────
@@ -115,6 +119,7 @@ public class AttachmentEnrichmentService {
                     seaweedFs.uploadBytes(key, png, "image/png");
                     attachmentRepo.updateThumbnailKey(attId, key);
                     removeTag(cellId, "kroki_pending");
+                    archivistTrigger.maybeTrigger(cellId);
                     log.debug("Kroki thumbnail stored for attachment {}", attId);
                 } catch (Exception e) {
                     log.warn("Failed to store Kroki thumbnail for {}: {}", attId, e.getMessage());
@@ -123,6 +128,7 @@ public class AttachmentEnrichmentService {
                 // Render returned empty (4xx / unsupported / blank): mark failed, stop retrying.
                 tagFailed(cellId, "kroki_failed");
                 removeTag(cellId, "kroki_pending");
+                archivistTrigger.maybeTrigger(cellId);
             });
         } catch (Exception e) {
             log.warn("Kroki render error for attachment {}: {}", attId, e.getMessage());
@@ -167,6 +173,7 @@ public class AttachmentEnrichmentService {
                 log.info("Vision returned empty content for cell {} — tagging vision_failed", cellId);
                 tagFailed(cellId, "vision_failed");
                 removeTag(cellId, "vision_pending");
+                archivistTrigger.maybeTrigger(cellId);
                 return;
             }
 
@@ -193,16 +200,19 @@ public class AttachmentEnrichmentService {
             if (!targetId.equals(cellId)) {
                 removeTag(targetId, "vision_pending");
             }
+            archivistTrigger.maybeTrigger(targetId);
             log.debug("Vision sub-type {} stored for cell {}", r.subType(), targetId);
         } catch (HttpClientErrorException.TooManyRequests e) {
             log.warn("Vision 429 for cell {} — will retry on backfill", cellId);
         } catch (VisionClient.OversizeImageException e) {
             tagFailed(cellId, "vision_failed");
             removeTag(cellId, "vision_pending");
+            archivistTrigger.maybeTrigger(cellId);
             log.info("Vision skipped (oversize) for cell {}", cellId);
         } catch (IllegalArgumentException e) {
             tagFailed(cellId, "vision_failed");
             removeTag(cellId, "vision_pending");
+            archivistTrigger.maybeTrigger(cellId);
             log.info("Vision skipped (unsupported mime) for cell {}: {}", cellId, e.getMessage());
         } catch (Exception e) {
             log.warn("Vision describe failed for cell {}: {}", cellId, e.getMessage());

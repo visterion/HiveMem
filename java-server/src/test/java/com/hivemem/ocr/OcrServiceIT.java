@@ -4,6 +4,7 @@ import com.hivemem.attachment.AttachmentProperties;
 import com.hivemem.attachment.SeaweedFsClient;
 import com.hivemem.embedding.EmbeddingClient;
 import com.hivemem.embedding.FixedEmbeddingClient;
+import com.hivemem.queen.ArchivistTrigger;
 import com.hivemem.search.CellSelectorRepository;
 import com.hivemem.summarize.NeedsSummaryDecider;
 import com.hivemem.sync.InstanceConfig;
@@ -162,7 +163,8 @@ class OcrServiceIT {
 
         OcrService service = new OcrService(
                 ocrProps, ocrRepo, seaweed, writeService,
-                /*visionClient*/ null, /*attachmentProps*/ null, /*dsl*/ null, /*dedup*/ null);
+                /*visionClient*/ null, /*attachmentProps*/ null, /*dsl*/ null, /*dedup*/ null,
+                mock(ArchivistTrigger.class));
 
         // 5. Run OCR
         service.processOne(cellId, s3Key);

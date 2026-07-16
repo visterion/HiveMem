@@ -7,6 +7,7 @@ import com.hivemem.attachment.VisionClient;
 import com.hivemem.auth.AuthPrincipal;
 import com.hivemem.auth.AuthRole;
 import com.hivemem.consumption.DocumentDedupService;
+import com.hivemem.queen.ArchivistTrigger;
 import com.hivemem.summarize.NeedsSummaryDecider;
 import com.hivemem.write.WriteToolService;
 import org.jooq.DSLContext;
@@ -42,6 +43,7 @@ public class OcrService {
     private final VisionClient visionClient;
     private final VisionBudgetTracker visionBudget;
     private final DocumentDedupService dedup; // may be null (tests / dedup unavailable)
+    private ArchivistTrigger archivistTrigger; // set via the @Autowired public constructor only
 
     @Autowired
     public OcrService(OcrProperties props,
@@ -51,7 +53,8 @@ public class OcrService {
                       VisionClient visionClient,
                       AttachmentProperties attachmentProps,
                       DSLContext dsl,
-                      DocumentDedupService dedup) {
+                      DocumentDedupService dedup,
+                      ArchivistTrigger archivistTrigger) {
         this(props, repo, seaweed, writeService, visionClient,
                 (dsl != null && attachmentProps != null)
                         ? new VisionBudgetTracker(dsl, attachmentProps.getVisionDailyBudgetUsd())
@@ -59,6 +62,7 @@ public class OcrService {
                 new TesseractRunner(props.getTesseractPath()),
                 new PdfPageRasterizer(),
                 dedup);
+        this.archivistTrigger = archivistTrigger;
     }
 
     OcrService(OcrProperties props,
@@ -79,6 +83,10 @@ public class OcrService {
         this.visionClient = visionClient;
         this.visionBudget = visionBudget;
         this.dedup = dedup;
+    }
+
+    private void notifyArchivist(UUID cellId) {
+        if (archivistTrigger != null) archivistTrigger.maybeTrigger(cellId);
     }
 
     @Async
@@ -198,8 +206,10 @@ public class OcrService {
             // Remove tag from the original cell AND from the new revision (which inherits tags).
             repo.removeOcrPendingTag(cellId);
             Object newIdObj = reviseResult.get("new_id");
+            UUID liveId = cellId;
             if (newIdObj != null) {
                 UUID newId = UUID.fromString(newIdObj.toString());
+                liveId = newId;
                 repo.removeOcrPendingTag(newId);
                 // Content-based dedup. Long docs have no embedding yet here (it is produced later by
                 // the summarizer, which runs its own dedup pass); only short docs (≤ threshold) are
@@ -208,9 +218,11 @@ public class OcrService {
                     dedup.findAndDiscardDuplicate(newId);
                 }
             }
+            notifyArchivist(liveId);
         } catch (Exception e) {
             log.error("OCR failed for cell {}: {}", cellId, e.getMessage(), e);
             repo.tagFailed(cellId);
+            notifyArchivist(cellId);
         }
     }
 

@@ -2,6 +2,7 @@ package com.hivemem.attachment;
 
 import com.hivemem.extraction.ExtractionProfile;
 import com.hivemem.extraction.ExtractionProfileRegistry;
+import com.hivemem.queen.ArchivistTrigger;
 import com.hivemem.write.WriteToolService;
 import org.jooq.DSLContext;
 import org.junit.jupiter.api.BeforeEach;
@@ -48,6 +49,7 @@ class AttachmentEnrichmentServiceUnitTest {
     private DSLContext dsl;
     private ExtractionProfileRegistry profileRegistry;
     private VisionBudgetTracker visionBudget;
+    private ArchivistTrigger archivistTrigger;
     private AttachmentEnrichmentService svc;
 
     @BeforeEach
@@ -61,9 +63,10 @@ class AttachmentEnrichmentServiceUnitTest {
         dsl = mock(DSLContext.class);
         profileRegistry = mock(ExtractionProfileRegistry.class);
         visionBudget = mock(VisionBudgetTracker.class);
+        archivistTrigger = mock(ArchivistTrigger.class);
         lenient().when(attachmentRepo.tryClaim(any())).thenReturn(true); // open the concurrency-claim gate
         svc = new AttachmentEnrichmentService(props, krokiClient, visionClient, seaweedFs,
-                attachmentRepo, writeService, dsl, profileRegistry, visionBudget);
+                attachmentRepo, writeService, dsl, profileRegistry, visionBudget, archivistTrigger);
     }
 
     // ── onThumbnailRequested ───────────────────────────────────────────────

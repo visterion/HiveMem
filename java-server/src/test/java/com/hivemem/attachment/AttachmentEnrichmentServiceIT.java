@@ -2,6 +2,7 @@ package com.hivemem.attachment;
 
 import com.hivemem.embedding.FixedEmbeddingClient;
 import com.hivemem.extraction.ExtractionProfileRegistry;
+import com.hivemem.queen.ArchivistTrigger;
 import com.hivemem.sync.InstanceConfig;
 import com.hivemem.sync.OpLogWriter;
 import com.hivemem.sync.PeerClient;
@@ -112,7 +113,8 @@ class AttachmentEnrichmentServiceIT {
         AttachmentEnrichmentService svc = new AttachmentEnrichmentService(
                 props, kroki, vision, seaweed, repo, writeService, dsl,
                 new ExtractionProfileRegistry(),
-                new VisionBudgetTracker(dsl, props.getVisionDailyBudgetUsd()));
+                new VisionBudgetTracker(dsl, props.getVisionDailyBudgetUsd()),
+                mock(ArchivistTrigger.class));
 
         svc.renderAndStore(attId, cellId, fileHash, "text/x-mermaid", "graph TD; A-->B");
 
@@ -172,7 +174,8 @@ class AttachmentEnrichmentServiceIT {
         AttachmentEnrichmentService svc = new AttachmentEnrichmentService(
                 props, kroki, vision, seaweed, repo, writeService, dsl,
                 new ExtractionProfileRegistry(),
-                new VisionBudgetTracker(dsl, props.getVisionDailyBudgetUsd()));
+                new VisionBudgetTracker(dsl, props.getVisionDailyBudgetUsd()),
+                mock(ArchivistTrigger.class));
 
         svc.describeAndRevise(attId, cellId, fileHash + ".png", "image/png");
 
