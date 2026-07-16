@@ -630,7 +630,8 @@ public class WriteToolService {
             UUID cellId,
             String realm,
             String topic,
-            String signal
+            String signal,
+            String reason
     ) {
         if (realm == null && topic == null && signal == null) {
             throw new IllegalArgumentException("at least one of realm/topic/signal required");
@@ -650,9 +651,13 @@ public class WriteToolService {
 
         Map<String, Object> opPayload = new java.util.LinkedHashMap<>();
         opPayload.put("cell_id", cellId.toString());
+        opPayload.put("old_realm", result.get("old_realm"));
+        opPayload.put("old_topic", result.get("old_topic"));
+        opPayload.put("old_signal", result.get("old_signal"));
         opPayload.put("new_realm", normalizedRealm);
         opPayload.put("new_topic", normalizedTopic);
         opPayload.put("new_signal", signal);
+        opPayload.put("reason", reason);
         opPayload.put("agent_id", principal.name());
         UUID opId = opLogWriter.append("reclassify_cell", opPayload);
         pushDispatcher.dispatch(opId);
@@ -722,7 +727,7 @@ public class WriteToolService {
     public Map<String, Object> bulkReclassify(AuthPrincipal principal, List<UUID> cellIds, String realm, String signal, String topic) {
         int updated = 0;
         for (UUID id : cellIds) {
-            reclassifyCell(principal, id, realm, topic, signal);
+            reclassifyCell(principal, id, realm, topic, signal, null);
             updated++;
         }
         return Map.of("updated", updated, "matched", cellIds.size());

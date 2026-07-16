@@ -126,7 +126,7 @@ class WriteHandlerOpLogIntegrationTest {
         UUID cellId = UUID.fromString((String) created.get("id"));
 
         long before = opCount("reclassify_cell");
-        service.reclassifyCell(admin(), cellId, "personal", "newtopic", "events");
+        service.reclassifyCell(admin(), cellId, "personal", "newtopic", "events", null);
 
         assertThat(opCount("reclassify_cell")).isEqualTo(before + 1);
         String payload = latestPayload("reclassify_cell");

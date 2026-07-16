@@ -518,7 +518,7 @@ public class WriteToolRepository {
         return dslContext.transactionResult(configuration -> {
             DSLContext tx = DSL.using(configuration);
             Record existing = tx.fetchOne("""
-                    SELECT valid_until, status
+                    SELECT valid_until, status, realm, topic, signal
                     FROM cells
                     WHERE id = ?
                     FOR UPDATE
@@ -535,6 +535,9 @@ public class WriteToolRepository {
             if ("rejected".equals(currentStatus)) {
                 throw new IllegalArgumentException("cannot reclassify rejected cell");
             }
+            String oldRealm = existing.get("realm", String.class);
+            String oldTopic = existing.get("topic", String.class);
+            String oldSignal = existing.get("signal", String.class);
 
             Record updated = tx.fetchOne("""
                     UPDATE cells
@@ -554,6 +557,9 @@ public class WriteToolRepository {
             result.put("realm", updated.get("realm", String.class));
             result.put("topic", updated.get("topic", String.class));
             result.put("signal", updated.get("signal", String.class));
+            result.put("old_realm", oldRealm);
+            result.put("old_topic", oldTopic);
+            result.put("old_signal", oldSignal);
             return result;
         });
     }
