@@ -23,6 +23,25 @@ public class SessionAuthFilter extends OncePerRequestFilter {
 
     private final TokenService tokenService;
 
+    /**
+     * Public PWA shell assets. The browser fetches the manifest (via
+     * {@code <link rel="manifest">}) and the periodic service-worker script update
+     * without credentials, so these must bypass the session gate — otherwise the
+     * sessionless request is 302'd to /login and the install/SW breaks. Exact match
+     * only (getRequestURI() is unnormalized; never prefix-match a filename list).
+     * These are non-sensitive static bytes (the app shell is public OSS anyway);
+     * user data stays behind /api and /mcp. Names mirror the @vite-pwa/assets-generator
+     * "minimal-2023" preset output — reconcile with the real dist/ output in Task 2.
+     */
+    private static final java.util.Set<String> PWA_PUBLIC_ASSETS = java.util.Set.of(
+            "/manifest.webmanifest",
+            "/sw.js",
+            "/pwa-64x64.png",
+            "/pwa-192x192.png",
+            "/pwa-512x512.png",
+            "/maskable-icon-512x512.png",
+            "/apple-touch-icon-180x180.png");
+
     public SessionAuthFilter(TokenService tokenService) {
         this.tokenService = tokenService;
     }
@@ -35,6 +54,7 @@ public class SessionAuthFilter extends OncePerRequestFilter {
         // endpoint handles its own login redirect when the user is unauthenticated.
         if (path.startsWith("/.well-known/oauth-")) return true;
         if (path.startsWith("/oauth/")) return true;
+        if (PWA_PUBLIC_ASSETS.contains(path)) return true;
         return false;
     }
 
