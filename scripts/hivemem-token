@@ -23,6 +23,7 @@ usage() {
     cat >&2 <<'EOF'
 Usage:
   hivemem-token create <name> --role <admin|writer|reader|agent> [--expires <Nd>]
+                              [--read-realms a,b] [--write-realms a]
   hivemem-token list
   hivemem-token revoke <name>
   hivemem-token info <name>
@@ -37,14 +38,29 @@ valid_role() {
     esac
 }
 
+# "a,b" -> '{a,b}'::text[] (lowercased, spaces->dashes); "" -> NULL
+to_pg_array() {
+    if [ -z "$1" ]; then
+        echo "NULL"
+        return
+    fi
+    local norm
+    norm=$(echo "$1" | tr 'A-Z' 'a-z' | tr ' ' '-')
+    echo "'{${norm}}'::text[]"
+}
+
 cmd_create() {
     local name="${1:-}"; shift || true
     local role=""
     local expires=""
+    local read_realms=""
+    local write_realms=""
     while [ "$#" -gt 0 ]; do
         case "$1" in
             --role) role="${2:-}"; shift 2 ;;
             --expires) expires="${2:-}"; shift 2 ;;
+            --read-realms) read_realms="${2:-}"; shift 2 ;;
+            --write-realms) write_realms="${2:-}"; shift 2 ;;
             *) usage ;;
         esac
     done
@@ -67,9 +83,13 @@ cmd_create() {
         expires_expr="now() + interval '${days} days'"
     fi
 
-    "${PSQL[@]}" -v "tok_hash=${token_hash}" -v "tok_name=${name}" -v "tok_role=${role}" <<'SQL' >/dev/null
-INSERT INTO api_tokens (token_hash, name, role, expires_at)
-VALUES (:'tok_hash', :'tok_name', :'tok_role', NULL);
+    local read_realms_expr write_realms_expr
+    read_realms_expr=$(to_pg_array "$read_realms")
+    write_realms_expr=$(to_pg_array "$write_realms")
+
+    "${PSQL[@]}" -v "tok_hash=${token_hash}" -v "tok_name=${name}" -v "tok_role=${role}" <<SQL >/dev/null
+INSERT INTO api_tokens (token_hash, name, role, expires_at, read_realms, write_realms)
+VALUES (:'tok_hash', :'tok_name', :'tok_role', NULL, ${read_realms_expr}, ${write_realms_expr});
 SQL
     if [ "$expires_expr" != "NULL" ]; then
         "${PSQL[@]}" -v "tok_name=${name}" <<SQL >/dev/null
@@ -81,6 +101,8 @@ SQL
 
 ============================================================
   Token created: ${name} (role: ${role})
+  Read realms:  ${read_realms:-<unrestricted>}
+  Write realms: ${write_realms:-<unrestricted>}
   API token: ${plaintext}
   Save this now -- it cannot be retrieved later.
 ============================================================
@@ -89,12 +111,14 @@ EOF
 
 cmd_list() {
     "${PSQL[@]}" -F $'\t' <<'SQL' | awk -F'\t' '
-BEGIN { printf "%-20s %-10s %-10s %-20s %-20s\n", "Name", "Role", "Status", "Created", "Expires";
-        printf "%s\n", "--------------------------------------------------------------------------------" }
+BEGIN { printf "%-20s %-10s %-10s %-20s %-20s %-20s %-20s\n", "Name", "Role", "Status", "Created", "Expires", "ReadRealms", "WriteRealms";
+        printf "%s\n", "------------------------------------------------------------------------------------------------------------------------" }
 {
-    name=$1; role=$2; status=$3; created=substr($4,1,10); expires=$5;
+    name=$1; role=$2; status=$3; created=substr($4,1,10); expires=$5; read_realms=$6; write_realms=$7;
     if (expires == "" || expires == "\\N") expires="never"; else expires=substr(expires,1,10);
-    printf "%-20s %-10s %-10s %-20s %-20s\n", name, role, status, created, expires
+    if (read_realms == "" || read_realms == "\\N") read_realms="*";
+    if (write_realms == "" || write_realms == "\\N") write_realms="*";
+    printf "%-20s %-10s %-10s %-20s %-20s %-20s %-20s\n", name, role, status, created, expires, read_realms, write_realms
 }'
 SELECT
     name,
@@ -105,7 +129,9 @@ SELECT
         ELSE 'active'
     END AS status,
     created_at::text,
-    coalesce(expires_at::text, '')
+    coalesce(expires_at::text, ''),
+    coalesce(array_to_string(read_realms, ','), ''),
+    coalesce(array_to_string(write_realms, ','), '')
 FROM api_tokens
 ORDER BY created_at;
 SQL
@@ -137,7 +163,9 @@ SELECT name,
        role,
        created_at::text,
        coalesce(expires_at::text, ''),
-       coalesce(revoked_at::text, '')
+       coalesce(revoked_at::text, ''),
+       coalesce(array_to_string(read_realms, ','), ''),
+       coalesce(array_to_string(write_realms, ','), '')
 FROM api_tokens
 WHERE name = :'tok_name';
 SQL
@@ -148,11 +176,13 @@ SQL
     fi
     local IFS=$'\t'
     # shellcheck disable=SC2162
-    read -r n r c e rv <<<"$row"
+    read -r n r c e rv rr wr <<<"$row"
     [ -z "$e" ] && e="never"
     [ -z "$rv" ] && rv="no"
-    printf "Name:       %s\nRole:       %s\nCreated:    %s\nExpires:    %s\nRevoked:    %s\n" \
-        "$n" "$r" "$c" "$e" "$rv"
+    [ -z "$rr" ] && rr="<unrestricted>"
+    [ -z "$wr" ] && wr="<unrestricted>"
+    printf "Name:         %s\nRole:         %s\nCreated:      %s\nExpires:      %s\nRevoked:      %s\nRead realms:  %s\nWrite realms: %s\n" \
+        "$n" "$r" "$c" "$e" "$rv" "$rr" "$wr"
 }
 
 main() {
