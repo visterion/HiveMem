@@ -78,7 +78,8 @@ public class ToolPermissionService {
             "approve_pending",
             "health",
             "queen_runs",
-            "queen_run_detail"
+            "queen_run_detail",
+            "archivist_log"
     );
 
     private static final Set<String> WRITER_TOOLS = union(READ_TOOLS, WRITE_TOOLS);
