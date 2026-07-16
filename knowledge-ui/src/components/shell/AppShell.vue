@@ -8,6 +8,7 @@ import TopBar from './TopBar.vue'
 import TweaksPanel from './TweaksPanel.vue'
 import Reader from '../Reader.vue'
 import PwaReloadPrompt from './PwaReloadPrompt.vue'
+import UploadFab from './UploadFab.vue'
 
 const route = useRoute()
 const ui = useUiStore()
@@ -42,6 +43,7 @@ watch(isMobile, m => { if (!m) ui.setDrawer(false) })
     <TweaksPanel />
     <Reader />
     <PwaReloadPrompt />
+    <UploadFab />
   </div>
 </template>
 
