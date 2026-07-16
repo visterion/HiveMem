@@ -15,6 +15,7 @@ export default {
   nav: {
     search: 'Suche', hive: 'Hive', graph: 'Graph', realms: 'Realms', photos: 'Fotos',
     scans: 'Scans', timemachine: 'Time Machine', queen: 'Queen', settings: 'Einstellungen', cinema: 'Cinema',
+    upload: 'Hochladen',
   },
   tweaks: {
     appearance: 'Erscheinung', layout: 'Layout', theme: 'Modus', language: 'Sprache',
@@ -222,4 +223,14 @@ export default {
     cellsAsOf: '{n} Zellen per {date}',
     empty: 'Noch keine Zellen',
   },
+  upload: {
+    title: 'Hochladen', add: 'Hinzufügen', takePhoto: 'Foto aufnehmen', chooseFile: 'Datei wählen',
+    viewAll: 'Alle Uploads', dropHint: 'Dateien hierher ziehen oder Buttons nutzen',
+    keepOpen: 'App offen lassen, bis die Uploads fertig sind.',
+    inbox: 'Uploads landen in deiner Inbox und werden später automatisch einsortiert.',
+    retry: 'Erneut', clearDone: 'Fertige entfernen', openCell: 'Cell öffnen',
+    deduped: 'War bereits vorhanden (dedupliziert)', reLogin: 'Anmelden & erneut',
+    tooLarge: 'Datei zu groß', empty: 'Noch keine Uploads.',
+  },
+  pwa: { updateReady: 'Eine neue Version ist verfügbar.', reload: 'Neu laden' },
 }

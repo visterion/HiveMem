@@ -24,6 +24,7 @@ const PATHS: Record<string, string> = {
   check: '<path d="M5 12l4.5 4.5L19 7"/>',
   lock: '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
   cloud: '<path d="M7 18a4 4 0 0 1 0-8 5 5 0 0 1 9.6-1.5A3.5 3.5 0 0 1 17 18Z"/>',
+  upload: '<path d="M12 15V4M8 8l4-4 4 4"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/>',
 }
 const inner = computed(() => PATHS[props.name] ?? '')
 </script>

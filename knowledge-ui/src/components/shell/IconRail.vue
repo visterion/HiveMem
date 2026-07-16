@@ -21,6 +21,7 @@ const primary: NavItem[] = [
   { name: 'realms', icon: 'realms' },
   { name: 'photos', icon: 'photos' },
   { name: 'scans', icon: 'scans' },
+  { name: 'upload', icon: 'upload' },
   { name: 'timemachine', icon: 'history' },
 ]
 const bottom: NavItem[] = [

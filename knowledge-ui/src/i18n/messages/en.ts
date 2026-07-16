@@ -15,6 +15,7 @@ export default {
   nav: {
     search: 'Search', hive: 'Hive', graph: 'Graph', realms: 'Realms', photos: 'Photos',
     scans: 'Scans', timemachine: 'Time Machine', queen: 'Queen', settings: 'Settings', cinema: 'Cinema',
+    upload: 'Upload',
   },
   tweaks: {
     appearance: 'Appearance', layout: 'Layout', theme: 'Theme', language: 'Language',
@@ -222,4 +223,14 @@ export default {
     cellsAsOf: '{n} cells as of {date}',
     empty: 'No cells yet',
   },
+  upload: {
+    title: 'Upload', add: 'Add', takePhoto: 'Take photo', chooseFile: 'Choose file',
+    viewAll: 'All uploads', dropHint: 'Drop files here or use the buttons',
+    keepOpen: 'Keep the app open until uploads finish.',
+    inbox: 'Uploads land in your inbox and are auto-classified later.',
+    retry: 'Retry', clearDone: 'Clear finished', openCell: 'Open cell',
+    deduped: 'Already existed (deduplicated)', reLogin: 'Sign in & retry',
+    tooLarge: 'File too large', empty: 'No uploads yet.',
+  },
+  pwa: { updateReady: 'A new version is available.', reload: 'Reload' },
 }
