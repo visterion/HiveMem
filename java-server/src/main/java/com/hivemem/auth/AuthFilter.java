@@ -156,7 +156,10 @@ public class AuthFilter extends OncePerRequestFilter {
         // Realm-scoped tokens are confined to /mcp: /sync (op replay) and /hooks (all-realm
         // search) have no per-realm enforcement, so a scoped token there would be silently
         // unrestricted. Fail closed rather than leak. /admin is already admin-only.
-        if (resolved.isRealmScoped() && !request.getRequestURI().startsWith("/mcp")) {
+        // Use the same context-path-stripped path that shouldNotFilter derives, so the route
+        // guard can't be side-stepped by a raw getRequestURI() that differs from the routed path.
+        String requestPath = request.getRequestURI().substring(request.getContextPath().length());
+        if (resolved.isRealmScoped() && !requestPath.startsWith("/mcp")) {
             response.sendError(403);
             return;
         }

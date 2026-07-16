@@ -100,11 +100,28 @@ public class DbTokenService implements TokenService {
         return plaintext;
     }
 
-    /** null-safe; lowercases + collapses whitespace to dashes; returns a String[] for the ?::text[] bind, or null. */
+    /** Realm allowlist mirrored from the {@code hivemem-token} CLI: post-normalization each realm
+     *  may contain only lowercase letters, digits, and dashes. */
+    private static final java.util.regex.Pattern REALM_PATTERN =
+            java.util.regex.Pattern.compile("^[a-z0-9-]+$");
+
+    /**
+     * null-safe; lowercases + collapses whitespace to dashes; returns a String[] for the ?::text[]
+     * bind, or null. After normalization each element is validated against {@link #REALM_PATTERN}
+     * (same allowlist the CLI applies) so API- and CLI-created tokens are consistent and odd/empty
+     * realm strings are rejected up front.
+     */
     static String[] normalizeRealms(List<String> realms) {
         if (realms == null) return null;
         return realms.stream()
-                .map(r -> r.trim().toLowerCase(Locale.ROOT).replaceAll("\\s+", "-"))
+                .map(r -> {
+                    String norm = r.trim().toLowerCase(Locale.ROOT).replaceAll("\\s+", "-");
+                    if (!REALM_PATTERN.matcher(norm).matches()) {
+                        throw new IllegalArgumentException("invalid realm '" + norm
+                                + "' — realms may contain only lowercase letters, digits, and dashes");
+                    }
+                    return norm;
+                })
                 .toArray(String[]::new);
     }
 

@@ -180,4 +180,21 @@ class DbTokenServiceTest {
         AuthPrincipal p = dbTokenService.validateToken(plaintext).orElseThrow();
         assertThat(p.writeRealms()).containsExactly("dracul-research");
     }
+
+    @Test
+    void createTokenRejectsRealmWithIllegalCharacters() {
+        // Minor #1: server-side allowlist mirrors the CLI (^[a-z0-9-]+$ after normalization).
+        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
+                        dbTokenService.createToken("bad-realm", AuthRole.WRITER, null,
+                                List.of("dracul/research"), null))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void createTokenRejectsBlankRealm() {
+        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
+                        dbTokenService.createToken("blank-realm", AuthRole.WRITER, null,
+                                null, List.of("   ")))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
 }
