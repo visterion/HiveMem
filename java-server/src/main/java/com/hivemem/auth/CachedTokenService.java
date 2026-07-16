@@ -36,8 +36,9 @@ public class CachedTokenService implements TokenService {
     }
 
     @Override
-    public String createToken(String name, AuthRole role, Integer expiresInDays) {
-        return delegate.createToken(name, role, expiresInDays);
+    public String createToken(String name, AuthRole role, Integer expiresInDays,
+                              List<String> readRealms, List<String> writeRealms) {
+        return delegate.createToken(name, role, expiresInDays, readRealms, writeRealms);
     }
 
     @Override

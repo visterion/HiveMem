@@ -52,7 +52,7 @@ public class AdminController {
             return ResponseEntity.badRequest().body(Map.of("error", "invalid role"));
         }
         try {
-            String token = tokenService.createToken(body.name(), role, body.expiresInDays());
+            String token = tokenService.createToken(body.name(), role, body.expiresInDays(), null, null);
             return ResponseEntity.ok(Map.of("name", body.name(), "role", role.wireValue(), "token", token));
         } catch (IllegalStateException e) {
             return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", e.getMessage()));

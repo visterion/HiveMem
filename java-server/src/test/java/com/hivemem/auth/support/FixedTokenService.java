@@ -34,7 +34,8 @@ public class FixedTokenService implements TokenService {
     }
 
     @Override
-    public String createToken(String name, AuthRole role, Integer expiresInDays) {
+    public String createToken(String name, AuthRole role, Integer expiresInDays,
+                              List<String> readRealms, List<String> writeRealms) {
         throw new UnsupportedOperationException("FixedTokenService is validate-only");
     }
 

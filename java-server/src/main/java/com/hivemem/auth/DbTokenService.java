@@ -34,7 +34,7 @@ public class DbTokenService implements TokenService {
     public Optional<AuthPrincipal> validateToken(String token) {
         String tokenHash = sha256(token);
         Record row = dslContext.fetchOne("""
-                SELECT id, name, role
+                SELECT id, name, role, read_realms, write_realms
                 FROM api_tokens
                 WHERE token_hash = ?
                   AND revoked_at IS NULL
@@ -43,17 +43,13 @@ public class DbTokenService implements TokenService {
         if (row == null) {
             return Optional.empty();
         }
-        return Optional.of(new AuthPrincipal(
-                row.get("name", String.class),
-                AuthRole.valueOf(row.get("role", String.class).toUpperCase(Locale.ROOT)),
-                row.get("id", UUID.class)
-        ));
+        return Optional.of(principalOf(row));
     }
 
     @Override
     public Optional<AuthPrincipal> findById(UUID tokenId) {
         Record row = dslContext.fetchOne("""
-                SELECT id, name, role
+                SELECT id, name, role, read_realms, write_realms
                 FROM api_tokens
                 WHERE id = ?
                   AND revoked_at IS NULL
@@ -62,15 +58,25 @@ public class DbTokenService implements TokenService {
         if (row == null) {
             return Optional.empty();
         }
-        return Optional.of(new AuthPrincipal(
+        return Optional.of(principalOf(row));
+    }
+
+    private static List<String> toRealmList(String[] arr) {
+        return arr == null ? null : List.of(arr);
+    }
+
+    private static AuthPrincipal principalOf(Record row) {
+        return new AuthPrincipal(
                 row.get("name", String.class),
                 AuthRole.valueOf(row.get("role", String.class).toUpperCase(Locale.ROOT)),
-                row.get("id", UUID.class)
-        ));
+                row.get("id", UUID.class),
+                toRealmList(row.get("read_realms", String[].class)),
+                toRealmList(row.get("write_realms", String[].class)));
     }
 
     @Override
-    public String createToken(String name, AuthRole role, Integer expiresInDays) {
+    public String createToken(String name, AuthRole role, Integer expiresInDays,
+                              List<String> readRealms, List<String> writeRealms) {
         String plaintext = generatePlaintext();
         String tokenHash = sha256(plaintext);
         OffsetDateTime expiresAt = expiresInDays == null
@@ -79,17 +85,27 @@ public class DbTokenService implements TokenService {
 
         try {
             dslContext.execute("""
-                    INSERT INTO api_tokens (token_hash, name, role, expires_at)
-                    VALUES (?, ?, ?, ?::timestamptz)
+                    INSERT INTO api_tokens (token_hash, name, role, expires_at, read_realms, write_realms)
+                    VALUES (?, ?, ?, ?::timestamptz, ?::text[], ?::text[])
                     """,
                     tokenHash,
                     name,
                     role.name().toLowerCase(Locale.ROOT),
-                    expiresAt);
+                    expiresAt,
+                    normalizeRealms(readRealms),
+                    normalizeRealms(writeRealms));
         } catch (DataIntegrityViolationException e) {
             throw new IllegalStateException("Token '" + name + "' already exists", e);
         }
         return plaintext;
+    }
+
+    /** null-safe; lowercases + collapses whitespace to dashes; returns a String[] for the ?::text[] bind, or null. */
+    static String[] normalizeRealms(List<String> realms) {
+        if (realms == null) return null;
+        return realms.stream()
+                .map(r -> r.trim().toLowerCase(Locale.ROOT).replaceAll("\\s+", "-"))
+                .toArray(String[]::new);
     }
 
     @Override

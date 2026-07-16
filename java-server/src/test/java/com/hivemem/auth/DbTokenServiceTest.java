@@ -25,6 +25,8 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.OffsetDateTime;
 import java.util.HexFormat;
+import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
@@ -141,5 +143,41 @@ class DbTokenServiceTest {
     private static String sha256(String value) throws Exception {
         MessageDigest digest = MessageDigest.getInstance("SHA-256");
         return HexFormat.of().formatHex(digest.digest(value.getBytes(StandardCharsets.UTF_8)));
+    }
+
+    // ── realm-scoped token round-trip (V0050) ─────────────────────────────
+
+    @Test
+    void scopedTokenRoundTripsRealmSetsThroughValidateAndFindById() {
+        String plaintext = dbTokenService.createToken(
+                "dracul-research-agent", AuthRole.WRITER, null,
+                List.of("dracul-research", "dracul"),   // read_realms
+                List.of("dracul-research"));             // write_realms
+
+        Optional<AuthPrincipal> byToken = dbTokenService.validateToken(plaintext);
+        assertThat(byToken).isPresent();
+        assertThat(byToken.get().readRealms()).containsExactly("dracul-research", "dracul");
+        assertThat(byToken.get().writeRealms()).containsExactly("dracul-research");
+
+        Optional<AuthPrincipal> byId = dbTokenService.findById(byToken.get().tokenId());
+        assertThat(byId).isPresent();
+        assertThat(byId.get().readRealms()).containsExactly("dracul-research", "dracul");
+        assertThat(byId.get().writeRealms()).containsExactly("dracul-research");
+    }
+
+    @Test
+    void unscopedTokenHasNullRealmSets_backwardCompat() {
+        String plaintext = dbTokenService.createToken("legacy-writer", AuthRole.WRITER, null, null, null);
+        AuthPrincipal p = dbTokenService.validateToken(plaintext).orElseThrow();
+        assertThat(p.readRealms()).isNull();
+        assertThat(p.writeRealms()).isNull();
+    }
+
+    @Test
+    void createTokenNormalizesRealmsToLowercaseDashes() {
+        String plaintext = dbTokenService.createToken("norm", AuthRole.WRITER, null,
+                List.of("Dracul Research"), List.of("Dracul Research"));
+        AuthPrincipal p = dbTokenService.validateToken(plaintext).orElseThrow();
+        assertThat(p.writeRealms()).containsExactly("dracul-research");
     }
 }

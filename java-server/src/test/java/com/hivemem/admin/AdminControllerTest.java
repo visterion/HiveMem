@@ -21,6 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -74,7 +75,7 @@ class AdminControllerTest {
 
     @Test
     void createToken_happyPathWithRole() {
-        when(tokenService.createToken(eq("svc1"), eq(AuthRole.WRITER), eq(30))).thenReturn("tok-abc");
+        when(tokenService.createToken(eq("svc1"), eq(AuthRole.WRITER), eq(30), isNull(), isNull())).thenReturn("tok-abc");
 
         var resp = controller.createToken(
                 new AdminController.CreateTokenRequest("svc1", "writer", 30), adminRequest());
@@ -87,7 +88,7 @@ class AdminControllerTest {
 
     @Test
     void createToken_defaultsToWriterWhenRoleMissing() {
-        when(tokenService.createToken(any(), eq(AuthRole.WRITER), any())).thenReturn("tok");
+        when(tokenService.createToken(any(), eq(AuthRole.WRITER), any(), any(), any())).thenReturn("tok");
 
         var resp = controller.createToken(
                 new AdminController.CreateTokenRequest("svc", null, null), adminRequest());
@@ -106,7 +107,7 @@ class AdminControllerTest {
 
     @Test
     void createToken_duplicateNameReturns409() {
-        when(tokenService.createToken(any(), any(), any()))
+        when(tokenService.createToken(any(), any(), any(), any(), any()))
                 .thenThrow(new IllegalStateException("name taken"));
 
         var resp = controller.createToken(
