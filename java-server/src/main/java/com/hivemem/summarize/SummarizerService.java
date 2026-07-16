@@ -8,6 +8,7 @@ import com.hivemem.extraction.ExtractionProfileRegistry;
 import com.hivemem.extraction.ExtractionProperties;
 import com.hivemem.extraction.FactSpec;
 import com.hivemem.extraction.PreClassifier;
+import com.hivemem.queen.ArchivistTrigger;
 import com.hivemem.write.WriteToolService;
 import org.jooq.DSLContext;
 import org.slf4j.Logger;
@@ -55,6 +56,7 @@ public class SummarizerService {
     private final WriteToolService writeService;
     private final ExtractionProfileRegistry profileRegistry;
     private final DocumentDedupService dedup; // may be null (tests)
+    ArchivistTrigger archivistTrigger; // set via the @Autowired public ctor; package-private for tests
 
     @Autowired
     public SummarizerService(SummarizerProperties props,
@@ -64,11 +66,13 @@ public class SummarizerService {
                              RestClient.Builder builder,
                              WriteToolService writeService,
                              ExtractionProfileRegistry profileRegistry,
-                             DocumentDedupService dedup) {
+                             DocumentDedupService dedup,
+                             ArchivistTrigger archivistTrigger) {
         this(props, extractionProps, repo,
                 new SummarizeBudgetTracker(dsl, props.getDailyBudgetUsd()),
                 new AnthropicSummarizer(builder, props),
                 writeService, profileRegistry, dedup);
+        this.archivistTrigger = archivistTrigger;
     }
 
     /** Test seam: inject pre-built {@link SummarizeBudgetTracker}/{@link AnthropicSummarizer}
@@ -89,6 +93,10 @@ public class SummarizerService {
         this.writeService = writeService;
         this.profileRegistry = profileRegistry;
         this.dedup = dedup;
+    }
+
+    private void notifyArchivist(UUID cellId) {
+        if (archivistTrigger != null) archivistTrigger.maybeTrigger(cellId);
     }
 
     @Async
@@ -129,10 +137,12 @@ public class SummarizerService {
         if (snap == null) return;
         if (snap.summary() != null && !snap.summary().isBlank()) {
             repo.removeNeedsSummaryTag(cellId);
+            notifyArchivist(cellId);
             return;
         }
         if (snap.content() == null || snap.content().isBlank()) {
             repo.removeNeedsSummaryTag(cellId);
+            notifyArchivist(cellId);
             return;
         }
 
@@ -154,6 +164,7 @@ public class SummarizerService {
                 // revision and reschedule the cell forever. Give up on this cell instead.
                 log.warn("Summarizer produced no summary for cell {}; giving up", cellId);
                 repo.removeNeedsSummaryTag(cellId);
+                notifyArchivist(cellId);
                 return;
             }
 
@@ -193,6 +204,7 @@ public class SummarizerService {
 
             repo.removeNeedsSummaryTag(cellId);
             if (newId != null) repo.removeNeedsSummaryTag(newId);
+            notifyArchivist(targetId);
 
             // The cell now has its embedding (encodeForCell used the fresh summary). This is the
             // first point a long scanned doc can be deduped; the service no-ops for non-consumption

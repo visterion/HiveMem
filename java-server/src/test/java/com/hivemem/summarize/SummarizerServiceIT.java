@@ -251,7 +251,7 @@ class SummarizerServiceIT {
 
         return new SummarizerService(
                 props, extractionProps, repo, dsl, RestClient.builder(), writeService,
-                new ExtractionProfileRegistry(), null);
+                new ExtractionProfileRegistry(), null, null);
     }
 
     private Connection conn() throws Exception {
