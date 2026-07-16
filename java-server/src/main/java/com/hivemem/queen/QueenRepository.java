@@ -5,7 +5,9 @@ import org.jooq.Record;
 import org.springframework.stereotype.Repository;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -64,6 +66,45 @@ public class QueenRepository {
             ids.add(row.get("id", UUID.class));
         }
         return ids;
+    }
+
+    /** Existing taxonomy (realm→topic with counts), excluding the inbox staging realm. */
+    public List<Map<String, Object>> listTaxonomy() {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Record row : db.fetch("""
+                SELECT realm, topic, SUM(cell_count) AS cell_count
+                FROM realm_stats
+                WHERE realm <> 'inbox'
+                GROUP BY realm, topic
+                ORDER BY realm, topic
+                """)) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("realm", row.get("realm", String.class));
+            m.put("topic", row.get("topic", String.class));
+            m.put("cell_count", row.get("cell_count", Long.class));
+            out.add(m);
+        }
+        return out;
+    }
+
+    /** Op-log entries produced by the inbox-archivist (moves + skips), newest first. */
+    public List<Map<String, Object>> findArchivistLog(int limit) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Record row : db.fetch("""
+                SELECT op_type, payload::text AS payload, created_at
+                FROM ops_log
+                WHERE op_type IN ('reclassify_cell', 'archivist_skip')
+                  AND payload->>'agent_id' = 'inbox-archivist'
+                ORDER BY created_at DESC
+                LIMIT ?
+                """, limit)) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("op_type", row.get("op_type", String.class));
+            m.put("payload", row.get("payload", String.class));
+            m.put("at", String.valueOf(row.get("created_at")));
+            out.add(m);
+        }
+        return out;
     }
 
     public boolean tunnelExists(UUID fromCell, UUID toCell, String relation) {
