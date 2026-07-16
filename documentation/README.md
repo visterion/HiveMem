@@ -11,7 +11,7 @@ Prerequisites, Docker Compose setup, first token, connecting to Claude Code and 
 The four-level knowledge hierarchy — Realms, Signals, Topics, Cells — plus Tunnels, Facts, and Blueprints. Start here if you want to understand how HiveMem organizes knowledge.
 
 ### [Tools](tools.md)
-All 46 MCP tools with descriptions, the parallel REST attachment API, the 6 search signals and their weights, and the progressive summarization layers (content → summary → key points → insight).
+All 48 MCP tools with descriptions, the parallel REST attachment API, the 6 search signals and their weights, and the progressive summarization layers (content → summary → key points → insight).
 
 ### [Architecture](architecture.md)
 System architecture diagram, PostgreSQL data model (ER), security and capability matrix, environment variable reference, and compliance details.
@@ -42,6 +42,9 @@ Async, opt-in, budget-capped enrichment: diagram thumbnails (Mermaid/PlantUML/Gr
 
 ### [Auto-Summarizer](summarizer.md)
 Long cells become curated, embedded summaries so multi-page documents stay findable by semantic search — cost-capped and opt-in.
+
+### [Inbox Archivist](archivist.md)
+A Vistierie agent that auto-files cells out of the `inbox` staging realm once their enrichment settles (or on a daily safety-net schedule), preferring existing realms/topics and skipping when uncertain. Every move is logged with a reason and reversible.
 
 ### [Vision](vision.md)
 The cognitive science behind HiveMem — Working Memory, Cognitive Load Theory, the Extended Mind Thesis — and how Zettelkasten and PARA shaped the design.

@@ -54,8 +54,12 @@ that flows through the existing approval workflow; you keep the kill switch.
 Today the Queen and the isolated-cell Bee already run on the **Vistierie agent
 runtime** — scheduled (cron), dispatched with per-run cost accounting and a
 per-tenant kill switch — and their proposals flow through the approval workflow
-as `pending` tunnels. An admin-only **Queen log** UI (`/queen`) shows run history,
-event timelines, and the proposal queue. Still to come: a conversation UI that
+as `pending` tunnels. The same runtime also hosts the **[inbox archivist](documentation/archivist.md)**,
+which fully-automatically files cells out of the `inbox` staging realm (triggered
+right after enrichment settles, plus a daily safety-net run) — its moves are
+logged with a reason and reversible, not proposals awaiting approval. An
+admin-only **Queen log** UI (`/queen`) shows run history, event timelines, and
+the proposal queue for all three agents. Still to come: a conversation UI that
 teaches the Queen your per-realm preferences, and further Bee types (stale-fact,
 duplicate-cell, blueprint-drift).
 
@@ -76,7 +80,7 @@ Extended Mind, Forgetting Curve, Zettelkasten, PARA).
 [![Spring Boot](https://img.shields.io/badge/spring%20boot-4.1.0-6DB33F)](https://spring.io/projects/spring-boot)
 [![PostgreSQL](https://img.shields.io/badge/postgresql-17-336791)](https://postgresql.org)
 [![Tests](https://img.shields.io/badge/tests-JUnit%20%2B%20Testcontainers-brightgreen)](https://github.com/visterion/HiveMem/actions/workflows/ci.yml)
-[![MCP Tools](https://img.shields.io/badge/MCP%20tools-47-orange)](documentation/tools.md)
+[![MCP Tools](https://img.shields.io/badge/MCP%20tools-48-orange)](documentation/tools.md)
 [![License: Sustainable Use](https://img.shields.io/badge/license-Sustainable%20Use-blue)](https://github.com/visterion/HiveMem/blob/main/LICENSE)
 [![SafeSkill](https://safeskill.dev/api/badge/visterion-hivemem)](https://safeskill.dev/scan/visterion-hivemem)
 
@@ -95,6 +99,7 @@ Extended Mind, Forgetting Curve, Zettelkasten, PARA).
 - **[Photos & EXIF gallery](documentation/architecture.md#image-exif--geolocation)** — image uploads get pixel size, capture date, camera, and GPS extracted at ingest; GPS coordinates are reverse-geocoded to a place name. A justified-grid **Photos** route groups shots by date with an EXIF lightbox and "show in graph".
 - **Re-scan deduplication** — the same paper scanned twice (different bytes, same content) is caught after embedding via a two-stage pgvector-recall + character-4-gram Jaccard gate; the re-scan is soft-deleted, its orphaned binary removed, and a `duplicate_of` tunnel links it to the original. Byte-identical re-uploads are already deduped earlier by SHA-256.
 - **[Kroki + Vision](documentation/kroki-vision.md)** — Diagram thumbnails (Mermaid/PlantUML/Graphviz/D2) and image description via Claude Haiku — async, opt-in, budget-capped.
+- **[Inbox Archivist](documentation/archivist.md)** — a Vistierie agent auto-files cells out of the `inbox` staging realm into the right realm/signal/topic once enrichment settles (plus a daily safety-net cron), preferring existing taxonomy and skipping rather than guessing when unsure. Every move (or skip) is logged with a reason and fully reversible via history/time-machine.
 - **[Append-Only Versioning + Time Machine](documentation/structure.md)** — No data is ever deleted. Query your knowledge at any point in time.
 - **[Agent Fleet + Approval Workflow](documentation/auth.md)** — Agents write pending suggestions; only admins approve. Every write is human-gated.
 - **[Auto-Inject Hook for Claude Code](documentation/hook/)** — Relevant memories injected into every session automatically, before you even ask.
@@ -129,6 +134,7 @@ for details on every 🟡 / 🔴 row.
 | Privacy by Realm — model routing | 🟡 Partial | data segregation by realm works; **per-realm enforcement of "stays on local models" is not yet wired into the LLM call path** |
 | Queen + Bees periodic agent | 🟡 Partial | Queen + isolated-cell-Bee run on Vistierie's agent runtime (cron, subagent dispatch, run/cost audit, kill switch); proposals land as `pending` tunnels via the approval workflow. An admin-only Queen-log UI (`/queen`) shows runs + event timelines and the proposal approval queue. **Still missing: preference UI, further Bee types.** |
 | [Consumption folder — auto document separation](documentation/consumption.md) | ✅ Stable | Drop a stack of mixed scans into a network folder; HiveMem ingests off a bounded worker pool, OCRs each page (auto-oriented), and uses a Vistierie LLM agent to split by content — no separator/barcode sheets. High-confidence splits → `committed`, low-confidence → `pending`. The HiveMem→Vistierie run contract is reconciled; live in production. Reassembly of non-contiguous/shuffled pages is a separate roadmap item. |
+| [Inbox Archivist](documentation/archivist.md) | ✅ Stable | Vistierie agent auto-classifies `inbox` cells (realm/signal/topic) once enrichment settles, plus a daily safety-net cron; guarded webhooks require a reason on every move/skip; moves are logged (`archivist_log` MCP tool) and reversible. |
 
 ## Documentation
 
@@ -138,7 +144,7 @@ for details on every 🟡 / 🔴 row.
 | [Getting Started](documentation/getting-started.md) | Prerequisites, embedding service, token creation, connect to Claude |
 | [The Structure](documentation/structure.md) | Realms, signals, topics, cells, tunnels — the knowledge hierarchy |
 | [Architecture](documentation/architecture.md) | System diagram, data model, security matrix |
-| [Tools](documentation/tools.md) | All 47 MCP tools, the parallel REST attachment API, search signals, progressive summarization |
+| [Tools](documentation/tools.md) | All 48 MCP tools, the parallel REST attachment API, search signals, progressive summarization |
 | [Authentication](documentation/auth.md) | Roles, token management, security details |
 | [OAuth + Custom Connector](documentation/oauth.md) | Add HiveMem as a Claude.ai / ChatGPT / Grok Custom Connector |
 | [Backup + Portability](documentation/backup.md) | Export and restore entire instances, disaster recovery, cloning |
@@ -147,6 +153,7 @@ for details on every 🟡 / 🔴 row.
 | [Roadmap](documentation/roadmap.md) | What's planned, what's partial, order of work |
 | [Document & Scan Pipeline](documentation/document-pipeline.md) | End-to-end overview: entry points, shared ingest core, the four enrichment paths |
 | [Consumption Folder](documentation/consumption.md) | Scan-to-folder ingest, automatic content-based document separation, config reference |
+| [Inbox Archivist](documentation/archivist.md) | Auto-classification of `inbox` cells into the right realm/signal/topic, trigger model, guarded tools, move log |
 
 ## License
 

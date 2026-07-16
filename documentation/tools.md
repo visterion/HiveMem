@@ -1,10 +1,10 @@
 # Tools
 
-HiveMem exposes **47 MCP tools** across search, knowledge graph, progressive summarization, agent fleet, references, attachments, saved searches, tag management, and admin. Large file uploads can also use the REST endpoint (`POST /api/attachments`) — see [Attachments](#attachments).
+HiveMem exposes **48 MCP tools** across search, knowledge graph, progressive summarization, agent fleet, references, attachments, saved searches, tag management, and admin. Large file uploads can also use the REST endpoint (`POST /api/attachments`) — see [Attachments](#attachments).
 
 ## Feature Overview
 
-- **47 MCP tools** across search, knowledge graph, progressive summarization, agent fleet, references, attachments, saved searches, tag management, and admin
+- **48 MCP tools** across search, knowledge graph, progressive summarization, agent fleet, references, attachments, saved searches, tag management, and admin
 - **6-signal ranked search** — semantic similarity + keyword match + recency + importance + popularity + graph proximity
 - **Append-only versioning** — never lose history, revise with parent_id chains, point-in-time queries
 - **Progressive summarization** — content, summary, key_points, insight per cell
@@ -68,12 +68,13 @@ HiveMem exposes **47 MCP tools** across search, knowledge graph, progressive sum
 42. `saved_searches`: Manage the calling user's saved searches (action-multiplexed). **writer** role — this merged tool replaces the former `save_search`/`delete_saved_search`/`list_saved_searches` trio, and moves listing from `reader` into `writer` (readers no longer see saved searches). Required param: `action` (`save`|`delete`|`list`). `action=save` requires `name` (human-readable label) and optionally `filter` (JSON object/string describing the filter state; defaults to `{}`); upserts by name. `action=delete` requires `id` (UUID); soft-delete, owner-scoped; returns `{id, deleted}`. `action=list` returns all active saved searches for the caller (`id`, `name`, `filter`, `created_at`). Return shape depends on `action`.
 43. `manage_tags`: Add and/or remove tags on one or more cells in a single transaction. Exactly one of `cell_ids` (UUID array; single cell = `cell_ids:[id]`) or `where` (selector object, same shape as `list_cell_ids`: `realm`, `realm_in`, `signal`, `topic`, `tags`, `query`, `status`; `"none"` realm matches cells without a realm) must be provided. Optional: `add` (string array), `remove` (string array) — at least one required. `where` matches are capped at 1000 cells; matches over 200 require `confirm: true`. Operations are idempotent. Returns `{updated: N, matched: N}` — `matched` is the number of cells the selector/list resolved to, `updated` the number actually modified.
 
-**Admin (4):**
+**Admin (5):**
 
 44. `approve_pending`: Admin tool to batch approve or reject agent writes.
 45. `health`: Monitor DB and service state.
 46. `queen_runs`: List recent Queen/Bee agent runs from Vistierie. Optional args: `limit` (1–200, default 50), `offset` (0+, default 0). Returns `{items:[{id,agent,trigger,status,startedAt,finishedAt,durationMs,llmCalls,costMicros}], total, costAvailable}`; on Vistierie outage returns `{items:[],total:0,costAvailable:false,unavailable:true}`. Cost fields (`llmCalls`, `costMicros`) are populated only when `HIVEMEM_QUEEN_VISTIERIE_ADMIN_TOKEN` is configured.
 47. `queen_run_detail`: Fetch full detail for a single Queen/Bee run. Required arg: `run_id` (string). Returns `{run:{...}, events:[{type,...}]}` (run metadata + Vistierie event timeline); on outage returns `{run:{},events:[],unavailable:true}`.
+48. `archivist_log`: List recent moves and skips made by the inbox-archivist agent (see [Inbox Archivist](archivist.md)), newest first. Optional arg: `limit` (1–500, default 100). Returns `{entries:[{op_type,at,cell_id,...}]}`; `op_type` is `reclassify_cell` (a move — payload also carries `old_realm`/`old_topic`/`old_signal`, `new_realm`/`new_topic`/`new_signal`, `reason`) or `archivist_skip` (a skip — payload carries only `reason`).
 
 ## Tool-surface recommendation
 
