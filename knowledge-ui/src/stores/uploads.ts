@@ -97,6 +97,7 @@ export const useUploadsStore = defineStore('uploads', {
       const job = this.jobs.find(j => j.id === id)
       if (!job || job.status !== 'error') return
       job.status = 'queued'; job.error = undefined; job.progress = 0
+      job.errorKey = undefined; job.authFailure = false
       this.authError = this.jobs.some(j => j.status === 'error' && j.authFailure)
       void this.run()
     },
