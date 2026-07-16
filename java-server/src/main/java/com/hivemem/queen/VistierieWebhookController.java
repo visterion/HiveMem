@@ -20,9 +20,10 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Inbound surface Vistierie calls back into: read-only tool webhooks for the Queen/Bee and
- * the Queen's completion webhook. Path is exempted from {@code AuthFilter}; this controller
- * does its own constant-time bearer-token check against the configured webhook tokens.
+ * Inbound surface Vistierie calls back into: read-only tool webhooks for the Queen/Bee/Archivist,
+ * plus two guarded WRITE webhooks for the Archivist (reclassify_cell, skip_inbox_cell), and the
+ * Queen's completion webhook. Path is exempted from {@code AuthFilter}; this controller does its
+ * own constant-time bearer-token check against the configured webhook tokens.
  */
 @RestController
 @RequestMapping("/vistierie")
@@ -60,6 +61,50 @@ public class VistierieWebhookController {
             return output(service.readCell(stringInput(req, "cell_id")));
         } catch (IllegalArgumentException e) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "invalid cell_id");
+        }
+    }
+
+    @PostMapping("/tools/find_inbox_cells")
+    public ResponseEntity<Map<String, Object>> findInboxCells(
+            @RequestHeader(name = "Authorization", required = false) String auth,
+            @RequestBody ToolCallRequest req) {
+        requireToken(auth, props.getWebhookToken());
+        int limit = intInput(req, "limit", props.getInboxBatchLimit());
+        return output(service.findInboxCells(limit));
+    }
+
+    @PostMapping("/tools/list_taxonomy")
+    public ResponseEntity<Map<String, Object>> listTaxonomy(
+            @RequestHeader(name = "Authorization", required = false) String auth,
+            @RequestBody(required = false) ToolCallRequest req) {
+        requireToken(auth, props.getWebhookToken());
+        return output(service.listTaxonomy());
+    }
+
+    @PostMapping("/tools/reclassify_cell")
+    public ResponseEntity<Map<String, Object>> reclassifyCell(
+            @RequestHeader(name = "Authorization", required = false) String auth,
+            @RequestBody ToolCallRequest req) {
+        requireToken(auth, props.getWebhookToken());
+        try {
+            return output(service.reclassifyInboxCell(
+                    stringInput(req, "cell_id"),
+                    optInput(req, "realm"), optInput(req, "signal"),
+                    optInput(req, "topic"), stringInput(req, "reason")));
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+        }
+    }
+
+    @PostMapping("/tools/skip_inbox_cell")
+    public ResponseEntity<Map<String, Object>> skipInboxCell(
+            @RequestHeader(name = "Authorization", required = false) String auth,
+            @RequestBody ToolCallRequest req) {
+        requireToken(auth, props.getWebhookToken());
+        try {
+            return output(service.skipInboxCell(stringInput(req, "cell_id"), stringInput(req, "reason")));
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
         }
     }
 
@@ -139,5 +184,10 @@ public class VistierieWebhookController {
         Object v = req == null || req.input() == null ? null : req.input().get(key);
         if (v instanceof Number n) return n.intValue();
         return fallback;
+    }
+
+    private static String optInput(ToolCallRequest req, String key) {
+        Object v = req == null || req.input() == null ? null : req.input().get(key);
+        return v == null ? null : String.valueOf(v);
     }
 }
