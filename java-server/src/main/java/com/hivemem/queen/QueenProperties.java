@@ -31,6 +31,12 @@ public class QueenProperties {
     private String separationWebhookToken = "";
     /** Vistierie agent name that handles document separation tasks. */
     private String documentSeparatorAgent = "document-separator";
+    /** Max inbox cells the archivist surveys per run. */
+    private int inboxBatchLimit = 20;
+    /** Safety-net cron for the archivist (Spring 6-field). Default 04:00, offset from the Queen's 03:00. */
+    private String archivistSchedule = "0 0 4 * * *";
+    /** Min seconds between on-demand archivist triggers (per instance). */
+    private int archivistDebounceSeconds = 60;
 
     public boolean isEnabled() { return enabled; }
     public void setEnabled(boolean v) { this.enabled = v; }
@@ -56,4 +62,10 @@ public class QueenProperties {
     public void setSeparationWebhookToken(String v) { this.separationWebhookToken = v; }
     public String getDocumentSeparatorAgent() { return documentSeparatorAgent; }
     public void setDocumentSeparatorAgent(String v) { this.documentSeparatorAgent = v; }
+    public int getInboxBatchLimit() { return inboxBatchLimit; }
+    public void setInboxBatchLimit(int v) { this.inboxBatchLimit = v; }
+    public String getArchivistSchedule() { return archivistSchedule; }
+    public void setArchivistSchedule(String v) { this.archivistSchedule = v; }
+    public int getArchivistDebounceSeconds() { return archivistDebounceSeconds; }
+    public void setArchivistDebounceSeconds(int v) { this.archivistDebounceSeconds = v; }
 }

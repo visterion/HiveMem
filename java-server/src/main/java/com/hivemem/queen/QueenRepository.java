@@ -39,6 +39,32 @@ public class QueenRepository {
         return ids;
     }
 
+    /**
+     * Inbox cells ready for classification: realm='inbox', live+committed, not already
+     * declined by the archivist, and enrichment settled — i.e. none of the "not-ready"
+     * tags remain, OR OCR has terminally failed (ocr_failed_permanent) so the cell will
+     * never get cleaner. FIFO by created_at; archivist_skipped cells drop out so a poison
+     * cell cannot starve the queue.
+     */
+    public List<UUID> findInboxCellIds(int limit) {
+        List<UUID> ids = new ArrayList<>();
+        for (Record row : db.fetch("""
+                SELECT c.id
+                FROM active_cells c
+                WHERE c.realm = 'inbox'
+                  AND NOT ('archivist_skipped' = ANY(c.tags))
+                  AND (
+                        NOT (c.tags && ARRAY['ocr_pending','vision_pending','kroki_pending','needs_summary']::text[])
+                        OR 'ocr_failed_permanent' = ANY(c.tags)
+                      )
+                ORDER BY c.created_at ASC
+                LIMIT ?
+                """, limit)) {
+            ids.add(row.get("id", UUID.class));
+        }
+        return ids;
+    }
+
     public boolean tunnelExists(UUID fromCell, UUID toCell, String relation) {
         Record row = db.fetchOne("""
                 SELECT 1 AS hit
