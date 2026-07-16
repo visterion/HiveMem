@@ -111,9 +111,9 @@ hivemem:
     call-timeout-seconds: ${HIVEMEM_QUEEN_CALL_TIMEOUT:30}
     separation-webhook-token: ${HIVEMEM_QUEEN_SEPARATION_WEBHOOK_TOKEN:}
     document-separator-agent: ${HIVEMEM_QUEEN_SEPARATOR_AGENT:document-separator}
-    inbox-batch-limit: 20
-    archivist-schedule: "0 0 4 * * *"
-    archivist-debounce-seconds: 60
+    inbox-batch-limit: ${HIVEMEM_QUEEN_INBOX_BATCH_LIMIT:20}
+    archivist-schedule: ${HIVEMEM_QUEEN_ARCHIVIST_SCHEDULE:0 0 4 * * *}
+    archivist-debounce-seconds: ${HIVEMEM_QUEEN_ARCHIVIST_DEBOUNCE_SECONDS:60}
   ocr:
     enabled: ${HIVEMEM_OCR_ENABLED:false}
     tesseract-path: ${HIVEMEM_TESSERACT_PATH:tesseract}

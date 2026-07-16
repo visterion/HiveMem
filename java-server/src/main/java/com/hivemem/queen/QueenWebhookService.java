@@ -95,7 +95,10 @@ public class QueenWebhookService {
     }
 
     public Map<String, Object> reclassifyInboxCell(String cellId, String realm, String signal, String topic, String reason) {
-        if (realm != null && realm.trim().equalsIgnoreCase("inbox")) {
+        if (realm == null || realm.isBlank()) {
+            throw new IllegalArgumentException("target realm is required");
+        }
+        if (realm.trim().equalsIgnoreCase("inbox")) {
             throw new IllegalArgumentException("cannot reclassify into the inbox staging realm");
         }
         if (reason == null || reason.isBlank()) {

@@ -52,6 +52,13 @@ class QueenWebhookServiceArchivistTest {
     }
 
     @Test
+    void reclassifyRejectsNullRealm() {
+        assertThatThrownBy(() -> svc.reclassifyInboxCell(UUID.randomUUID().toString(), null, "facts", "t", "r"))
+                .isInstanceOf(IllegalArgumentException.class);
+        verifyNoInteractions(writes);
+    }
+
+    @Test
     void reclassifyDelegatesWithArchivistPrincipal() {
         String id = UUID.randomUUID().toString();
         svc.reclassifyInboxCell(id, "work", "facts", "steuer", "Rechnung");

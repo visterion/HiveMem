@@ -44,6 +44,20 @@ class VistierieWebhookControllerArchivistTest {
     }
 
     @Test
+    void reclassifyCellRequiresToken() throws Exception {
+        mvc.perform(post("/vistierie/tools/reclassify_cell").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"input\":{\"cell_id\":\"a\",\"realm\":\"work\",\"signal\":\"facts\",\"topic\":\"t\",\"reason\":\"r\"}}"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void skipInboxCellRequiresToken() throws Exception {
+        mvc.perform(post("/vistierie/tools/skip_inbox_cell").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"input\":{\"cell_id\":\"a\",\"reason\":\"ambiguous\"}}"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
     void reclassifyCellHappyPath() throws Exception {
         when(service.reclassifyInboxCell(any(), any(), any(), any(), any())).thenReturn(Map.of("id", "a"));
         mvc.perform(post("/vistierie/tools/reclassify_cell").header("Authorization", "Bearer secret")
