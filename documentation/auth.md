@@ -54,8 +54,9 @@ hivemem-token info <name>
 ## OAuth 2.0 Connector Access
 
 Beyond static bearer tokens, HiveMem ships a full OAuth 2.0 authorization server so MCP
-clients (Claude.ai / ChatGPT Custom Connectors) can obtain their own scoped access tokens.
-It is **disabled by default**: while `hivemem.oauth.enabled=false`, all `/oauth/*` and
+clients (Claude.ai / ChatGPT / Grok Custom Connectors) can obtain their own scoped access
+tokens. Google Gemini is **not** supported — Google does not currently offer custom MCP
+connectors. It is **disabled by default**: while `hivemem.oauth.enabled=false`, all `/oauth/*` and
 `/.well-known/oauth-*` endpoints return `404`. A public HTTPS `issuer` must also be configured
 for the flow to actually work — it feeds the discovery metadata and the `WWW-Authenticate`
 header (see below). See [OAuth 2.0 + Custom Connector Setup](oauth.md) for the full setup,

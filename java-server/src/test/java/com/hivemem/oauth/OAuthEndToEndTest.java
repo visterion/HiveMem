@@ -114,6 +114,36 @@ class OAuthEndToEndTest {
     }
 
     @Test
+    void mcpPreflightFromChatgptIsAllowed() throws Exception {
+        mvc.perform(options("/mcp")
+                        .header("Origin", "https://chatgpt.com")
+                        .header("Access-Control-Request-Method", "POST"))
+                .andExpect(status().is2xxSuccessful())
+                .andExpect(header().string("Access-Control-Allow-Origin", "https://chatgpt.com"));
+    }
+
+    @Test
+    void mcpPreflightFromGrokIsAllowed() throws Exception {
+        mvc.perform(options("/mcp")
+                        .header("Origin", "https://grok.com")
+                        .header("Access-Control-Request-Method", "POST"))
+                .andExpect(status().is2xxSuccessful())
+                .andExpect(header().string("Access-Control-Allow-Origin", "https://grok.com"));
+    }
+
+    @Test
+    void oauthPreflightFromIssuerOriginIsAllowed() throws Exception {
+        // The issuer origin (configured via hivemem.oauth.issuer, see @TestPropertySource) must
+        // be allowed for /oauth/** — the consent form POSTs back to itself, and behind a reverse
+        // proxy that same-origin POST is seen as cross-origin.
+        mvc.perform(options("/oauth/token")
+                        .header("Origin", "https://hivemem.example.com")
+                        .header("Access-Control-Request-Method", "POST"))
+                .andExpect(status().is2xxSuccessful())
+                .andExpect(header().string("Access-Control-Allow-Origin", "https://hivemem.example.com"));
+    }
+
+    @Test
     void discoveryReturnsAuthorizationServerMetadata() throws Exception {
         mvc.perform(get("/.well-known/oauth-authorization-server"))
                 .andExpect(status().isOk())

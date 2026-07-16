@@ -124,7 +124,7 @@ for details on every 🟡 / 🔴 row.
 | [Agent Approval Workflow](documentation/auth.md) | ✅ Stable | every agent write lands as `pending` until an admin approves |
 | [Auto-Inject Hook (Claude Code)](documentation/hook/) | ✅ Stable | 6-stage filter pipeline, Bearer-token auth |
 | [Full Instance Portability](documentation/backup.md) | ✅ Stable | one-command tar.gz of Postgres + attachments + identity |
-| [OAuth Custom Connector](documentation/oauth.md) | ✅ Stable | RFC 8414 / 9728 discovery, PKCE |
+| [OAuth Custom Connector](documentation/oauth.md) | ✅ Stable | RFC 8414 / 9728 discovery, PKCE; Claude.ai, ChatGPT, and Grok supported (Gemini not — no custom MCP connectors from Google) |
 | Temporal Knowledge Graph | 🟡 Partial | bi-temporal facts and multi-hop traversal ship; **automatic contradiction detection is not yet implemented** |
 | Privacy by Realm — model routing | 🟡 Partial | data segregation by realm works; **per-realm enforcement of "stays on local models" is not yet wired into the LLM call path** |
 | Queen + Bees periodic agent | 🟡 Partial | Queen + isolated-cell-Bee run on Vistierie's agent runtime (cron, subagent dispatch, run/cost audit, kill switch); proposals land as `pending` tunnels via the approval workflow. An admin-only Queen-log UI (`/queen`) shows runs + event timelines and the proposal approval queue. **Still missing: preference UI, further Bee types.** |
@@ -140,7 +140,7 @@ for details on every 🟡 / 🔴 row.
 | [Architecture](documentation/architecture.md) | System diagram, data model, security matrix |
 | [Tools](documentation/tools.md) | All 47 MCP tools, the parallel REST attachment API, search signals, progressive summarization |
 | [Authentication](documentation/auth.md) | Roles, token management, security details |
-| [OAuth + Custom Connector](documentation/oauth.md) | Add HiveMem as a Claude.ai/ChatGPT Custom Connector |
+| [OAuth + Custom Connector](documentation/oauth.md) | Add HiveMem as a Claude.ai / ChatGPT / Grok Custom Connector |
 | [Backup + Portability](documentation/backup.md) | Export and restore entire instances, disaster recovery, cloning |
 | [Hook Integration](documentation/hook/) | Auto-inject context into Claude Code sessions |
 | [Operations](documentation/operations.md) | Deployment, migrations, debugging |

@@ -1,15 +1,18 @@
 # OAuth 2.0 + Custom Connector Setup
 
-HiveMem can be added to **Claude.ai** (and ChatGPT once OpenAI rolls out MCP Custom
-Connector support) as a **Custom MCP Connector**. The user's chat with the model
-will then search, read, and write to your HiveMem instance directly — without
-leaving the chat UI and without an Anthropic-side store of your knowledge.
+HiveMem can be added to **Claude.ai, ChatGPT, and Grok** as a **Custom MCP
+Connector**. The user's chat with the model will then search, read, and write
+to your HiveMem instance directly — without leaving the chat UI and without a
+provider-side store of your knowledge.
+
+> **Note:** Google Gemini is **not** supported as an OAuth Custom Connector —
+> Google does not currently offer custom MCP connectors for Gemini.
 
 This document covers:
 
 1. Enabling OAuth on the HiveMem server
 2. Exposing the server publicly via Cloudflare Tunnel (recommended)
-3. Adding HiveMem as a Custom Connector in Claude.ai
+3. Adding HiveMem as a Custom Connector
 4. Verification
 5. Security model and limits
 
@@ -84,17 +87,20 @@ cloudflared tunnel run hivemem
 #   cloudflared service install
 ```
 
-## 3. Add HiveMem as a Custom Connector in Claude.ai
+## 3. Add HiveMem as a Custom Connector
+
+The flow below is the same for Claude.ai, ChatGPT, and Grok — only the menu
+labels differ; the wording uses Claude.ai as the example client.
 
 1. Open **Claude.ai → Settings → Connectors → Add Custom Connector**
 2. Enter the URL of the MCP endpoint: `https://hivemem.example.com/mcp`
-3. Claude.ai fetches `/.well-known/oauth-protected-resource` to discover the
+3. The client fetches `/.well-known/oauth-protected-resource` to discover the
    authorization server
-4. Claude.ai fetches `/.well-known/oauth-authorization-server` to discover the
+4. The client fetches `/.well-known/oauth-authorization-server` to discover the
    authorization, token, and registration endpoints
-5. Claude.ai POSTs to `/oauth/register` (Dynamic Client Registration, RFC 7591)
+5. The client POSTs to `/oauth/register` (Dynamic Client Registration, RFC 7591)
    to obtain a `client_id`
-6. Claude.ai redirects you to `/oauth/authorize` — log in to HiveMem in your
+6. The client redirects you to `/oauth/authorize` — log in to HiveMem in your
    browser via the existing web-UI session if you are not already
 7. `/oauth/authorize` renders a **consent screen** showing the requesting client
    and the scope being granted; a session-bound one-time CSRF token guards the
@@ -102,12 +108,12 @@ cloudflared tunnel run hivemem
    authorization code issued; denying (or a missing/invalid CSRF token) returns
    `error=access_denied`. The granted scope is capped to your token's role, so a
    reader session cannot mint a `write` code.
-8. After approval, you are redirected back to Claude.ai with an authorization code
-9. Claude.ai exchanges the code at `/oauth/token` for an access + refresh token
-10. Subsequent MCP tool calls from Claude.ai authenticate with the access token;
-    Claude.ai handles refresh-rotation automatically
+8. After approval, you are redirected back to the client with an authorization code
+9. The client exchanges the code at `/oauth/token` for an access + refresh token
+10. Subsequent MCP tool calls from the client authenticate with the access token;
+    the client handles refresh-rotation automatically
 
-You should now see HiveMem's tools available in your Claude.ai sidebar.
+You should now see HiveMem's tools available in your connector sidebar.
 
 ## 4. Verification
 

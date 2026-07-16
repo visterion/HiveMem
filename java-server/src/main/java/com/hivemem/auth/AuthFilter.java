@@ -69,6 +69,10 @@ public class AuthFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
+        // CORS preflight requests carry no credentials by design and must be answered by the
+        // CORS processor, not 401'd — otherwise a browser MCP client sees the /mcp preflight
+        // rejected before OAuth discovery can start.
+        if ("OPTIONS".equalsIgnoreCase(request.getMethod())) return true;
         String requestPath = request.getRequestURI().substring(request.getContextPath().length());
         // OAuth discovery + registration must be reachable without a token —
         // they are how MCP clients (Claude.ai, ChatGPT) bootstrap the auth flow.
