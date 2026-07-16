@@ -39,14 +39,31 @@ valid_role() {
 }
 
 # "a,b" -> '{a,b}'::text[] (lowercased, spaces->dashes); "" -> NULL
+# Each element is validated against ^[a-z0-9-]+$ after normalization -- rejects
+# anything else (e.g. quotes) to prevent SQL injection into the unquoted heredoc.
 to_pg_array() {
     if [ -z "$1" ]; then
         echo "NULL"
         return
     fi
-    local norm
-    norm=$(echo "$1" | tr 'A-Z' 'a-z' | tr ' ' '-')
-    echo "'{${norm}}'::text[]"
+    local IFS=','
+    local -a elems
+    read -ra elems <<< "$1"
+    local out=""
+    local elem norm
+    for elem in "${elems[@]}"; do
+        norm=$(echo "$elem" | tr 'A-Z' 'a-z' | tr ' ' '-')
+        if ! [[ "$norm" =~ ^[a-z0-9-]+$ ]]; then
+            echo "Error: invalid realm '${norm}' — realms may contain only lowercase letters, digits, and dashes" >&2
+            exit 1
+        fi
+        if [ -z "$out" ]; then
+            out="$norm"
+        else
+            out="${out},${norm}"
+        fi
+    done
+    echo "'{${out}}'::text[]"
 }
 
 cmd_create() {
