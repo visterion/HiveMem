@@ -231,6 +231,10 @@ export default {
     retry: 'Retry', clearDone: 'Clear finished', openCell: 'Open cell',
     deduped: 'Already existed (deduplicated)', reLogin: 'Sign in & retry',
     tooLarge: 'File too large', empty: 'No uploads yet.',
+    status: { queued: 'Queued', uploading: 'Uploading', done: 'Done', error: 'Failed' },
+    errSession: 'Session expired', errForbidden: 'No write permission',
+    errStorage: 'Attachment storage is disabled', errBad: 'Upload rejected',
+    errGeneric: 'Upload failed',
   },
   pwa: { updateReady: 'A new version is available.', reload: 'Reload' },
 }

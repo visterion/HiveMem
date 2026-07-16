@@ -32,7 +32,7 @@ function relogin() { window.location.href = '/login' }
       <li v-for="job in uploads.jobs" :key="job.id" class="up-job" data-test="upload-job">
         <div class="up-job-main">
           <span class="up-name">{{ job.fileName }}</span>
-          <span class="up-status" :class="job.status">{{ job.status }}</span>
+          <span class="up-status" :class="job.status">{{ t('upload.status.' + job.status) }}</span>
         </div>
         <v-progress-linear v-if="job.status === 'uploading'" :model-value="job.progress * 100" height="4" />
         <div v-if="job.status === 'done' && job.result" class="up-job-actions">
@@ -40,7 +40,7 @@ function relogin() { window.location.href = '/login' }
           <v-btn variant="text" size="small" @click="openCell(job.result.cellId)">{{ t('upload.openCell') }}</v-btn>
         </div>
         <div v-else-if="job.status === 'error'" class="up-job-actions">
-          <span class="up-err">{{ job.error }}</span>
+          <span class="up-err">{{ job.errorKey ? t(job.errorKey) : job.error }}</span>
           <v-btn v-if="job.retryable" variant="text" size="small" @click="uploads.retry(job.id)">{{ t('upload.retry') }}</v-btn>
         </div>
       </li>

@@ -231,6 +231,10 @@ export default {
     retry: 'Erneut', clearDone: 'Fertige entfernen', openCell: 'Cell öffnen',
     deduped: 'War bereits vorhanden (dedupliziert)', reLogin: 'Anmelden & erneut',
     tooLarge: 'Datei zu groß', empty: 'Noch keine Uploads.',
+    status: { queued: 'In Warteschlange', uploading: 'Wird hochgeladen', done: 'Fertig', error: 'Fehlgeschlagen' },
+    errSession: 'Sitzung abgelaufen', errForbidden: 'Keine Schreibrechte',
+    errStorage: 'Anhang-Speicher ist deaktiviert', errBad: 'Upload abgelehnt',
+    errGeneric: 'Upload fehlgeschlagen',
   },
   pwa: { updateReady: 'Eine neue Version ist verfügbar.', reload: 'Neu laden' },
 }
