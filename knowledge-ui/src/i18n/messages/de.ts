@@ -166,6 +166,11 @@ export default {
     kpiRuns: 'Läufe',
     kpiProposals: 'Vorschläge',
     kpiCost: 'Kosten',
+    archivistLog: 'Ablage',
+    archivistEmpty: 'Noch nichts einsortiert.',
+    filed: 'Einsortiert',
+    skipped: 'Übersprungen',
+    reason: 'Begründung',
   },
   keybindings: {
     hints: 'Cmd+K Suche · Esc zurück · Enter Reader'

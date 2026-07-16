@@ -166,6 +166,11 @@ export default {
     kpiRuns: 'Runs',
     kpiProposals: 'Proposals',
     kpiCost: 'Cost',
+    archivistLog: 'Inbox filing',
+    archivistEmpty: 'Nothing filed yet.',
+    filed: 'Filed',
+    skipped: 'Skipped',
+    reason: 'Reason',
   },
   keybindings: {
     hints: 'Cmd+K search · Esc back · Enter reader'

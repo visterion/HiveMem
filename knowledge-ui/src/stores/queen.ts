@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { useApi } from '../api/useApi'
-import type { QueenRun, QueenRunList, QueenRunDetail, PendingApproval } from '../api/types'
+import type { QueenRun, QueenRunList, QueenRunDetail, PendingApproval, ArchivistLogEntry } from '../api/types'
 
 export const useQueenStore = defineStore('queen', {
   state: () => ({
@@ -10,6 +10,7 @@ export const useQueenStore = defineStore('queen', {
     unavailable: false,
     selectedRun: null as QueenRunDetail | null,
     pending: [] as PendingApproval[],
+    archivistLog: [] as ArchivistLogEntry[],
     loading: false,
     // Monotonic token: only the latest selectRun() may commit selectedRun, so a
     // slower earlier queen_run_detail response can't overwrite a later selection
@@ -39,6 +40,10 @@ export const useQueenStore = defineStore('queen', {
       const detail = await useApi().call<QueenRunDetail>('queen_run_detail', { run_id: runId })
       if (seq !== this.selectSeq) return // stale — a newer selectRun() owns the state
       this.selectedRun = detail
+    },
+    async loadArchivistLog() {
+      const res = await useApi().call<{ entries: ArchivistLogEntry[] }>('archivist_log')
+      this.archivistLog = res.entries
     },
     async approve(id: string, approved: boolean) {
       // Backend `approve_pending` expects a UUID list + a decision enum, not {id, approved}.

@@ -67,7 +67,7 @@ async function decide(id: string, approved: boolean) {
 // backend restart) — remember the failure and recover silently on the next tick.
 const refreshFailed = ref(false)
 function refreshSafe() {
-  store.refresh()
+  Promise.all([store.refresh(), store.loadArchivistLog()])
     .then(() => { refreshFailed.value = false })
     .catch(() => { refreshFailed.value = true })
 }
@@ -75,6 +75,7 @@ function refreshSafe() {
 onMounted(async () => {
   try {
     await store.refresh()
+    await store.loadArchivistLog()
   } catch {
     refreshFailed.value = true
     ui.pushToast('error', t('common.loadFailed'))
@@ -145,6 +146,28 @@ onUnmounted(() => { if (timer) clearInterval(timer) })
           </div>
         </div>
       </div>
+
+      <section class="q-card q-archivist">
+        <div class="q-prop-head">
+          <HmIcon name="reader" />
+          <span>{{ t('queen.archivistLog') }}</span>
+        </div>
+        <p v-if="!store.archivistLog.length" class="q-empty">{{ t('queen.archivistEmpty') }}</p>
+        <ul v-else class="alog">
+          <li v-for="(e, i) in store.archivistLog" :key="i" class="alog-row">
+            <template v-if="e.op_type === 'reclassify_cell'">
+              <span class="alog-badge alog-filed">{{ t('queen.filed') }}</span>
+              <RouterLink :to="{ name: 'search', query: { cell: e.cell_id } }" class="alog-cell">{{ e.cell_id.slice(0, 8) }}</RouterLink>
+              <span class="alog-move">{{ e.old_realm }}/{{ e.old_topic }} → {{ e.new_realm }}/{{ e.new_topic }} · {{ e.new_signal }}</span>
+            </template>
+            <template v-else>
+              <span class="alog-badge alog-skip">{{ t('queen.skipped') }}</span>
+              <RouterLink :to="{ name: 'search', query: { cell: e.cell_id } }" class="alog-cell">{{ e.cell_id.slice(0, 8) }}</RouterLink>
+            </template>
+            <span class="alog-reason" :title="e.reason || ''">{{ e.reason }}</span>
+          </li>
+        </ul>
+      </section>
     </div>
 
     <div v-if="detailOpen" class="q-detail-backdrop" @click="closeDetail">
@@ -232,4 +255,17 @@ onUnmounted(() => { if (timer) clearInterval(timer) })
 .q-events { display:flex; flex-direction:column; gap:8px; }
 .q-event { display:flex; gap:12px; font-size:13px; color:var(--text-1); }
 .q-err { color:var(--danger); font-size:13px; margin:8px 0 0; }
+
+.q-archivist { margin-top:28px; padding:18px 20px; }
+.q-archivist .q-prop-head { margin:0 0 14px; font-weight:600; font-size:14px; }
+.alog { display:flex; flex-direction:column; gap:10px; padding:0; margin:0; list-style:none; }
+.alog-row { display:flex; align-items:center; gap:12px; flex-wrap:wrap; font-size:13px; padding:8px 0; border-bottom:1px solid var(--line); }
+.alog-row:last-child { border-bottom:none; padding-bottom:0; }
+.alog-badge { font-size:11px; padding:3px 9px; border-radius:7px; font-weight:500; flex:none; }
+.alog-filed { background:var(--honey-dim); color:var(--honey); }
+.alog-skip { background:var(--bg-3); color:var(--text-2); }
+.alog-cell { font-family:var(--font-mono); font-size:12px; color:var(--text-1); text-decoration:none; }
+.alog-cell:hover { color:var(--honey); }
+.alog-move { color:var(--text-1); font-size:12.5px; }
+.alog-reason { color:var(--text-2); font-size:12.5px; margin-left:auto; max-width:340px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 </style>

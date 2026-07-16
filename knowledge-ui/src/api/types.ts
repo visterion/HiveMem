@@ -187,6 +187,20 @@ export interface MediaItem {
 export interface FacetValue { value: string; count: number }
 export type FacetCounts = Record<string, FacetValue[]>
 
+export interface ArchivistLogEntry {
+  op_type: 'reclassify_cell' | 'archivist_skip'
+  at: string
+  cell_id: string
+  reason: string | null
+  agent_id: string
+  old_realm?: string | null
+  old_topic?: string | null
+  old_signal?: string | null
+  new_realm?: string | null
+  new_topic?: string | null
+  new_signal?: string | null
+}
+
 export interface SavedSearch {
   id: string
   name: string
