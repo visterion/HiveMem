@@ -2,9 +2,13 @@ export interface UploadResult { cellId: string; deduplicated: boolean }
 export interface UploadTarget { realm: string; signal?: string; topic?: string; cellId?: string }
 
 export class UploadError extends Error {
-  constructor(readonly status: number, message: string, readonly retryable: boolean) {
+  readonly status: number
+  readonly retryable: boolean
+  constructor(status: number, message: string, retryable: boolean) {
     super(message)
     this.name = 'UploadError'
+    this.status = status
+    this.retryable = retryable
   }
 }
 
