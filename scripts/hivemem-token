@@ -27,6 +27,7 @@ Usage:
   hivemem-token list
   hivemem-token revoke <name>
   hivemem-token info <name>
+  hivemem-token set-email <name> <email>   # Cloudflare Access identity for a human row
 EOF
     exit 2
 }
@@ -171,6 +172,46 @@ SQL
     echo "Token '${name}' revoked."
 }
 
+cmd_set_email() {
+    [ "$#" -eq 2 ] || usage
+    local name="${1:-}"
+    local email_raw="${2:-}"
+    [ -n "$name" ] && [ -n "$email_raw" ] || usage
+    local email
+    email=$(echo "$email_raw" | tr '[:upper:]' '[:lower:]')
+
+    # Single transaction: the partial unique index on lower(email) covers every
+    # non-revoked row, including expired ones that findByEmail can no longer see.
+    # Without revoking those first, reassignment hits a unique violation and locks the
+    # human out.
+    #
+    # WARNING: the previous row's bearer token dies with it. An api_tokens row is
+    # dual-use -- it carries token_hash (Claude Code / CLI) AND email (the GUI). Moving
+    # an email to a different row revokes the old row's bearer. Reissue it afterwards.
+    local updated
+    updated=$("${PSQL[@]}" -v "tok_name=${name}" -v "tok_email=${email}" <<'SQL'
+BEGIN;
+UPDATE api_tokens
+   SET revoked_at = now()
+ WHERE lower(email) = :'tok_email'
+   AND revoked_at IS NULL
+   AND name <> :'tok_name';
+UPDATE api_tokens
+   SET email = :'tok_email'
+ WHERE name = :'tok_name'
+   AND revoked_at IS NULL;
+SELECT count(*) FROM api_tokens WHERE name = :'tok_name' AND lower(email) = :'tok_email';
+COMMIT;
+SQL
+)
+    if [ "$(echo "$updated" | tail -1)" != "1" ]; then
+        echo "Error: no active token named '${name}'" >&2
+        exit 1
+    fi
+    echo "ok: '${name}' now authenticates as ${email} via Cloudflare Access"
+    echo "note: any other row that held this email was revoked -- reissue its bearer if in use" >&2
+}
+
 cmd_info() {
     local name="${1:-}"
     [ -n "$name" ] || usage
@@ -210,6 +251,7 @@ main() {
         list)   cmd_list "$@" ;;
         revoke) cmd_revoke "$@" ;;
         info)   cmd_info "$@" ;;
+        set-email) cmd_set_email "$@" ;;
         -h|--help) usage ;;
         *) usage ;;
     esac
