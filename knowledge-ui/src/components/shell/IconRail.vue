@@ -98,5 +98,9 @@ function isActive(name: string) { return route.name === name }
   .rail-btn { min-width: 44px; height: 44px; flex: none; }
   .rail-tip { display: none; }
   .rail-btn--desktop-only { display: none; }
+  /* The bar is a left-edge marker for the vertical desktop rail; the rail is horizontal here,
+     so it would sit beside the icon instead of marking it. The honey fill + colour already
+     signal the active item. */
+  .rail-btn.active::before { content: none; }
 }
 </style>
