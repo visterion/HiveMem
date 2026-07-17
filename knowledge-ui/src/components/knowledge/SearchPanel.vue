@@ -57,7 +57,7 @@ const onToggle = (f: string, v: string) => toggleFacet(f as KnowledgeFacetKey, v
       <kbd>⌘K</kbd>
     </div>
     <div class="toolbar">
-      <SortMenu :sort="sort" :options="sortOptions" @change="onSort" />
+      <SortMenu :sort="sort" :options="sortOptions" align="left" @change="onSort" />
       <button v-if="activeFilterCount" class="clear-btn" @click="clearFacets()">
         <HmIcon name="close" :size="12" /> {{ t('knowledge.clearFilters') }} ({{ activeFilterCount }})
       </button>
