@@ -41,7 +41,7 @@ watch(isMobile, m => { if (!m) ui.setDrawer(false) })
     <div v-if="isMobile && ui.mobileDrawerOpen" class="drawer-scrim" @click="ui.setDrawer(false)" />
     <Reader />
     <PwaReloadPrompt />
-    <UploadFab />
+    <UploadFab v-if="route.name === 'upload'" />
   </div>
 </template>
 
