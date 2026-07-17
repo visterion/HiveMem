@@ -34,6 +34,11 @@ public class FixedTokenService implements TokenService {
     }
 
     @Override
+    public Optional<AuthPrincipal> findByEmail(String email) {
+        throw new UnsupportedOperationException("FixedTokenService is validate-only");
+    }
+
+    @Override
     public String createToken(String name, AuthRole role, Integer expiresInDays,
                               List<String> readRealms, List<String> writeRealms) {
         throw new UnsupportedOperationException("FixedTokenService is validate-only");

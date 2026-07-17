@@ -15,10 +15,20 @@ public class CachedTokenService implements TokenService {
 
     private final DbTokenService delegate;
     private final Cache<String, Optional<AuthPrincipal>> cache;
+    /**
+     * Separate instance on purpose — never share the keyspace with {@link #cache}.
+     * That cache is keyed by plaintext token; an email key in the same map would make
+     * "Authorization: Bearer <email>" a cache hit and authenticate without a secret.
+     */
+    private final Cache<String, Optional<AuthPrincipal>> emailCache;
 
     public CachedTokenService(DbTokenService delegate) {
         this.delegate = delegate;
         this.cache = Caffeine.newBuilder()
+                .expireAfterWrite(CACHE_TTL)
+                .maximumSize(CACHE_MAX_SIZE)
+                .build();
+        this.emailCache = Caffeine.newBuilder()
                 .expireAfterWrite(CACHE_TTL)
                 .maximumSize(CACHE_MAX_SIZE)
                 .build();
@@ -27,6 +37,13 @@ public class CachedTokenService implements TokenService {
     @Override
     public Optional<AuthPrincipal> validateToken(String token) {
         return cache.get(token, delegate::validateToken);
+    }
+
+    @Override
+    public Optional<AuthPrincipal> findByEmail(String email) {
+        if (email == null || email.isBlank()) return Optional.empty();
+        String key = email.toLowerCase(java.util.Locale.ROOT);
+        return emailCache.get(key, delegate::findByEmail);
     }
 
     @Override
@@ -52,6 +69,7 @@ public class CachedTokenService implements TokenService {
         // Invalidate the full cache: we don't know which plaintext maps to the revoked name,
         // and the cache is keyed by plaintext, not by name. Simpler and safer than partial invalidation.
         cache.invalidateAll();
+        emailCache.invalidateAll();
     }
 
     @Override

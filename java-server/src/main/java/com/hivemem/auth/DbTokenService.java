@@ -61,6 +61,22 @@ public class DbTokenService implements TokenService {
         return Optional.of(principalOf(row));
     }
 
+    @Override
+    public Optional<AuthPrincipal> findByEmail(String email) {
+        if (email == null || email.isBlank()) return Optional.empty();
+        Record row = dslContext.fetchOne("""
+                SELECT id, name, role, read_realms, write_realms
+                FROM api_tokens
+                WHERE lower(email) = lower(?)
+                  AND revoked_at IS NULL
+                  AND (expires_at IS NULL OR expires_at > now())
+                """, email);
+        if (row == null) {
+            return Optional.empty();
+        }
+        return Optional.of(principalOf(row));
+    }
+
     private static List<String> toRealmList(String[] arr) {
         return arr == null ? null : List.of(arr);
     }

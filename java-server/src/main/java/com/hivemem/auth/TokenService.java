@@ -20,6 +20,14 @@ public interface TokenService {
     Optional<AuthPrincipal> findById(UUID tokenId);
 
     /**
+     * Look up a principal by the human identity email (Cloudflare Access mode).
+     * Matching is case-insensitive. Returns empty if no active (non-revoked,
+     * non-expired) row carries that email. Machine tokens have email NULL and are
+     * never returned here.
+     */
+    Optional<AuthPrincipal> findByEmail(String email);
+
+    /**
      * Create a new API token. Returns the plaintext value, which is shown to the
      * caller exactly once and never stored again — only the SHA-256 hash persists.
      *
