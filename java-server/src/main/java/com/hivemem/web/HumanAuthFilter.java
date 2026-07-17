@@ -61,8 +61,12 @@ public class HumanAuthFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getRequestURI().substring(request.getContextPath().length());
-        // Legacy only: in Access mode /login does not exist and must not be exempt.
-        if (!accessProperties.isEnabled() && path.startsWith("/login")) return true;
+        // Legacy mode: LoginController serves /login (and /logout invalidates a session
+        // that may not exist yet) without requiring a principal first — that's the whole
+        // point of a login page. Access mode: LoginController is disabled and GoneController
+        // takes over the same paths, answering 410 to make a stale bookmark diagnosable
+        // instead of silently 403'ing before the request ever reaches a controller.
+        if (path.equals("/login") || path.equals("/logout")) return true;
         // The SPA must learn its auth mode before it can authenticate at all.
         if (path.equals("/api/config")) return true;
         // OAuth discovery + registration + token are public; the /oauth/authorize

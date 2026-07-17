@@ -3,6 +3,7 @@ package com.hivemem.auth;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
@@ -17,6 +18,12 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 
+/**
+ * Legacy token-in-a-password-field login. Only active when Cloudflare Access is disabled
+ * (the default) — in Access mode, {@link GoneController} takes over {@code /login} and
+ * {@code /logout} so the legacy session login can't be used as a back door next to Access.
+ */
+@ConditionalOnProperty(name = "hivemem.access.enabled", havingValue = "false", matchIfMissing = true)
 @Controller
 public class LoginController {
 
