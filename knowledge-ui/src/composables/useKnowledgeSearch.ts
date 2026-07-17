@@ -2,6 +2,7 @@ import { reactive, ref, computed } from 'vue'
 import { useApi } from '../api/useApi'
 import type { SearchResult, FacetValue } from '../api/types'
 import { cellLabel } from '../api/cellLabel'
+import { NO_REALM } from './realmMeta'
 
 export type KnowledgeFacetKey = 'realm' | 'signal' | 'tag'
 export type KnowledgeSort = 'relevance' | 'newest' | 'oldest' | 'title'
@@ -11,11 +12,32 @@ export interface FacetState { realm: Set<string>; signal: Set<string>; tag: Set<
 /** Client-side multi-select filter over realm + signal (tags are filtered server-side). */
 export function filterResults(rows: SearchResult[], f: FacetState): SearchResult[] {
   return rows.filter(c => {
-    // realm=null (unclassified inbox cells) never matches a named realm facet.
-    if (f.realm.size && (!c.realm || !f.realm.has(c.realm))) return false
+    // realm=null (unclassified inbox cells) normalises to NO_REALM, the same sentinel
+    // normalizeFacetCounts() maps the facet API's null-valued realm bucket to — both
+    // sides must agree, or toggling that bucket filters every unclassified cell out
+    // (the regression this comment used to hide: `!c.realm` was true for every one
+    // of them, so `f.realm.size === 1` made the whole list vanish).
+    if (f.realm.size && !f.realm.has(c.realm ?? NO_REALM)) return false
     if (f.signal.size && !(c.signal && f.signal.has(c.signal))) return false
     return true
   })
+}
+
+/**
+ * Normalise the raw facet_count wire response: the backend's realm facet has no
+ * `IS NOT NULL` filter (unlike signal), so it legitimately emits a null-valued
+ * bucket for unclassified inbox cells (verified against prod: `facet_count`
+ * returns `{"value":null,"count":1}` as its last, lowest-count entry). Map that
+ * to the shared NO_REALM sentinel so facet toggling and filterResults agree.
+ */
+export function normalizeFacetCounts(
+  counts: Record<string, Array<{ value: string | null; count: number }>>,
+): Record<string, FacetValue[]> {
+  const out: Record<string, FacetValue[]> = {}
+  for (const [field, values] of Object.entries(counts)) {
+    out[field] = values.map(v => ({ value: v.value ?? NO_REALM, count: v.count }))
+  }
+  return out
 }
 
 /** Pure, non-mutating sort. */
@@ -78,11 +100,12 @@ export function useKnowledgeSearch() {
       // true and no feedback in the UI.
       const [rows, counts] = await Promise.all([
         api.call<SearchResult[]>('search', searchArgs),
-        api.call<Record<string, FacetValue[]>>('facet_count', facetArgs).catch(() => ({})),
+        api.call<Record<string, Array<{ value: string | null; count: number }>>>('facet_count', facetArgs)
+          .catch(() => ({})),
       ])
       if (seq !== requestSeq) return // stale — a newer run() owns the state now
       results.value = rows ?? []
-      facetCounts.value = counts ?? {}
+      facetCounts.value = normalizeFacetCounts(counts ?? {})
     } catch (e) {
       if (seq !== requestSeq) return // a newer run() already owns the state
       error.value = e instanceof Error ? e.message : 'search failed'

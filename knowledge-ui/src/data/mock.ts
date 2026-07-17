@@ -3,6 +3,7 @@
 // reference docs). URLs link to primary sources. Swap in HttpApiClient for real data.
 
 import type { Cell, Realm, Tunnel, Fact, Reference } from '../api/types'
+import { NO_REALM } from '../composables/realmMeta'
 
 const t = (iso: string) => iso
 
@@ -839,7 +840,7 @@ const cells: Cell[] = [
 const realms: Realm[] = (() => {
   const map = new Map<string, Map<string, number>>()
   for (const c of cells) {
-    const realm = c.realm ?? 'none'
+    const realm = c.realm ?? NO_REALM
     if (!map.has(realm)) map.set(realm, new Map())
     const sm = map.get(realm)!
     const s = c.signal ?? '(none)'

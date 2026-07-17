@@ -3,6 +3,7 @@ import { computed, onMounted, shallowRef, watch } from 'vue'
 import { buildGoldbergCells, assignRealms } from '../../composables/goldbergMath'
 import type { GoldbergCell } from '../../composables/goldbergMath'
 import { paletteForRealm, type RealmPalette } from '../../composables/realmPalette'
+import { NO_REALM } from '../../composables/realmMeta'
 import type { Realm, Cell } from '../../api/types'
 import HiveCell from './HiveCell.vue'
 
@@ -19,7 +20,7 @@ function rebuild() {
   // Use cells array as authoritative count if realms have none, else use realm.cell_count.
   const counts = new Map<string, number>()
   for (const c of props.cells) {
-    const realm = c.realm ?? 'none'
+    const realm = c.realm ?? NO_REALM
     counts.set(realm, (counts.get(realm) ?? 0) + 1)
   }
   const realmInput = props.realms.map((r) => ({

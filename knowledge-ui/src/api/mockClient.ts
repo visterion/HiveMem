@@ -1,5 +1,6 @@
 import { palace as mockPalace } from '../data/mock'
 import type { ApiClient, HiveEvent, Cell, Realm, Signal, Tunnel, Fact, StatusSummary, Reference, SearchResult, DocumentRow, FacetValue, SavedSearch, MediaItem } from './types'
+import { NO_REALM } from '../composables/realmMeta'
 
 interface MockConfig { latencyMs?: [number, number]; eventInterval?: number }
 
@@ -195,9 +196,9 @@ export class MockApiClient implements ApiClient {
       const correspondent = facts?.vendor ?? facts?.party ?? null
       return {
         id: c.id,
-        // Unclassified inbox cells (realm=null) map to the 'none' sentinel the backend
+        // Unclassified inbox cells (realm=null) map to the NO_REALM sentinel the backend
         // search API already uses, rather than lying about DocumentRow.realm being non-null.
-        realm: c.realm ?? 'none',
+        realm: c.realm ?? NO_REALM,
         signal: c.signal ?? null,
         topic: c.topic ?? null,
         summary: c.summary ?? null,
@@ -225,7 +226,9 @@ export class MockApiClient implements ApiClient {
     const fields = args.fields ?? ['tag', 'status']
     const result: Record<string, FacetValue[]> = {}
     for (const field of fields) {
-      const counts = new Map<string, number>()
+      // `string | null` because the realm branch below deliberately keys on a real
+      // `null` (see comment there); every other branch only ever inserts strings.
+      const counts = new Map<string | null, number>()
       if (field === 'tag') {
         for (const c of cells) {
           for (const t of (c.tags ?? [])) {
@@ -238,9 +241,14 @@ export class MockApiClient implements ApiClient {
           counts.set(s, (counts.get(s) ?? 0) + 1)
         }
       } else if (field === 'realm') {
+        // Mirror FacetRepository.java: the realm facet SQL has no `IS NOT NULL` clause
+        // (unlike the signal branch below), so unclassified cells legitimately produce
+        // a null-valued bucket on the wire — do not fall back to a string sentinel here,
+        // or mock-driven tests stay structurally blind to consumers that mishandle the
+        // real null (see useKnowledgeSearch.normalizeFacetCounts, which is where null
+        // gets normalised to NO_REALM, on the client side of that same boundary).
         for (const c of cells) {
-          const realm = c.realm ?? 'none'
-          counts.set(realm, (counts.get(realm) ?? 0) + 1)
+          counts.set(c.realm, (counts.get(c.realm) ?? 0) + 1)
         }
       } else if (field === 'signal') {
         for (const c of cells) {
@@ -264,9 +272,12 @@ export class MockApiClient implements ApiClient {
           if (val) counts.set(val, (counts.get(val) ?? 0) + 1)
         }
       }
+      // Cast: FacetValue.value is declared `string`, but the realm branch above can
+      // legitimately produce a `null` entry here — that's the point (see comment
+      // there), matching the real backend's wire shape rather than typing around it.
       result[field] = [...counts.entries()]
         .sort((a, b) => b[1] - a[1])
-        .map(([value, count]) => ({ value, count }))
+        .map(([value, count]) => ({ value, count })) as FacetValue[]
     }
     return result
   }

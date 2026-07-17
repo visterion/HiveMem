@@ -4,6 +4,14 @@ export type RealmPriv = 'local' | 'cloud'
 export interface RealmMeta { priv: RealmPriv; desc: string }
 
 /**
+ * Shared sentinel for "no realm" (unclassified inbox cells). Mirrors the backend's
+ * own `where.realm="none"` sentinel (see the search API's DocumentRow mapping) — this
+ * is the single definition every call site should import instead of repeating the
+ * literal string.
+ */
+export const NO_REALM = 'none'
+
+/**
  * Static front-end metadata for the eight design-system realms. The backend has
  * no per-realm privacy/description; this is a UI config map (real per-realm
  * routing is deferred to SP-G). Descriptions are static German display content.

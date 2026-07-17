@@ -76,7 +76,7 @@ onMounted(() => { if (canvas.cells.length === 0) void load() })
             @click="openCell(c.id)"
           >
             <div class="tm-chips">
-              <span class="chip" :style="{ borderColor: realmColorFor(c.realm), color: realmColorFor(c.realm) }">{{ c.realm }}</span>
+              <span class="chip" :style="{ borderColor: realmColorFor(c.realm), color: realmColorFor(c.realm) }">{{ c.realm ?? '—' }}</span>
               <span class="chip">{{ fmtDate(c.valid_from) }}</span>
             </div>
             <div class="h-display tm-title">{{ c.title }}</div>

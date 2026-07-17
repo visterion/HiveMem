@@ -10,12 +10,13 @@ import { mapCanvasToForceGraph } from '../../graph/mapCanvasToForceGraph'
 import { realmClusterCenters } from '../../graph/clusterForce'
 import type { GraphLink, GraphNode } from '../../graph/types'
 import { ForceGraphRoot } from './ForceGraphRoot'
+import { NO_REALM } from '../../composables/realmMeta'
 
 const el = ref<HTMLElement | null>(null)
 const canvas = useCanvasStore()
 const cell = useCellStore()
 const graph = computed(() => mapCanvasToForceGraph({ cells: canvas.cells, tunnels: canvas.tunnels }))
-const clusterCenters = computed(() => realmClusterCenters(canvas.cells.map(c => c.realm ?? 'none')))
+const clusterCenters = computed(() => realmClusterCenters(canvas.cells.map(c => c.realm ?? NO_REALM)))
 const size = ref({ width: 0, height: 0 })
 
 let root: Root | null = null
@@ -84,8 +85,8 @@ function installClusterForces() {
   const centers = clusterCenters.value
   fg.d3Force('charge')?.strength(-120)
   fg.d3Force('link')?.distance(38)
-  fg.d3Force('x', forceX((n: unknown) => centers[(n as GraphNode).realm ?? 'none']?.x ?? 0).strength(0.22))
-  fg.d3Force('y', forceY((n: unknown) => centers[(n as GraphNode).realm ?? 'none']?.y ?? 0).strength(0.22))
+  fg.d3Force('x', forceX((n: unknown) => centers[(n as GraphNode).realm ?? NO_REALM]?.x ?? 0).strength(0.22))
+  fg.d3Force('y', forceY((n: unknown) => centers[(n as GraphNode).realm ?? NO_REALM]?.y ?? 0).strength(0.22))
   fg.d3ReheatSimulation()
   // Frame the whole constellation once it settles (guarded for the mocked-root test env).
   // Track the timer so a quick unmount/remount can't fire a stale zoomToFit on a new instance.

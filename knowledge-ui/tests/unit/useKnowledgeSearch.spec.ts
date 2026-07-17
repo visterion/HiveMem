@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { filterResults, sortResults, useKnowledgeSearch } from '../../src/composables/useKnowledgeSearch'
+import { filterResults, normalizeFacetCounts, sortResults, useKnowledgeSearch } from '../../src/composables/useKnowledgeSearch'
 import { resetApi } from '../../src/api/useApi'
 import { MockApiClient } from '../../src/api/mockClient'
+import { NO_REALM } from '../../src/composables/realmMeta'
 import type { SearchResult } from '../../src/api/types'
 
 function r(p: Partial<SearchResult> & { summary?: string | null }): SearchResult {
@@ -32,6 +33,30 @@ describe('filterResults', () => {
   it('signal facet narrows further (AND across fields)', () => {
     expect(filterResults(rows, { realm: new Set(['work']), signal: new Set(['events']), tag: new Set() }).map(x => x.id))
       .toEqual(['c'])
+  })
+  it('a toggled-on null-realm facet bucket keeps null-realm cells (regression, Finding 1)', () => {
+    // Reproduces the prod regression: the backend's realm facet has no `IS NOT NULL`
+    // filter, so facet_count legitimately emits a null-valued bucket for unclassified
+    // inbox cells. Once normalizeFacetCounts() maps that bucket's value to NO_REALM and
+    // it gets toggled on, a null-realm result row must survive the filter rather than
+    // every row being dropped (the old `!c.realm || !f.realm.has(c.realm)` matched
+    // `!c.realm` for every unclassified cell once any realm facet was selected).
+    const unclassified = { ...r({ id: 'd', signal: 'facts' }), realm: null }
+    const withUnclassified = [...rows, unclassified]
+    expect(
+      filterResults(withUnclassified, { realm: new Set([NO_REALM]), signal: new Set(), tag: new Set() })
+        .map(x => x.id),
+    ).toEqual(['d'])
+  })
+})
+
+describe('normalizeFacetCounts', () => {
+  it('maps a null-valued facet bucket to NO_REALM (Finding 1 ingestion boundary)', () => {
+    const raw = { realm: [{ value: 'work', count: 5 }, { value: null, count: 1 }], tag: [{ value: 'a', count: 2 }] }
+    expect(normalizeFacetCounts(raw)).toEqual({
+      realm: [{ value: 'work', count: 5 }, { value: NO_REALM, count: 1 }],
+      tag: [{ value: 'a', count: 2 }],
+    })
   })
 })
 

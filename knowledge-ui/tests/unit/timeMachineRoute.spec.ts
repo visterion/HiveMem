@@ -93,6 +93,15 @@ describe('TimeMachineRoute', () => {
     expect(window.location.search).not.toContain('cell=')
   })
 
+  it('renders a null realm as "—", not a blank chip (Finding 3)', async () => {
+    const w = await mountReady()
+    const canvas = useCanvasStore()
+    canvas.cells = [...canvas.cells, { ...makeCell('unclassified-1', '2032-01-01'), realm: null }]
+    await flushPromises()
+    const chips = w.findAll('[data-test="tm-card"] .chip')
+    expect(chips.some(c => c.text() === '—')).toBe(true)
+  })
+
   it('renders a list of up to 20 cells valid at the slider position, newest first', async () => {
     const w = await mountReady()
     const canvas = useCanvasStore()

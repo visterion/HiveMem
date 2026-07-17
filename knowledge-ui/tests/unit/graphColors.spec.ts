@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { colorForRealm, colorForRelation } from '../../src/graph/colors'
+import { paletteForRealm } from '../../src/composables/realmPalette'
 
 describe('graph colors', () => {
   it('maps known realms to their token hex', () => {
@@ -17,6 +18,17 @@ describe('graph colors', () => {
   it('is null/undefined safe', () => {
     expect(colorForRealm(null).startsWith('#')).toBe(true)
     expect(colorForRealm(undefined).startsWith('#')).toBe(true)
+  })
+  it('does not paint a null realm like a hashed realm (Finding 4)', () => {
+    // Before the fix, colorForRealm(null) fell through to paletteForRealm(0).base —
+    // indistinguishable from whatever real realm name happens to hash to index 0 —
+    // so an unclassified node looked classified on the force graph.
+    const hashedZero = paletteForRealm(0).base
+    expect(colorForRealm(null)).not.toBe(hashedZero)
+    expect(colorForRealm(undefined)).not.toBe(hashedZero)
+    // Must agree with realmColorFor(null)'s neutral intent (var(--text-2)), just as
+    // a literal hex since ctx.fillStyle can't resolve CSS custom properties.
+    expect(colorForRealm(null)).toBe('#6B7385')
   })
   it('colors tunnels in the cyan family, contradicts red', () => {
     expect(colorForRelation('related_to')).toBe('#46D6E0')

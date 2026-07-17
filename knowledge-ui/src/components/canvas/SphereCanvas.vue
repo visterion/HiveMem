@@ -10,6 +10,7 @@ import { useReaderStore } from '../../stores/reader'
 import { computeWingPositions, poissonDiskCells } from '../../composables/layout'
 import { cellVisibleAt } from '../../composables/lod'
 import { computeFitView } from './fitView'
+import { NO_REALM } from '../../composables/realmMeta'
 import type { Cell } from '../../api/types'
 
 const root = ref<HTMLDivElement>()
@@ -260,7 +261,7 @@ function render() {
   // 1. Group cells by (realm, signal). Deterministic layout → stable positions.
   const cellsByRealmSignal = new Map<string, Map<string, Cell[]>>()
   for (const c of canvasStore.cells) {
-    const realm = c.realm ?? 'none'
+    const realm = c.realm ?? NO_REALM
     if (!cellsByRealmSignal.has(realm)) cellsByRealmSignal.set(realm, new Map())
     const sm = cellsByRealmSignal.get(realm)!
     const sig = c.signal ?? '(none)'

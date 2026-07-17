@@ -23,8 +23,14 @@ const RELATION_HEX: Record<Relation, string> = {
   contradicts: '#F0676B', // --danger (kept semantic)
 }
 
+// Neutral hex for unclassified (realm=null) nodes — must agree with realmColorFor(null)'s
+// `var(--text-2)`, but canvas ctx.fillStyle can't resolve CSS custom properties, so this
+// pins the dark-theme value (`--text-2` in tokens.css's :root block) since the force
+// graph canvas is theme-blind and dark reads correctly there.
+const NO_REALM_HEX = '#6B7385'
+
 export function colorForRealm(name: string | null | undefined): string {
-  if (!name) return paletteForRealm(0).base
+  if (!name) return NO_REALM_HEX
   return REALM_HEX[name] ?? paletteForRealm(hashIndex(name)).base
 }
 
