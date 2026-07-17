@@ -24,7 +24,7 @@ const router = createRouter({ history: createMemoryHistory(),
 describe('TopBar', () => {
   beforeEach(() => { setActivePinia(createPinia()); i18n.global.locale.value = 'de'; localStorage.clear(); vi.unstubAllGlobals() })
 
-  it('shows the route title and toggles theme + language', async () => {
+  it('shows the route title and toggles theme', async () => {
     stubMatchMedia(false)
     await router.push('/scans'); await router.isReady()
     const prefs = usePrefsStore(); prefs.init()
@@ -34,9 +34,6 @@ describe('TopBar', () => {
 
     await w.find('[data-test="theme-light"]').trigger('click')
     expect(prefs.theme).toBe('light')
-
-    await w.find('[data-test="lang-en"]').trigger('click')
-    expect(i18n.global.locale.value).toBe('en')
   })
 
   it('shows settings gear on mobile and navigates to /settings', async () => {

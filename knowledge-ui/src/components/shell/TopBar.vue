@@ -2,14 +2,13 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { setLocale } from '../../i18n'
 import { usePrefsStore } from '../../stores/prefs'
 import { useLayout } from '../../composables/useLayout'
 import HmIcon from './HmIcon.vue'
 
 const route = useRoute()
 const router = useRouter()
-const { t, locale } = useI18n()
+const { t } = useI18n()
 const prefs = usePrefsStore()
 const { isMobile } = useLayout()
 const title = computed(() => t((route.meta?.title as string) || 'nav.search'))
@@ -31,10 +30,6 @@ defineEmits<{ (e: 'toggle-panel'): void }>()
               @click="router.push({ name: 'settings' })">
         <HmIcon name="settings" :size="16" />
       </button>
-      <div class="toggle">
-        <button :class="{ on: locale === 'de' }" data-test="lang-de" @click="setLocale('de')">DE</button>
-        <button :class="{ on: locale === 'en' }" data-test="lang-en" @click="setLocale('en')">EN</button>
-      </div>
       <div class="toggle">
         <button :class="{ on: prefs.theme === 'dark' }" data-test="theme-dark" @click="prefs.setTheme('dark')"><HmIcon name="moon" :size="15" /></button>
         <button :class="{ on: prefs.theme === 'light' }" data-test="theme-light" @click="prefs.setTheme('light')"><HmIcon name="sun" :size="15" /></button>

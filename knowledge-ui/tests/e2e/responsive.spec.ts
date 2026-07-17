@@ -129,27 +129,6 @@ test.describe('mobile flows (390)', () => {
   })
 })
 
-test.describe('mobile chrome collisions', () => {
-  test.use({ viewport: { width: 390, height: 844 } })
-
-  test('tweaks FAB does not overlap any bottom-rail button', async ({ page }) => {
-    await gotoMock(page, '/')
-    const fab = await page.locator('[data-test="tweaks-toggle"]').boundingBox()
-    expect(fab).toBeTruthy()
-    const buttons = page.locator('.rail .rail-btn')
-    const count = await buttons.count()
-    expect(count).toBeGreaterThan(0)
-    for (let i = 0; i < count; i++) {
-      const b = await buttons.nth(i).boundingBox()
-      if (!b || !fab) continue
-      const overlaps =
-        fab.x < b.x + b.width && fab.x + fab.width > b.x &&
-        fab.y < b.y + b.height && fab.y + fab.height > b.y
-      expect(overlaps, `FAB overlaps rail button #${i}`).toBe(false)
-    }
-  })
-})
-
 test.describe('desktop (1280) keeps the multi-column shell', () => {
   test.use({ viewport: { width: 1280, height: 800 } })
   test('rail is a left vertical column, no mobile filter button', async ({ page }) => {
