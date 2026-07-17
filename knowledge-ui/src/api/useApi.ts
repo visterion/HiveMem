@@ -17,7 +17,11 @@ export function useApi(): ApiClient {
   if (forceMock) {
     client = new MockApiClient()
   } else {
-    const token = localStorage.getItem('hivemem_token') ?? ''
+    // VITE_HIVEMEM_TOKEN is a dev-only escape hatch: it makes the UI reachable from
+    // devices with no console to seed localStorage (phones). import.meta.env.DEV is
+    // statically false in a production build, so the fallback is tree-shaken away.
+    const token = localStorage.getItem('hivemem_token')
+      ?? (import.meta.env.DEV ? readEnv('VITE_HIVEMEM_TOKEN') ?? '' : '')
     client = new HttpApiClient({ endpoint: (readEnv('VITE_HIVEMEM_URL') ?? '') + '/mcp', token })
   }
   if (typeof window !== 'undefined') {
