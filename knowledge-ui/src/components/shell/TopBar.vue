@@ -44,7 +44,8 @@ defineEmits<{ (e: 'toggle-panel'): void }>()
 </template>
 
 <style scoped>
-.topbar { height:56px; flex:none; display:flex; align-items:center; gap:14px; padding:0 20px;
+.topbar { height:calc(56px + env(safe-area-inset-top)); flex:none; display:flex; align-items:center; gap:14px;
+  padding:env(safe-area-inset-top) 20px 0;
   border-bottom:1px solid var(--line); background:color-mix(in srgb, var(--bg-0) 80%, transparent);
   backdrop-filter:blur(8px); z-index:10; overflow:hidden; }
 .crumbs { display:flex; align-items:center; gap:9px; font-size:13.5px; color:var(--text-1);
