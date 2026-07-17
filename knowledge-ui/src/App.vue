@@ -15,7 +15,7 @@ const canvas = useCanvasStore()
 const prefs = usePrefsStore()
 const vTheme = useTheme()
 watch(() => prefs.theme, (v) => {
-  vTheme.global.name.value = v === 'light' ? 'hivememLight' : 'hivememDark'
+  vTheme.change(v === 'light' ? 'hivememLight' : 'hivememDark')
 }, { immediate: true })
 
 // A 401 is handled by httpClient itself (redirects to /login and navigates away).

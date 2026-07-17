@@ -20,7 +20,6 @@ app.use(i18n)
 
 const prefs = usePrefsStore()
 prefs.init()
-vuetify.theme.global.name.value = prefs.theme === 'light' ? 'hivememLight' : 'hivememDark'
 
 app.mount('#app')
 
