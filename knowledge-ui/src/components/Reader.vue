@@ -88,12 +88,12 @@ watch(() => reader.open && cellStore.currentId, (id) => {
 </template>
 
 <style scoped>
-.reader-shell { position:fixed; inset:0; background:#0a0a14; display:flex; flex-direction:column; }
-header { display:flex; align-items:center; padding:6px 10px; background:#12121e; border-bottom:1px solid #1a1a24; }
+.reader-shell { position:fixed; inset:0; background:var(--bg-1); display:flex; flex-direction:column; }
+header { display:flex; align-items:center; padding:6px 10px; background:var(--bg-2); border-bottom:1px solid var(--line); }
 /* position:relative makes this the containing block for DocumentViewer's absolutely-
    positioned .dv (inset:0). Without it, .dv resolves to the fixed .reader-shell and paints
    over the header, hiding the back button + tabs. */
 .reader-body { position:relative; flex:1; overflow-y:auto; padding:0 20px; }
 .download-fallback { padding: 40px; text-align: center; }
-.download-fallback a { color: #8ab4f8; }
+.download-fallback a { color: var(--honey); }
 </style>
