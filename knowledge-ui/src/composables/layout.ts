@@ -10,11 +10,13 @@ export function computeWingPositions(
   type N = d3.SimulationNodeDatum & { id: string; size: number }
   const nodes: N[] = realms.map(r => ({ id: r.name, size: Math.log(1 + r.cell_count) * 10 + 40 }))
 
-  const cellRealm = new Map<string, string>()
-  // Unclassified inbox cells have realm=null — bucket them under the same 'none'
-  // sentinel the backend search API uses, so they never spuriously pair with a
-  // real realm.
-  for (const c of cells) cellRealm.set(c.id, c.realm ?? 'none')
+  // Unclassified inbox cells have realm=null. Unlike the search API's 'none'
+  // bucket, this map's values are used as d3 force-link node ids, and `nodes`
+  // (above) only contains one entry per *actual* realm — there is no 'none'
+  // node to anchor to. Keep null as-is so the `!a || !b` guard below excludes
+  // realm-less cells from link pairing instead of feeding d3 a dangling id.
+  const cellRealm = new Map<string, string | null>()
+  for (const c of cells) cellRealm.set(c.id, c.realm)
   const realmPairCount = new Map<string, number>()
   for (const t of tunnels) {
     const a = cellRealm.get(t.from_cell); const b = cellRealm.get(t.to_cell)
