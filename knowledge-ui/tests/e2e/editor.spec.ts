@@ -10,7 +10,7 @@ async function gotoMock(page: Page, path: string) {
 async function openFirstCell(page: Page) {
   await page.locator('.panel input').first().fill('a')
   await page.waitForTimeout(700)
-  await page.locator('.panel .panel-body .rows .row').first().click()
+  await page.locator('.stage-results .rows .row').first().click()
 }
 
 test.describe('cell editor (SP4)', () => {

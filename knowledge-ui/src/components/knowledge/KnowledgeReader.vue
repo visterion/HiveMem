@@ -13,6 +13,13 @@ import ObsidianImportDialog from './ObsidianImportDialog.vue'
 import TunnelEditor from './TunnelEditor.vue'
 import { cellToMarkdown, cellMarkdownFilename } from '../../composables/cellMarkdown'
 import { useLayout } from '../../composables/useLayout'
+import { useKnowledgeSearch } from '../../composables/useKnowledgeSearch'
+import { realmColorFor } from '../../composables/realmMeta'
+import ScoreRing from './ScoreRing.vue'
+
+// The stage shows the search results (moved out of the filter panel); clicking one opens
+// the cell as an overlay on top, so the list stays put underneath.
+const { shown: hits, loading: hitsLoading, error: hitsError, sort: hitSort, run: runSearch } = useKnowledgeSearch()
 
 const cellStore = useCellStore()
 const reader = useReaderStore()
@@ -121,16 +128,46 @@ function openDoc() { if (cellStore.currentId) reader.openReader(cellStore.curren
 </script>
 
 <template>
-  <div v-if="!cell" class="empty">
-    <div>
-      <div class="hexbig"><HmIcon name="reader" :size="40" /></div>
-      <div class="h-display" style="font-size:21px;color:var(--text-1)">{{ t('knowledge.selectCell') }}</div>
-      <div style="margin-top:8px;font-size:14px;color:var(--text-2)">{{ t(isMobile ? 'knowledge.selectCellSubMobile' : 'knowledge.selectCellSub') }}</div>
-      <button class="new-btn" data-test="reader-new" @click="creating = true">＋ {{ t('editor.newCell') }}</button>
-      <button class="new-btn ghost" data-test="reader-import" @click="importing = true">📥 {{ t('editor.importVault') }}</button>
+  <!-- Base layer: the search results, always shown in the stage. -->
+  <div class="stage-results">
+    <div v-if="hits.length" class="rows">
+      <div v-for="c in hits" :key="c.id"
+        :class="['row', { sel: cellStore.currentId === c.id }]" @click="cellStore.open(c)">
+        <ScoreRing v-if="hitSort === 'relevance' && (c.score_total ?? 0) > 0" :value="c.score_total ?? 0" />
+        <div class="row-main">
+          <div class="row-title">{{ cellLabel(c) }}</div>
+          <div v-if="c.summary" class="row-snip">{{ c.summary }}</div>
+          <div class="row-meta">
+            <span class="dot" :style="{ background: realmColorFor(c.realm) }" />
+            <span>{{ c.realm ?? '—' }}</span>
+            <span class="sep">·</span>
+            <span class="sig">{{ c.signal || '—' }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div v-else-if="hitsError" class="hint error">
+      {{ t('search.searchError') }}
+      <button class="retry-btn" @click="runSearch()">{{ t('common.retry') }}</button>
+    </div>
+    <div v-else-if="hitsLoading" class="hint">{{ t('search.searching') }}</div>
+    <div v-else class="empty">
+      <div>
+        <div class="hexbig"><HmIcon name="reader" :size="40" /></div>
+        <div class="h-display" style="font-size:21px;color:var(--text-1)">{{ t('knowledge.selectCell') }}</div>
+        <div style="margin-top:8px;font-size:14px;color:var(--text-2)">{{ t(isMobile ? 'knowledge.selectCellSubMobile' : 'knowledge.selectCellSub') }}</div>
+        <button class="new-btn" data-test="reader-new" @click="creating = true">＋ {{ t('editor.newCell') }}</button>
+        <button class="new-btn ghost" data-test="reader-import" @click="importing = true">📥 {{ t('editor.importVault') }}</button>
+      </div>
     </div>
   </div>
-  <div v-else class="reader fade-in" :key="cell.id">
+
+  <!-- Overlay: the opened cell, on top of the results list (which stays underneath). -->
+  <div v-if="cell" class="cell-overlay">
+    <button class="cell-close" data-test="reader-close" :title="t('common.close')" @click="cellStore.clear()">
+      <HmIcon name="close" :size="18" />
+    </button>
+    <div class="reader fade-in" :key="cell.id">
     <div class="reader-inner">
       <div class="chips">
         <span class="chip">{{ cell.realm }}</span>
@@ -180,6 +217,7 @@ function openDoc() { if (cellStore.currentId) reader.openReader(cellStore.curren
       <TunnelEditor :key="cell.id" />
       </template>
     </div>
+    </div>
   </div>
 
   <!-- Hoisted to a stable top-level node so it survives the empty→reader transition
@@ -189,6 +227,32 @@ function openDoc() { if (cellStore.currentId) reader.openReader(cellStore.curren
 </template>
 
 <style scoped>
+/* Results list (moved here from the filter panel) — the stage's base layer. */
+.stage-results { height:100%; overflow-y:auto; padding:14px 16px 40px; }
+.rows { display:flex; flex-direction:column; max-width:880px; margin:0 auto; }
+.row { padding:11px 12px; border-radius:11px; cursor:pointer; display:flex; gap:12px; align-items:flex-start;
+  border:1px solid transparent; }
+.row:hover { background:var(--bg-3); }
+.row.sel { background:var(--honey-dim); border-color:var(--line-honey); }
+.row-main { flex:1; min-width:0; }
+.row-title { font-size:14px; color:var(--text-0); font-weight:500; line-height:1.35;
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.row-snip { font-size:12px; color:var(--text-2); margin-top:3px; line-height:1.4;
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.row-meta { display:flex; align-items:center; gap:7px; margin-top:5px; font-size:11.5px; color:var(--text-2); }
+.row-meta .sep { color:var(--text-3); }
+.row-meta .sig { text-transform:capitalize; }
+.dot { width:7px; height:7px; border-radius:2px; transform:rotate(45deg); flex:none; }
+.hint { color:var(--text-2); padding:8px 12px; font-size:13px; }
+.hint.error { color:var(--danger, #ff6b6b); display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.retry-btn { font-size:12px; color:var(--text-0); background:var(--bg-3); border:1px solid var(--line);
+  border-radius:8px; padding:4px 10px; cursor:pointer; }
+.retry-btn:hover { border-color:var(--line-2); }
+/* The opened cell floats over the results so the list stays put underneath. */
+.cell-overlay { position:fixed; inset:0; z-index:60; background:var(--bg-1); }
+.cell-close { position:absolute; top:14px; right:16px; z-index:1; width:36px; height:36px; border-radius:10px;
+  display:grid; place-items:center; background:var(--bg-3); color:var(--text-1); border:1px solid var(--line); cursor:pointer; }
+.cell-close:hover { color:var(--text-0); border-color:var(--line-2); }
 .empty { display:grid; place-items:center; height:100%; text-align:center; color:var(--text-2); }
 .hexbig { width:86px; height:94px; margin:0 auto 18px; display:grid; place-items:center; color:var(--honey); opacity:.8; }
 .h-display { font-family:var(--font-display); font-weight:600; letter-spacing:-.02em; color:var(--text-0); }

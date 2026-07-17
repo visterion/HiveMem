@@ -9,7 +9,7 @@ import SearchPanel from '../../src/components/knowledge/SearchPanel.vue'
 import { i18n } from '../../src/i18n'
 import { resetApi } from '../../src/api/useApi'
 import { MockApiClient } from '../../src/api/mockClient'
-import { useCellStore } from '../../src/stores/cell'
+import { useKnowledgeSearch, __resetKnowledgeSearch } from '../../src/composables/useKnowledgeSearch'
 
 function makeRouter(): Router {
   return createRouter({
@@ -25,27 +25,25 @@ describe('knowledge SearchPanel', () => {
   beforeEach(() => {
     i18n.global.locale.value = 'de'
     setActivePinia(createPinia())
+    __resetKnowledgeSearch() // the search state is a shared singleton — isolate each test
     localStorage.setItem('hivemem_mock', 'true')
     resetApi()
     vi.useFakeTimers()
   })
   afterEach(() => vi.useRealTimers())
 
-  it('renders ranked rows with a ScoreRing and selects a cell on click', async () => {
+  // The panel is filters-only now; the result rows render in the stage (KnowledgeReader),
+  // exercised end-to-end by the e2e specs. Here we assert the panel drives the shared search.
+  it('typing in the panel runs the search and populates the shared results', async () => {
     const vuetify = createVuetify({ components, directives })
     const router = makeRouter(); router.push('/'); await router.isReady()
     const w = mount(SearchPanel, { global: { plugins: [vuetify, i18n, router] } })
     await w.find('input').setValue('a')
     await vi.advanceTimersByTimeAsync(500)
     await flushPromises()
-    // Use .rows .row to target only result rows (not FacetGroup's .facet-title.row buttons)
-    const rows = w.findAll('.rows .row')
-    expect(rows.length).toBeGreaterThan(0)
-    expect(w.find('.rows .row svg').exists()).toBe(true)
-    await rows[0].trigger('click')
-    await vi.advanceTimersByTimeAsync(500)
-    await flushPromises()
-    expect(useCellStore().currentId).toBeTruthy()
+    expect(useKnowledgeSearch().shown.value.length).toBeGreaterThan(0)
+    // Results no longer live in the panel.
+    expect(w.find('.rows .row').exists()).toBe(false)
   })
 
   it('with ?realm=documents shows clear-btn and filters results to that realm', async () => {
@@ -79,7 +77,9 @@ describe('knowledge SearchPanel', () => {
     expect(w.find('.clear-btn').exists()).toBe(false)
   })
 
-  it('renders an error state with a retry button when search fails, and clears it on a successful retry (E5)', async () => {
+  // The error hint + retry button render in the stage now; here we assert the panel's search
+  // sets the shared error state (and clears it on a successful re-run).
+  it('a failed search sets the shared error state and a retry clears it (E5)', async () => {
     let call = 0
     vi.spyOn(MockApiClient.prototype, 'call').mockImplementation(async (tool: string) => {
       if (tool === 'search') {
@@ -95,11 +95,12 @@ describe('knowledge SearchPanel', () => {
     await w.find('input').setValue('a')
     await vi.advanceTimersByTimeAsync(500)
     await flushPromises()
-    expect(w.find('.hint.error').exists()).toBe(true)
+    const search = useKnowledgeSearch()
+    expect(search.error.value).toBeTruthy()
 
-    await w.find('.retry-btn').trigger('click')
+    await search.run()
     await flushPromises()
-    expect(w.find('.hint.error').exists()).toBe(false)
+    expect(search.error.value).toBeNull()
   })
 
   it('SortMenu renders and emits change on pick', async () => {

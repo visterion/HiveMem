@@ -71,8 +71,13 @@ test.describe('mobile flows (390)', () => {
     await page.locator('[data-test="mobile-filter"]').click()
     await expect(page.locator('.panel.open')).toBeVisible()
     await page.locator('.panel input').first().fill('a')
-    await page.waitForTimeout(700)
-    await page.locator('.panel .panel-body .rows .row').first().click()
+    // Results render in the stage now, behind the filter drawer — close the drawer (via the
+    // same toggle; the scrim is covered by the drawer's own facets on a 390px screen) to reach them.
+    await expect(page.locator('.stage-results .rows .row').first()).toBeVisible({ timeout: 6000 })
+    // Tap the scrim on its uncovered right strip (the 366px drawer leaves ~24px on a 390px screen).
+    await page.locator('.drawer-scrim').click({ position: { x: 384, y: 420 } })
+    await expect(page.locator('.panel.open')).toHaveCount(0)
+    await page.locator('.stage-results .rows .row').first().click()
     const insp = page.locator('.inspector')
     await expect(insp).toBeVisible({ timeout: 4000 })
     const box = await insp.boundingBox()

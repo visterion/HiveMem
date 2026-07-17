@@ -10,7 +10,7 @@ export function useApi(): ApiClient {
   if (client) return client
   // Default to the mock under the test runner (Vitest sets MODE=test) so component/
   // store specs never hit the network — a real HttpApiClient would fire a fetch to
-  // /mcp (resolved against happy-dom's localhost:3000) and surface as an unhandled
+  // /api/tools/call (resolved against happy-dom's localhost:3000) and surface as an unhandled
   // ECONNREFUSED rejection, failing `vitest run` despite green assertions.
   const forceMock = readEnv('VITE_USE_MOCK') === 'true'
     || readEnv('MODE') === 'test'

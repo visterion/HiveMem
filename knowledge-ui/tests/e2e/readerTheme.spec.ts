@@ -17,12 +17,12 @@ async function gotoMockLight(page: Page) {
 test('reader background follows the light theme', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 })
   await gotoMockLight(page)
-  await page.locator('.panel input').first().fill('a')
-  await page.waitForTimeout(700)
-  await page.locator('.panel .panel-body .rows .row').first().click()
-  // The row click opens the inline KnowledgeReader detail panel; "Beleg öffnen"
-  // opens the actual document reader modal (Reader.vue), whose shell we're testing.
-  await page.getByText('Beleg öffnen').click()
+  // Open a document via the scans route, where cards reliably have an attachment (the mock's
+  // search cells don't). Clicking a scan card opens the document reader (Reader.vue), whose
+  // shell background in the light theme is what this test checks.
+  await page.goto('/scans')
+  await page.locator('[class*="card"]').first().waitFor({ timeout: 6000 })
+  await page.locator('[class*="card"]').first().click()
   await expect(page.locator('.reader-shell')).toBeVisible({ timeout: 4000 })
 
   const bg = await page.locator('.reader-shell').evaluate(

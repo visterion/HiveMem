@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { filterResults, normalizeFacetCounts, sortResults, useKnowledgeSearch } from '../../src/composables/useKnowledgeSearch'
+import { filterResults, normalizeFacetCounts, sortResults, useKnowledgeSearch, __resetKnowledgeSearch } from '../../src/composables/useKnowledgeSearch'
 import { resetApi } from '../../src/api/useApi'
 import { MockApiClient } from '../../src/api/mockClient'
 import { NO_REALM } from '../../src/composables/realmMeta'
@@ -87,6 +87,7 @@ describe('sortResults', () => {
 
 describe('run()', () => {
   beforeEach(() => {
+    __resetKnowledgeSearch() // the composable is now a singleton; give each test clean state
     localStorage.setItem('hivemem_mock', 'true')
     resetApi()
   })

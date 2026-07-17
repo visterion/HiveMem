@@ -76,9 +76,13 @@ async function renderPage(n: number) {
     if (doc !== pdfDoc || gen !== renderGen) return
     const dpr = window.devicePixelRatio || 1
     const base = pdfPage.getViewport({ scale: 1 })
-    const fitW = (surface.value?.clientWidth || base.width)
-    const fit = Math.max(0.1, fitW / base.width)
-    // CSS size: page fits the surface width at zoom 1 and grows with renderScale.
+    // Fit the WHOLE page into the surface (both axes), not just its width — a portrait
+    // page in a landscape surface used to fit the width and overflow vertically, which
+    // read as "opened zoomed in".
+    const surfW = surface.value?.clientWidth || base.width
+    const surfH = surface.value?.clientHeight || base.height
+    const fit = Math.max(0.1, Math.min(surfW / base.width, surfH / base.height))
+    // CSS size: page fits the surface at zoom 1 and grows with renderScale.
     const cssScale = fit * renderScale.value
     // Device size: oversample by the device pixel ratio and the current zoom so a
     // zoomed-in page is rasterized at its real resolution rather than stretched.
@@ -215,8 +219,9 @@ function download() {
 function prev() { if (page.value > 1) page.value-- }
 function next() { if (page.value < pageCount.value) page.value++ }
 watch(page, n => {
-  z.reset()
-  renderScale.value = 1
+  // Preserve the current zoom across page changes — resetting to fit on every ‹/›
+  // was jarring when reading a multi-page document at a fixed zoom. renderPage()
+  // re-rasterises the new page at the current renderScale so it stays crisp.
   if (zoomTimer) { clearTimeout(zoomTimer); zoomTimer = null }
   if (props.kind === 'pdf') renderPage(n)
 })
