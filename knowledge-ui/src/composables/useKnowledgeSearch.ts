@@ -53,7 +53,7 @@ export function sortResults(rows: SearchResult[], sort: KnowledgeSort): SearchRe
   return out
 }
 
-export function useKnowledgeSearch() {
+function createSearchState() {
   const query = ref('')
   const facets = reactive<FacetState>({ realm: new Set(), signal: new Set(), tag: new Set() })
   const sort = ref<KnowledgeSort>('relevance')
@@ -130,3 +130,14 @@ export function useKnowledgeSearch() {
 
   return { query, facets, sort, results, facetCounts, loading, error, shown, run, toggleFacet, setSort, clearFacets }
 }
+
+// One shared search across the app: the filters (SearchPanel) and the results list (the
+// stage) are two views of the SAME search, so the state must be a singleton — a fresh
+// instance per call would leave the stage showing an empty search while the panel filters.
+let singleton: ReturnType<typeof createSearchState> | null = null
+export function useKnowledgeSearch() {
+  return (singleton ??= createSearchState())
+}
+
+/** Test-only: drop the shared instance so each spec starts from clean state. */
+export function __resetKnowledgeSearch() { singleton = null }
