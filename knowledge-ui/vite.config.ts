@@ -3,9 +3,37 @@ import vue from '@vitejs/plugin-vue'
 import vuetify from 'vite-plugin-vuetify'
 import { VitePWA } from 'vite-plugin-pwa'
 
-export default defineConfig(({ mode }) => {
-  const proxyTarget =
-    loadEnv(mode, process.cwd(), 'VITE_').VITE_PROXY_TARGET ?? 'http://localhost:8421'
+export default defineConfig(async ({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), 'VITE_')
+  const proxyTarget = env.VITE_PROXY_TARGET ?? 'http://localhost:8421'
+  const token = env.VITE_HIVEMEM_TOKEN
+
+  // Dev convenience: the SPA is dual-auth — /mcp uses the bearer token, but /api
+  // (graph/hive stream, scans content, thumbnails) uses the session cookie `s`.
+  // When developing against a REMOTE backend with a token, log in once here to
+  // obtain that cookie and inject it into every proxied request, so those views
+  // work without a manual visit to /login. No-op for a local target or no token.
+  let sessionCookie: string | null = null
+  if (token && !proxyTarget.includes('localhost') && !proxyTarget.includes('127.0.0.1')) {
+    try {
+      const res = await fetch(`${proxyTarget}/login`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: `v=${encodeURIComponent(token)}`,
+        redirect: 'manual',
+      })
+      const cookies = res.headers.getSetCookie?.() ?? [res.headers.get('set-cookie') ?? '']
+      const s = cookies.map((c) => c.match(/(^|\s)(s=[^;]+)/)?.[2]).find(Boolean)
+      if (s) {
+        sessionCookie = s
+        console.log(`[dev-proxy] logged in at ${proxyTarget}; session cookie injected into /api`)
+      } else {
+        console.warn('[dev-proxy] /login returned no session cookie — is the token valid?')
+      }
+    } catch (e) {
+      console.warn(`[dev-proxy] auto-login failed (${(e as Error).message}); /api will 401 until you log in manually`)
+    }
+  }
 
   return {
     plugins: [
@@ -66,8 +94,15 @@ export default defineConfig(({ mode }) => {
             // CORS allowlist does not contain this dev origin and answers 403 "Invalid
             // CORS request"; dropping the header makes the request non-CORS, which the
             // backend accepts. No-op when the target is localhost.
+            // Also inject the session cookie obtained above, but only when the browser
+            // did not send its own (a real /login in the browser wins).
             configure: (proxy: any) => {
-              proxy.on('proxyReq', (proxyReq: any) => proxyReq.removeHeader('origin'))
+              proxy.on('proxyReq', (proxyReq: any) => {
+                proxyReq.removeHeader('origin')
+                if (sessionCookie && !proxyReq.getHeader('cookie')) {
+                  proxyReq.setHeader('cookie', sessionCookie)
+                }
+              })
             },
           },
         ]),
