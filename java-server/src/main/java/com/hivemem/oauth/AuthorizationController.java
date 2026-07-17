@@ -1,13 +1,16 @@
 package com.hivemem.oauth;
 
+import com.hivemem.auth.AccessProperties;
 import com.hivemem.auth.AuthFilter;
 import com.hivemem.auth.AuthPrincipal;
 import com.hivemem.auth.AuthRole;
+import com.hivemem.auth.HumanPrincipalResolver;
 import com.hivemem.auth.LoginController;
 import com.hivemem.auth.TokenService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -86,13 +89,19 @@ public class AuthorizationController {
     private final OAuthRepository repo;
     private final AuthorizationCodeService codes;
     private final TokenService tokenService;
+    private final HumanPrincipalResolver humanPrincipalResolver;
+    private final AccessProperties accessProperties;
 
     public AuthorizationController(OAuthProperties props, OAuthRepository repo,
-                                    AuthorizationCodeService codes, TokenService tokenService) {
+                                    AuthorizationCodeService codes, TokenService tokenService,
+                                    HumanPrincipalResolver humanPrincipalResolver,
+                                    AccessProperties accessProperties) {
         this.props = props;
         this.repo = repo;
         this.codes = codes;
         this.tokenService = tokenService;
+        this.humanPrincipalResolver = humanPrincipalResolver;
+        this.accessProperties = accessProperties;
     }
 
     @GetMapping("/oauth/authorize")
@@ -117,6 +126,13 @@ public class AuthorizationController {
         // when a valid session cookie or bearer token is present.
         AuthPrincipal principal = resolvePrincipal(request);
         if (principal == null) {
+            if (accessProperties.isEnabled()) {
+                // Access already authenticated the browser; a null principal here means the
+                // email has no api_tokens row. /login does not exist in this mode.
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                        .contentType(MediaType.TEXT_HTML)
+                        .body("<html><body><h1>403</h1><p>No HiveMem account for this identity.</p></body></html>");
+            }
             String fullUrl = request.getRequestURI()
                     + (request.getQueryString() == null ? "" : "?" + request.getQueryString());
             String encodedNext = UriUtils.encode(fullUrl, java.nio.charset.StandardCharsets.UTF_8);
@@ -292,7 +308,7 @@ public class AuthorizationController {
     /**
      * Resolve the current user's principal from the request.
      *
-     * <p>Three sources, in priority order:
+     * <p>Four sources, in priority order:
      * <ol>
      *   <li>Test-injected attribute {@code oauth.user_token_id} (used by integration tests
      *       to bypass the session/login flow) — resolved via {@code TokenService.findById}.</li>
@@ -300,6 +316,9 @@ public class AuthorizationController {
      *       {@code AuthFilter} on the standard request attribute.</li>
      *   <li>The login session cookie, resolved directly (neither filter populates the
      *       principal for {@code /oauth/} paths).</li>
+     *   <li>The active {@link HumanPrincipalResolver} (Access JWT in Access mode, the same
+     *       session cookie again in legacy mode) — the only source in Access mode, where
+     *       there is no session and no filter populates the attribute on {@code /oauth/*}.</li>
      * </ol>
      */
     static final String TEST_USER_TOKEN_ATTR = "oauth.user_token_id";
@@ -321,7 +340,9 @@ public class AuthorizationController {
                 if (sp.isPresent()) return sp.get();
             }
         }
-        return null;
+        // Fourth source: in Access mode there is no session and no filter populates the
+        // attribute on /oauth/* — the JWT on this very request is the only identity.
+        return humanPrincipalResolver.resolve(request).orElse(null);
     }
 
     private static ResponseEntity<Void> redirectError(String redirectUri, String error,
