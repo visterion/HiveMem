@@ -1,6 +1,7 @@
 import { MockApiClient } from './mockClient'
 import { HttpApiClient } from './httpClient'
 import { readEnv } from './env'
+import { authMode } from './authMode'
 import type { ApiClient } from './types'
 
 let client: ApiClient | null = null
@@ -17,8 +18,17 @@ export function useApi(): ApiClient {
   if (forceMock) {
     client = new MockApiClient()
   } else {
-    const token = localStorage.getItem('hivemem_token') ?? ''
-    client = new HttpApiClient({ endpoint: (readEnv('VITE_HIVEMEM_URL') ?? '') + '/mcp', token })
+    // VITE_HIVEMEM_TOKEN: dev-only escape hatch for console-less devices (phones), and only
+    // in legacy mode — in Access mode /api takes no bearer, so a token in the heap is dead
+    // weight and an XSS liability. import.meta.env.DEV is statically false in prod builds,
+    // so this whole branch is tree-shaken out of production.
+    const devToken = (import.meta.env.DEV && authMode() === 'legacy')
+      ? readEnv('VITE_HIVEMEM_TOKEN') ?? ''
+      : ''
+    client = new HttpApiClient({
+      endpoint: (readEnv('VITE_HIVEMEM_URL') ?? '') + '/api/tools/call',
+      token: devToken,
+    })
   }
   if (typeof window !== 'undefined') {
     ;(window as any).__useMock = (flag: boolean) => {

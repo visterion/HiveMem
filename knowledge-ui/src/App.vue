@@ -6,6 +6,7 @@ import { useAuthStore } from './stores/auth'
 import { useUiStore } from './stores/ui'
 import { useCanvasStore } from './stores/canvas'
 import { usePrefsStore } from './stores/prefs'
+import { loadAuthMode } from './api/authMode'
 import AppShell from './components/shell/AppShell.vue'
 
 const { t } = useI18n()
@@ -25,7 +26,12 @@ watch(() => prefs.theme, (v) => {
 const authError = ref(false)
 async function initAuth() {
   authError.value = false
-  try { await auth.init() } catch { authError.value = true }
+  try {
+    // Load the auth mode BEFORE auth.init() fires wake_up: a 401 during startup must
+    // resolve against a known mode, not a guessed default (see api/authMode.ts).
+    await loadAuthMode()
+    await auth.init()
+  } catch { authError.value = true }
 }
 onMounted(initAuth)
 

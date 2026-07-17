@@ -1,5 +1,7 @@
 import { defineStore } from 'pinia'
 import { useApi } from '../api/useApi'
+import { authMode } from '../api/authMode'
+import { triggerReauth } from '../api/reauth'
 import type { Cell, Realm, Tunnel } from '../api/types'
 
 interface StreamResponse { cells: Cell[]; tunnels: Tunnel[]; done: boolean }
@@ -56,7 +58,7 @@ export const useCanvasStore = defineStore('canvas', {
           return
         }
         const res = await fetch('/api/gui/stream', { credentials: 'same-origin' })
-        if (res.status === 401) { window.location.href = '/login'; return }
+        if (res.status === 401) { triggerReauth(authMode()); return }
         if (!res.ok) return
         const resp = await res.json() as StreamResponse
         if (resp.cells?.length) this.cells = [...this.cells, ...resp.cells]

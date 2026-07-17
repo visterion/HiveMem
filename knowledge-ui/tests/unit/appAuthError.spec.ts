@@ -11,6 +11,7 @@ import { MockApiClient } from '../../src/api/mockClient'
 import { useAuthStore } from '../../src/stores/auth'
 import { useCanvasStore } from '../../src/stores/canvas'
 import { useUiStore } from '../../src/stores/ui'
+import { __resetAuthMode } from '../../src/api/authMode'
 
 // App.vue reads/writes vuetify's theme (useTheme()), so — unlike other component
 // tests that only need components/directives — this instance also needs the
@@ -35,8 +36,12 @@ describe('App.vue auth error handling (E5)', () => {
     setActivePinia(createPinia())
     localStorage.setItem('hivemem_mock', 'true')
     resetApi()
+    __resetAuthMode()
+    // App.vue loads the auth mode from /api/config before auth.init() — stub it so the
+    // real (unmocked) fetch doesn't leave loadAuthMode() awaiting a live network call.
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ authMode: 'legacy' }))))
   })
-  afterEach(() => vi.restoreAllMocks())
+  afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
   it('shows a retryable error state when auth.init() fails with a non-401 error, and recovers on retry', async () => {
     let call = 0

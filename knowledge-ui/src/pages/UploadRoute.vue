@@ -2,6 +2,8 @@
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useUploadsStore } from '../stores/uploads'
+import { authMode } from '../api/authMode'
+import { triggerReauth } from '../api/reauth'
 
 const uploads = useUploadsStore()
 const router = useRouter()
@@ -10,7 +12,7 @@ const { t } = useI18n()
 function openCell(cellId: string) {
   router.push({ name: 'search', query: { cell: cellId } })
 }
-function relogin() { window.location.href = '/login' }
+function relogin() { triggerReauth(authMode()) }
 </script>
 
 <template>

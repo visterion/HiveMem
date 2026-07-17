@@ -1,4 +1,6 @@
 import type { ApiClient, HiveEvent, StatusSummary } from './types'
+import { authMode } from './authMode'
+import { triggerReauth } from './reauth'
 
 export interface HttpApiConfig {
   endpoint: string
@@ -29,15 +31,24 @@ export class HttpApiClient implements ApiClient {
     if (this.config.token) {
       headers['Authorization'] = `Bearer ${this.config.token}`
     }
-    const res = await fetch(this.config.endpoint, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ jsonrpc: '2.0', id, method: 'tools/call', params: { name: tool, arguments: args } }),
-      signal: AbortSignal.timeout(this.config.timeoutMs ?? 30_000)
-    })
-    if (res.status === 401) {
-      window.location.href = '/login'
-      throw new Error('Session expired')
+    const body = JSON.stringify({ jsonrpc: '2.0', id, method: 'tools/call', params: { name: tool, arguments: args } })
+    let res: Response
+    try {
+      res = await fetch(this.config.endpoint, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers,
+        body,
+        signal: AbortSignal.timeout(this.config.timeoutMs ?? 30_000)
+      })
+    } catch {
+      // A cross-origin redirect to the Access login page surfaces here as a TypeError.
+      triggerReauth(authMode())
+      throw new Error('re-authenticating')
+    }
+    if (res.status === 401 || res.type === 'opaqueredirect') {
+      triggerReauth(authMode())
+      throw new Error('re-authenticating')
     }
     if (!res.ok) {
       // The backend often returns a JSON-RPC error body even on non-2xx — surface

@@ -2,6 +2,8 @@ import { defineStore } from 'pinia'
 import type { Role } from '../api/types'
 import { useApi, resetApi } from '../api/useApi'
 import { applyBackendDefault } from '../i18n'
+import { authMode } from '../api/authMode'
+import { triggerReauth } from '../api/reauth'
 
 export const useAuthStore = defineStore('auth', {
   state: () => ({
@@ -32,15 +34,22 @@ export const useAuthStore = defineStore('auth', {
       }
     },
     async logout() {
+      const mode = authMode()
       try {
-        await fetch('/logout', { method: 'POST' })
+        if (mode === 'legacy') {
+          await fetch('/logout', { method: 'POST' })
+        }
       } finally {
         // Clear client state even if the network call failed — the UI must never
         // stay "logged in" after the user asked to leave (L-F13).
         this.role = null
         this.identity = null
         resetApi()
-        window.location.href = '/login'
+        if (mode === 'access') {
+          window.location.href = '/cdn-cgi/access/logout'
+        } else {
+          triggerReauth(mode)
+        }
       }
     }
   }
