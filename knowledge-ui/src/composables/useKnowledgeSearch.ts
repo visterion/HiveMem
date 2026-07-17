@@ -11,7 +11,8 @@ export interface FacetState { realm: Set<string>; signal: Set<string>; tag: Set<
 /** Client-side multi-select filter over realm + signal (tags are filtered server-side). */
 export function filterResults(rows: SearchResult[], f: FacetState): SearchResult[] {
   return rows.filter(c => {
-    if (f.realm.size && !f.realm.has(c.realm)) return false
+    // realm=null (unclassified inbox cells) never matches a named realm facet.
+    if (f.realm.size && (!c.realm || !f.realm.has(c.realm))) return false
     if (f.signal.size && !(c.signal && f.signal.has(c.signal))) return false
     return true
   })

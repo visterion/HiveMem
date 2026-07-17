@@ -18,7 +18,10 @@ function rebuild() {
   goldbergCells.value = buildGoldbergCells(R, 1)
   // Use cells array as authoritative count if realms have none, else use realm.cell_count.
   const counts = new Map<string, number>()
-  for (const c of props.cells) counts.set(c.realm, (counts.get(c.realm) ?? 0) + 1)
+  for (const c of props.cells) {
+    const realm = c.realm ?? 'none'
+    counts.set(realm, (counts.get(realm) ?? 0) + 1)
+  }
   const realmInput = props.realms.map((r) => ({
     name: r.name,
     cellCount: r.cell_count || counts.get(r.name) || 0,

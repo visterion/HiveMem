@@ -839,8 +839,9 @@ const cells: Cell[] = [
 const realms: Realm[] = (() => {
   const map = new Map<string, Map<string, number>>()
   for (const c of cells) {
-    if (!map.has(c.realm)) map.set(c.realm, new Map())
-    const sm = map.get(c.realm)!
+    const realm = c.realm ?? 'none'
+    if (!map.has(realm)) map.set(realm, new Map())
+    const sm = map.get(realm)!
     const s = c.signal ?? '(none)'
     sm.set(s, (sm.get(s) ?? 0) + 1)
   }

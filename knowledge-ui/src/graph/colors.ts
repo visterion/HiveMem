@@ -1,5 +1,6 @@
 import type { Relation } from '../api/types'
 import { paletteForRealm } from '../composables/realmPalette'
+import { hashIndex } from '../composables/realmMeta'
 
 // Canvas (ctx.fillStyle) cannot read CSS custom properties, so these mirror the
 // theme-stable token hex values from styles/tokens.css (--r-* and --cyber/--danger
@@ -20,14 +21,6 @@ const RELATION_HEX: Record<Relation, string> = {
   builds_on: '#5BD6CF',
   refines: '#6FB6E8',
   contradicts: '#F0676B', // --danger (kept semantic)
-}
-
-// Same djb2 hash as SearchPanel.realmColor / realmMeta — keeps unknown-realm
-// colors consistent with the realm dots elsewhere in the app.
-function hashIndex(name: string): number {
-  let h = 0
-  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0
-  return h % 12
 }
 
 export function colorForRealm(name: string | null | undefined): string {

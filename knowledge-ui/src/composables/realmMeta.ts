@@ -25,22 +25,33 @@ const VAR_BY_REALM: Record<string, string> = {
   work: '--r-work', documents: '--r-docs', engineering: '--r-eng', codebase: '--r-code',
 }
 
-export function realmMetaFor(id: string): RealmMeta {
-  return REALM_META[id] ?? { priv: 'cloud', desc: '' }
+export function realmMetaFor(id: string | null | undefined): RealmMeta {
+  return (id ? REALM_META[id] : undefined) ?? { priv: 'cloud', desc: '' }
 }
 
-/** Same hashing as SearchPanel.realmColor — stable per realm name. */
-function hashIndex(id: string): number {
+/** Colour for cells that have no realm yet (unclassified inbox cells — a legitimate state). */
+const NO_REALM_COLOR = 'var(--text-2)'
+
+/**
+ * Stable palette index for a realm name. The single copy of this hash — `graph/colors.ts` imports it
+ * for its canvas-hex resolver, which cannot use `realmColorFor` because ctx.fillStyle cannot resolve
+ * CSS custom properties. Callers must pass a non-empty id; see realmColorFor for the null gate.
+ */
+export function hashIndex(id: string): number {
   let h = 0
   for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0
   return h % 12
 }
 
 /**
- * Known realms → their SP-A CSS var (e.g. `var(--r-docs)`); unknown realms →
- * a deterministic hashed hex from the realm palette. Returns a CSS color string.
+ * Known realms → their SP-A CSS var (e.g. `var(--r-docs)`); unknown realms → a deterministic
+ * hashed hex from the realm palette; no realm → a neutral token. Returns a CSS color string.
+ *
+ * The backend legitimately returns realm=null for unclassified inbox cells (the search API even
+ * has a `realm="none"` sentinel for them), so null is a normal input here, not a data defect.
  */
-export function realmColorFor(id: string): string {
+export function realmColorFor(id: string | null | undefined): string {
+  if (!id) return NO_REALM_COLOR
   const v = VAR_BY_REALM[id]
   if (v) return `var(${v})`
   return paletteForRealm(hashIndex(id)).base

@@ -11,7 +11,7 @@ export interface Attachment {
 
 export interface Cell {
   id: string
-  realm: string
+  realm: string | null
   signal: string | null
   topic: string | null
   title: string

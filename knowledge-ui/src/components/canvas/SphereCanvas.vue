@@ -260,8 +260,9 @@ function render() {
   // 1. Group cells by (realm, signal). Deterministic layout → stable positions.
   const cellsByRealmSignal = new Map<string, Map<string, Cell[]>>()
   for (const c of canvasStore.cells) {
-    if (!cellsByRealmSignal.has(c.realm)) cellsByRealmSignal.set(c.realm, new Map())
-    const sm = cellsByRealmSignal.get(c.realm)!
+    const realm = c.realm ?? 'none'
+    if (!cellsByRealmSignal.has(realm)) cellsByRealmSignal.set(realm, new Map())
+    const sm = cellsByRealmSignal.get(realm)!
     const sig = c.signal ?? '(none)'
     if (!sm.has(sig)) sm.set(sig, [])
     sm.get(sig)!.push(c)

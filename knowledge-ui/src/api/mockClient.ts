@@ -195,7 +195,9 @@ export class MockApiClient implements ApiClient {
       const correspondent = facts?.vendor ?? facts?.party ?? null
       return {
         id: c.id,
-        realm: c.realm,
+        // Unclassified inbox cells (realm=null) map to the 'none' sentinel the backend
+        // search API already uses, rather than lying about DocumentRow.realm being non-null.
+        realm: c.realm ?? 'none',
         signal: c.signal ?? null,
         topic: c.topic ?? null,
         summary: c.summary ?? null,
@@ -237,7 +239,8 @@ export class MockApiClient implements ApiClient {
         }
       } else if (field === 'realm') {
         for (const c of cells) {
-          counts.set(c.realm, (counts.get(c.realm) ?? 0) + 1)
+          const realm = c.realm ?? 'none'
+          counts.set(realm, (counts.get(realm) ?? 0) + 1)
         }
       } else if (field === 'signal') {
         for (const c of cells) {

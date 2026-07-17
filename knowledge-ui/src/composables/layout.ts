@@ -11,7 +11,10 @@ export function computeWingPositions(
   const nodes: N[] = realms.map(r => ({ id: r.name, size: Math.log(1 + r.cell_count) * 10 + 40 }))
 
   const cellRealm = new Map<string, string>()
-  for (const c of cells) cellRealm.set(c.id, c.realm)
+  // Unclassified inbox cells have realm=null — bucket them under the same 'none'
+  // sentinel the backend search API uses, so they never spuriously pair with a
+  // real realm.
+  for (const c of cells) cellRealm.set(c.id, c.realm ?? 'none')
   const realmPairCount = new Map<string, number>()
   for (const t of tunnels) {
     const a = cellRealm.get(t.from_cell); const b = cellRealm.get(t.to_cell)

@@ -6,7 +6,7 @@ import { useKnowledgeSearch, type KnowledgeFacetKey, type KnowledgeSort } from '
 import { useCellStore } from '../../stores/cell'
 import { useUiStore } from '../../stores/ui'
 import { cellLabel } from '../../api/cellLabel'
-import { paletteForRealm } from '../../composables/realmPalette'
+import { realmColorFor } from '../../composables/realmMeta'
 import ScoreRing from './ScoreRing.vue'
 import HmIcon from '../shell/HmIcon.vue'
 import FacetGroup from '../scans/FacetGroup.vue'
@@ -41,12 +41,6 @@ onUnmounted(() => { if (timer) { clearTimeout(timer); timer = null } })
 const activeFilterCount = computed(() => facets.realm.size + facets.signal.size + facets.tag.size)
 const onSort = (v: string) => setSort(v as KnowledgeSort)
 const onToggle = (f: string, v: string) => toggleFacet(f as KnowledgeFacetKey, v)
-
-function realmColor(realm: string): string {
-  let h = 0
-  for (let i = 0; i < realm.length; i++) h = (h * 31 + realm.charCodeAt(i)) >>> 0
-  return paletteForRealm(h % 12).base
-}
 </script>
 
 <template>
@@ -84,8 +78,8 @@ function realmColor(realm: string): string {
             <div class="row-title">{{ cellLabel(c) }}</div>
             <div v-if="c.summary" class="row-snip">{{ c.summary }}</div>
             <div class="row-meta">
-              <span class="dot" :style="{ background: realmColor(c.realm) }" />
-              <span>{{ c.realm }}</span>
+              <span class="dot" :style="{ background: realmColorFor(c.realm) }" />
+              <span>{{ c.realm ?? '—' }}</span>
               <span class="sep">·</span>
               <span class="sig">{{ c.signal || '—' }}</span>
             </div>
