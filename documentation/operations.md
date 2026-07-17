@@ -124,6 +124,77 @@ curl -s https://mem.ufelmann.com/.well-known/oauth-authorization-server | jq .is
 
 If OAuth is disabled, this returns `404`.
 
+## Enabling Cloudflare Access (human auth hardening)
+
+HiveMem can authenticate humans (the SPA) with a Cloudflare Access JWT instead of a session
+cookie/login form. This is **off by default** (`HIVEMEM_ACCESS_ENABLED=false`) — the legacy
+session-login flow is the default and remains a fully supported production mode for
+self-hosted deployments without Cloudflare in front. Machine paths (`/mcp`, `/hooks`, `/sync`,
+`/vistierie`) are unaffected either way — they always use a bearer token. See
+[Authentication → Human auth vs. machine auth](auth.md#human-auth-vs-machine-auth) for the
+full path matrix and status-code behavior.
+
+| Variable | Default | Description |
+|---|---|---|
+| `HIVEMEM_ACCESS_ENABLED` | `false` | Set to `true` to require an Access JWT for humans and disable session login (`/login`, `/logout` return `410 Gone`) |
+| `HIVEMEM_ACCESS_TEAM_DOMAIN` | *(empty)* | Your Cloudflare Access team domain, e.g. `https://<your-team>.cloudflareaccess.com` — used to fetch the JWKS and verify the JWT issuer |
+| `HIVEMEM_ACCESS_AUD` | *(empty)* | The Access application's Audience (AUD) tag — verified against the JWT's `aud` claim |
+| `HIVEMEM_ACCESS_JWKS_TTL` | `PT15M` | How long the fetched JWKS is cached before HiveMem re-fetches it (ISO-8601 duration) |
+
+With `enabled=true`, a blank `team-domain` or `audience` fails application startup — this is a
+fail-closed check: there is no state where Access "believes" it's on but nothing actually
+verifies the JWT.
+
+### Rollout order — do not enable before the Access application exists
+
+**Enabling `HIVEMEM_ACCESS_ENABLED=true` before the Cloudflare Access application and its
+bypass policies exist locks the GUI out** — session login is disabled the moment `enabled=true`
+takes effect, and if Access isn't actually in front of the origin yet, nothing else can prove
+who you are. Recovery requires shell access to the host running the container. Follow this
+order:
+
+1. **Create the Access application in the Cloudflare dashboard first.** Note the Audience
+   (AUD) tag. Add bypass ("Skip identity verification") policies for the **machine paths** —
+   these must never require an Access login, because MCP clients, hooks, peer sync, and
+   webhooks can't present one:
+   - `/mcp`
+   - `/hooks`
+   - `/sync`
+   - `/vistierie`
+   - `/admin/peers**` (CLI/scripts only, e.g. `connect-peers.sh`; the rest of `/admin` stays
+     protected)
+   - `/oauth/token`, `/oauth/register`
+   - `/.well-known/*`
+   - `/api/config` (the SPA needs this to learn which auth mode it's in before it can
+     authenticate at all)
+   - the PWA shell assets (manifest, service worker, icons)
+
+   Everything else — `/api/**`, SPA routes, `/admin/**` except `/admin/peers**`,
+   `/oauth/authorize` — stays behind the Access policy. Test the policy before moving on.
+2. **Deploy the updated backend + SPA with `HIVEMEM_ACCESS_ENABLED` still `false`.** This
+   activates the path split (`/api/tools/call`, `/mcp` no longer accepting a session) in legacy
+   mode, where it can be verified against the existing session-login flow before Access is live.
+3. **Map a human's email to their `api_tokens` row** with the `hivemem-token` CLI, run inside
+   the container:
+
+   ```bash
+   docker exec hivemem hivemem-token set-email <token-name> you@example.com
+   ```
+
+   This is how HiveMem authorizes an Access-authenticated human — the JWT only proves an email,
+   this mapping supplies the role and realm scoping. **Warning:** an `api_tokens` row is
+   dual-use — it carries both the bearer token (for CLI/MCP use) and, once mapped, the email
+   (for GUI use). Re-running `set-email` to move an email onto a *different* row auto-revokes
+   the previous row's bearer token as part of the same transaction (the partial unique index on
+   `lower(email)` requires it) — if that bearer token is still in active use elsewhere, reissue
+   it afterward. Reassigning the *same* row's email again is a no-op in this regard.
+4. **Set `HIVEMEM_ACCESS_TEAM_DOMAIN` and `HIVEMEM_ACCESS_AUD`** in the environment (do not set
+   `enabled=true` yet).
+5. **Set `HIVEMEM_ACCESS_ENABLED=true`** and recreate the `hivemem` service. This is the step
+   that actually locks out session login — only take it once steps 1–4 are verified.
+6. Verify from every device that needs access, including any installed PWA (iOS/Android
+   home-screen shells re-check auth independently of a desktop browser tab).
+
 ## Attachment Storage (SeaweedFS)
 
 Attachment storage is optional. Set `HIVEMEM_ATTACHMENT_ENABLED=true` to enable.

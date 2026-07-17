@@ -2,22 +2,65 @@
 
 Tokens are stored as SHA-256 hashes in PostgreSQL. The plaintext is shown exactly once at creation and never stored. Auth responses are cached with Caffeine (60s TTL, max 1000 entries). This applies to api_tokens **and** OAuth access tokens: a revoked or expired token can therefore keep working for up to 60 seconds after revocation — the cache TTL is the revocation propagation window.
 
+## Human auth vs. machine auth
+
+HiveMem splits authentication by **path**, not by mode: humans (browsers) and machines (MCP
+clients, hooks, peer sync, webhooks) never share an endpoint. `HumanAuthFilter` runs first
+(`Ordered.HIGHEST_PRECEDENCE`) and resolves a human principal only for human paths; for every
+machine path it passes the request straight through, unauthenticated, to `AuthFilter` — it does
+not even attempt to read a session there. **This means `/mcp` no longer accepts a browser
+session cookie under any circumstances** — the whole point of the split. A browser can only
+reach tools through `/api/tools/call`.
+
+Humans prove who they are one of two ways, depending on deployment mode:
+
+| Mode | `hivemem.access.enabled` | Humans authenticate via | `/login`, `/logout` |
+|---|---|---|---|
+| **Access** (Cloudflare Access in front) | `true` | Cloudflare Access JWT (`Cf-Access-Jwt-Assertion` header) | disabled — return `410 Gone` |
+| **Legacy** (self-hosted, default) | `false` | Session cookie via the `/login` form | active |
+
+Legacy is a fully supported production mode, not a dev fallback — it's what self-hosted
+deployments without Cloudflare use. See [Operations → Enabling Cloudflare Access](operations.md#enabling-cloudflare-access-human-auth-hardening)
+for the rollout procedure and env vars.
+
+In Access mode, the Access JWT only proves an email address; HiveMem still does its own
+authorization. The email is looked up (case-insensitively) against an `email` column on
+`api_tokens` — the same row a human's admin token lives on. A valid JWT for an email with no
+matching, non-revoked, non-expired row is authenticated but not authorized: `403`, not `401`.
+See [Operations](operations.md#enabling-cloudflare-access-human-auth-hardening) for how that
+mapping is created (`hivemem-token set-email`).
+
 ## Which paths use which authentication
 
-| Paths | Authentication |
-|---|---|
-| `/api/**` | Session cookie only (`SessionAuthFilter`); no session → `401` |
-| `/admin/**` | Session cookie (browser), **or** bearer token when an `Authorization` header is present (CLI/scripts, e.g. `connect-peers.sh` → `/admin/peers`); no session and no bearer → redirect to `/login` |
-| `/mcp`, `/hooks`, `/sync` | Bearer token (`AuthFilter`); used by MCP clients, hooks, and peer sync |
-| `/vistierie/**` | Controller-level webhook token (constant-time check) |
-| `/login`, `/oauth/*`, `/.well-known/oauth-*` | Public (the OAuth authorize endpoint resolves the user itself) |
+| Paths | Who | Authentication |
+|---|---|---|
+| `/api/**` (incl. `/api/tools/call`) | Human | Access JWT **or** session cookie (`HumanAuthFilter`); no principal → `401` |
+| SPA routes (everything not matched below) | Human | Access JWT **or** session cookie; no principal → `302 /login` (legacy) or `403` page (access mode, no `/login` exists) |
+| `/admin/**` except `/admin/peers**` | Human (browser) | Access JWT **or** session cookie; no principal → same as SPA routes |
+| `/admin/peers**` | Machine (CLI, `connect-peers.sh`) | Bearer token — `HumanAuthFilter` defers to `AuthFilter` without attempting a human principal |
+| `/mcp` | Machine | Bearer token from `api_tokens`, **or** an OAuth access token — never a session |
+| `/hooks`, `/sync` (incl. `/sync/ops`) | Machine | Bearer token (`AuthFilter`) |
+| `/vistierie/**` | Machine (webhook) | Controller-level webhook token (constant-time check), not `AuthFilter` |
+| `/login`, `/logout` | Human | Public in legacy mode (rate-limited); `410 Gone` in access mode |
+| `/oauth/authorize` | Human | Controller resolves its own principal (Access JWT, session, or the OAuth test attribute) |
+| `/oauth/token`, `/oauth/register`, `/.well-known/oauth-*` | Machine | PKCE / DCR — public, no `HumanAuthFilter` involvement |
+| `/api/config` | — | Public, unauthenticated; returns `{"authMode":"access"|"legacy"}` so the SPA can pick its re-auth strategy before making its first authenticated call |
 
-`SessionAuthFilter` runs first and passes bearer-authenticated paths (including `/sync` — peer
-replication would otherwise be redirected to the login page) through to `AuthFilter`, which
-validates the bearer token or returns `401`. Every `/admin` endpoint additionally enforces the
-`admin` role itself, and `/sync/ops` (both GET and POST) additionally requires a `writer`- or
-`admin`-role token — peer tokens are issued as `writer` (see `scripts/connect-peers.sh`), so
-this closes a `reader`/`agent`-token committed-write bypass without breaking peer sync.
+`/api/tools/call` accepts the same JSON-RPC `tools/call` payload as `/mcp` and both are routed
+through the same `ToolCallDispatcher` (permission check, realm filtering, embedding gate) — the
+only difference between the two endpoints is who is allowed to call them and how they prove it.
+A bearer `Authorization` header is **not** evaluated on `/api/**`; only an Access JWT or a
+session cookie resolves a principal there.
+
+Every `/admin` endpoint additionally enforces the `admin` role itself, and `/sync/ops` (both GET
+and POST) additionally requires a `writer`- or `admin`-role token — peer tokens are issued as
+`writer` (see `scripts/connect-peers.sh`), so this closes a `reader`/`agent`-token
+committed-write bypass without breaking peer sync.
+
+A realm-scoped human principal (an Access-mapped row with `read_realms`/`write_realms` set) is
+confined to `/api/tools/call` — the only place realm enforcement happens for humans — and gets
+`403` on every other `/api` path (`/api/gui/stream`, `/api/attachments`, …), mirroring the
+existing bearer-side restriction that confines realm-scoped tokens to `/mcp`.
 
 ## Roles
 
@@ -158,9 +201,25 @@ WWW-Authenticate: Bearer resource_metadata="<issuer>/.well-known/oauth-protected
 When OAuth is disabled, `/mcp` returns a **bare `401`** with no `WWW-Authenticate` header. Other
 guarded paths never emit this header.
 
+## Status codes
+
+- **`401`** — no valid credential presented at all: missing/invalid bearer on a machine path,
+  no resolvable human principal on `/api/**`, or an Access JWT that fails signature/`aud`/`iss`/
+  `exp` verification (no detail is returned to the caller for JWT failures — only logged, to
+  avoid an information leak).
+- **`403`** — the caller *is* authenticated but not authorized: an Access JWT with a valid email
+  that has no matching non-revoked, non-expired `api_tokens` row; a realm-scoped human principal
+  outside `/api/tools/call`; a role that doesn't permit the requested tool/endpoint. A `403`
+  deliberately does not send the human back into a login loop the way a `401` would.
+
 ## Security Details
 
-- **Rate limiting** — 5 failed auth attempts per IP triggers a 15-minute ban. Both the bearer
+- **Rate limiting** — 5 failed auth attempts per IP triggers a 15-minute ban. A request that
+  carries **no** `Authorization` header at all is rejected but does **not** count toward the ban
+  threshold — only a request presenting a header that fails validation counts as a real guessing
+  attempt. This matters because `/mcp` now always requires a bearer: without this exemption, a
+  stale client sessionlessly polling `/mcp` would ban its own IP (and everything else behind
+  that IP, e.g. a shared connection) within a minute. Both the bearer
   and the login limiter key on the **real TCP peer address** (the servlet request is unwrapped
   past Spring's forwarded-header rewriting), so rotating `X-Forwarded-For` headers cannot evade
   the lockout. The trackers are Caffeine-bounded (entries expire with the ban window, capped
