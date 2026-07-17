@@ -61,10 +61,11 @@ public class AccessJwtResolver implements HumanPrincipalResolver {
                 audience,
                 new JWTClaimsSet.Builder().issuer(teamDomain).build(),
                 Set.of("email", "exp"));
-        // DefaultJWTClaimsVerifier defaults to a 60s clock-skew grace period on exp/nbf.
-        // That is too generous for a JWT this short-lived (Cloudflare Access tokens carry
-        // a few minutes of validity) — pin it to zero so "expired" means expired.
-        claimsVerifier.setMaxClockSkew(0);
+        // Tolerate a small clock drift between the Cloudflare edge and this origin host
+        // (NTP skew, typically low single-digit seconds) so a token doesn't get rejected
+        // in the last second of its life just because our clock runs slightly ahead.
+        // Access tokens are long-lived (minutes to hours), so 30s is negligible.
+        claimsVerifier.setMaxClockSkew(30);
         this.processor.setJWTClaimsSetVerifier(claimsVerifier);
     }
 
@@ -92,6 +93,9 @@ public class AccessJwtResolver implements HumanPrincipalResolver {
             JWTClaimsSet claims = processor.process(jwt, null);
             String email = claims.getStringClaim("email");
             if (email == null || email.isBlank()) return Optional.empty();
+            // Belt-and-suspenders: TokenService#findByEmail already matches case-insensitively
+            // in the DB; normalizing here too costs nothing and keeps behavior obvious to a
+            // reader who only sees this call site.
             return tokenService.findByEmail(email.toLowerCase(Locale.ROOT));
         } catch (Exception e) {
             log.warn("Rejected Access JWT: {}", e.getMessage());

@@ -74,8 +74,10 @@ class AccessJwtResolverTest {
 
     @Test
     void expiredJwtIsRejected() throws Exception {
+        // Well beyond the resolver's clock-skew tolerance (30s), so this proves real
+        // expiry rejection rather than a skew-boundary flake.
         var claims = validClaims()
-                .expirationTime(new Date(System.currentTimeMillis() - 1_000)).build();
+                .expirationTime(new Date(System.currentTimeMillis() - 120_000)).build();
         assertThat(resolver.resolve(requestWith(sign(claims)))).isEmpty();
     }
 
