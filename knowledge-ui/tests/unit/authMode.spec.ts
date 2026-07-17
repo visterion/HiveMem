@@ -45,4 +45,18 @@ describe('authMode', () => {
     await loadAuthMode()
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
+
+  // Residual flake (whole-branch e2e review, round 2): in mock mode there is no backend to
+  // answer /api/config, so waiting out the 1.5s timeout delayed every mock/offline page load
+  // (mount used to be instant pre-fix). Mock mode is legacy by definition and never exercises
+  // authMode() for a real decision, so skip the fetch entirely.
+  it('short-circuits to legacy without fetching when hivemem_mock is set', async () => {
+    localStorage.setItem('hivemem_mock', 'true')
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const m = await loadAuthMode()
+    expect(m).toBe('legacy')
+    expect(fetchMock).not.toHaveBeenCalled()
+    localStorage.removeItem('hivemem_mock')
+  })
 })

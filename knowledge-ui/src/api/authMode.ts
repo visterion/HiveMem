@@ -13,6 +13,14 @@ let mode: AuthMode | null = null
  */
 export async function loadAuthMode(): Promise<AuthMode> {
   if (mode) return mode
+  // Mock mode means "no backend" — there is no /api/config to consult, and authMode is
+  // never used for a real decision (MockApiClient never goes through httpClient/triggerReauth).
+  // Skip the fetch so mock/offline loads mount instantly instead of waiting out the timeout.
+  // Mirrors the mock-detection condition useApi.ts uses for its localStorage check.
+  if (typeof localStorage !== 'undefined' && localStorage.getItem('hivemem_mock') === 'true') {
+    mode = 'legacy'
+    return mode
+  }
   try {
     const res = await fetch('/api/config', { credentials: 'same-origin', signal: AbortSignal.timeout(1500) })
     const body = await res.json()
