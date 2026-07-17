@@ -441,8 +441,13 @@ class SecurityIntegrationTest {
                     .andExpect(status().isUnauthorized());
         }
 
+        /**
+         * The human/machine auth split (HumanAuthFilter): a browser session must never
+         * authenticate {@code /mcp}, even for an admin token. Machine paths pass through
+         * to AuthFilter without any human-principal resolution at all.
+         */
         @Test
-        void sessionCookieGrantsAccessToMcp() throws Exception {
+        void sessionCookieNoLongerGrantsAccessToMcp() throws Exception {
             insertToken("admin-user", "admin-token", "admin");
 
             MockHttpSession session = new MockHttpSession();
@@ -452,8 +457,7 @@ class SecurityIntegrationTest {
                             .session(session)
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(TOOLS_LIST_REQUEST))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.result.tools").isArray());
+                    .andExpect(status().isUnauthorized());
         }
     }
 

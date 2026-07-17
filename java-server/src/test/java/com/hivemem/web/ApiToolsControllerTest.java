@@ -23,7 +23,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * Focused controller unit test with a mocked {@link ToolCallDispatcher}. A full-stack
- * {@code @SpringBootTest} isn't meaningful yet: {@code SessionAuthFilter} still guards
+ * {@code @SpringBootTest} isn't meaningful yet: {@code HumanAuthFilter} still guards
  * every {@code /api/**} request and, absent a session, never populates
  * {@link AuthFilter#PRINCIPAL_ATTRIBUTE} — so a bare POST would just 401 before ever
  * reaching this controller. HumanAuthFilter (Task 6) is what actually populates the

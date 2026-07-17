@@ -1,14 +1,13 @@
 package com.hivemem.web;
 
+import com.hivemem.auth.AccessProperties;
 import com.hivemem.auth.AuthFilter;
 import com.hivemem.auth.AuthPrincipal;
-import com.hivemem.auth.LoginController;
-import com.hivemem.auth.TokenService;
+import com.hivemem.auth.HumanPrincipalResolver;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import jakarta.servlet.http.HttpSession;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
@@ -18,11 +17,22 @@ import java.io.IOException;
 import java.util.Optional;
 import java.util.Set;
 
+/**
+ * Authenticates humans — browsers presenting either a Cloudflare Access JWT or a
+ * legacy session cookie, depending on deployment mode (see {@link HumanPrincipalResolver}
+ * / {@link AccessProperties}). Machine callers ({@code /mcp}, {@code /hooks}, {@code
+ * /sync}, {@code /vistierie}, bearer-authed {@code /admin}) are explicitly none of this
+ * filter's business: it passes them straight through to {@link AuthFilter} without
+ * resolving a human principal at all. That early passthrough is what makes a browser
+ * session unable to authenticate {@code /mcp} — the entire point of the human/machine
+ * auth split.
+ */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
-public class SessionAuthFilter extends OncePerRequestFilter {
+public class HumanAuthFilter extends OncePerRequestFilter {
 
-    private final TokenService tokenService;
+    private final HumanPrincipalResolver humanPrincipalResolver;
+    private final AccessProperties accessProperties;
 
     /**
      * Public PWA shell assets. The browser fetches the manifest (via
@@ -43,14 +53,18 @@ public class SessionAuthFilter extends OncePerRequestFilter {
             "/maskable-icon-512x512.png",
             "/apple-touch-icon-180x180.png");
 
-    public SessionAuthFilter(TokenService tokenService) {
-        this.tokenService = tokenService;
+    public HumanAuthFilter(HumanPrincipalResolver humanPrincipalResolver, AccessProperties accessProperties) {
+        this.humanPrincipalResolver = humanPrincipalResolver;
+        this.accessProperties = accessProperties;
     }
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getRequestURI().substring(request.getContextPath().length());
-        if (path.startsWith("/login")) return true;
+        // Legacy only: in Access mode /login does not exist and must not be exempt.
+        if (!accessProperties.isEnabled() && path.startsWith("/login")) return true;
+        // The SPA must learn its auth mode before it can authenticate at all.
+        if (path.equals("/api/config")) return true;
         // OAuth discovery + registration + token are public; the /oauth/authorize
         // endpoint handles its own login redirect when the user is unauthenticated.
         if (path.startsWith("/.well-known/oauth-")) return true;
@@ -85,24 +99,35 @@ public class SessionAuthFilter extends OncePerRequestFilter {
         boolean isAdminBearer = path.startsWith("/admin")
                 && request.getHeader("Authorization") != null;
 
-        HttpSession session = request.getSession(false);
-        if (session != null) {
-            String token = (String) session.getAttribute(LoginController.SESSION_TOKEN_KEY);
-            if (token != null) {
-                Optional<AuthPrincipal> principal = tokenService.validateToken(token);
-                if (principal.isPresent()) {
-                    request.setAttribute(AuthFilter.PRINCIPAL_ATTRIBUTE, principal.get());
-                    filterChain.doFilter(request, response);
-                    return;
-                }
-                session.invalidate();
-            }
-        }
-
+        // Machine paths are none of this filter's business — they authenticate with a
+        // bearer token in AuthFilter. Not resolving a human principal here is what makes
+        // /mcp reject session cookies.
         if (isMcp || isHooks || isVistierie || isSync || isAdminBearer) {
             filterChain.doFilter(request, response);
-        } else if (isApi) {
+            return;
+        }
+
+        Optional<AuthPrincipal> principal = humanPrincipalResolver.resolve(request);
+        if (principal.isPresent()) {
+            // Mirror of AuthFilter:162-165, which only guards the bearer path: a
+            // realm-scoped principal may only use /api/tools/call, where ToolCallDispatcher
+            // enforces the ACL. /api/gui/stream and /api/attachments have no realm filter
+            // at all, so anything else is denied.
+            if (principal.get().isRealmScoped() && !path.equals("/api/tools/call")) {
+                response.sendError(HttpServletResponse.SC_FORBIDDEN);
+                return;
+            }
+            request.setAttribute(AuthFilter.PRINCIPAL_ATTRIBUTE, principal.get());
+            filterChain.doFilter(request, response);
+            return;
+        }
+
+        if (isApi) {
             response.sendError(HttpServletResponse.SC_UNAUTHORIZED);
+        } else if (accessProperties.isEnabled()) {
+            // No /login exists in Access mode — a redirect would 404 or fall through to
+            // the SPA shell. Happens on direct-origin access that bypasses the tunnel.
+            response.sendError(HttpServletResponse.SC_FORBIDDEN);
         } else {
             response.sendRedirect(request.getContextPath() + "/login");
         }

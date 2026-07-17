@@ -2,7 +2,6 @@ package com.hivemem.web;
 
 import com.hivemem.embedding.EmbeddingClient;
 import com.hivemem.embedding.FixedEmbeddingClient;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -26,12 +25,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Disabled for now: {@code GET /api/config} must be reachable without authentication so
- * the SPA can learn the auth mode before it can re-authenticate, but {@code
- * SessionAuthFilter} currently guards every {@code /api/**} request and has no
- * exemption for {@code /api/config} yet — that exemption (plus the filter's rename to
- * {@code HumanAuthFilter}) lands in Task 6. Confirmed failing with 401 before disabling;
- * re-enable once Task 6 lands.
+ * {@code GET /api/config} must be reachable without authentication so the SPA can learn
+ * the auth mode before it can re-authenticate. {@link HumanAuthFilter} exempts
+ * {@code /api/config} in {@code shouldNotFilter} for exactly this reason.
  */
 @ExtendWith(SpringExtension.class)
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
@@ -64,7 +60,6 @@ class ConfigControllerTest {
     MockMvc mockMvc;
 
     @Test
-    @Disabled("enabled in Task 6")
     void configReportsLegacyModeByDefaultAndNeedsNoAuth() throws Exception {
         mockMvc.perform(get("/api/config"))
                 .andExpect(status().isOk())

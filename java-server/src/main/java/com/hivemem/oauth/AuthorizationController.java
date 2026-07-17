@@ -296,7 +296,7 @@ public class AuthorizationController {
      * <ol>
      *   <li>Test-injected attribute {@code oauth.user_token_id} (used by integration tests
      *       to bypass the session/login flow) — resolved via {@code TokenService.findById}.</li>
-     *   <li>The {@link AuthPrincipal} populated by {@code SessionAuthFilter} or
+     *   <li>The {@link AuthPrincipal} populated by {@code HumanAuthFilter} or
      *       {@code AuthFilter} on the standard request attribute.</li>
      *   <li>The login session cookie, resolved directly (neither filter populates the
      *       principal for {@code /oauth/} paths).</li>
@@ -311,7 +311,7 @@ public class AuthorizationController {
         }
         Object principal = request.getAttribute(AuthFilter.PRINCIPAL_ATTRIBUTE);
         if (principal instanceof AuthPrincipal p) return p;
-        // Browser session fallback: neither AuthFilter nor SessionAuthFilter populates the
+        // Browser session fallback: neither AuthFilter nor HumanAuthFilter populates the
         // principal for /oauth/ paths, so resolve the login session cookie directly here.
         HttpSession session = request.getSession(false);
         if (session != null) {

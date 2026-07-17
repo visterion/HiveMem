@@ -1,10 +1,13 @@
 package com.hivemem.web;
 
+import com.hivemem.auth.AccessProperties;
 import com.hivemem.auth.AuthFilter;
 import com.hivemem.auth.AuthPrincipal;
 import com.hivemem.auth.AuthRole;
+import com.hivemem.auth.HumanPrincipalResolver;
 import com.hivemem.auth.LoginController;
 import com.hivemem.auth.RateLimiter;
+import com.hivemem.auth.SessionResolver;
 import com.hivemem.auth.TokenService;
 import com.hivemem.auth.support.FixedTokenService;
 import org.junit.jupiter.api.Test;
@@ -26,7 +29,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(controllers = SpaController.class)
-@Import({SessionAuthFilter.class, AuthFilter.class, RateLimiter.class, com.hivemem.auth.SecurityProperties.class,
+@Import({HumanAuthFilter.class, AuthFilter.class, RateLimiter.class, com.hivemem.auth.SecurityProperties.class,
         SpaRoutingTest.TestConfig.class})
 class SpaRoutingTest {
 
@@ -42,6 +45,18 @@ class SpaRoutingTest {
                     "valid-token".equals(token)
                             ? Optional.of(new AuthPrincipal("alice", AuthRole.READER))
                             : Optional.empty());
+        }
+
+        // Legacy mode (the only mode this WebMvcTest exercises): SessionResolver is the
+        // active HumanPrincipalResolver, backed by the fixed tokenService() above.
+        @Bean
+        HumanPrincipalResolver humanPrincipalResolver(TokenService tokenService) {
+            return new SessionResolver(tokenService);
+        }
+
+        @Bean
+        AccessProperties accessProperties() {
+            return new AccessProperties();
         }
 
         @Bean

@@ -1,8 +1,11 @@
 package com.hivemem.hooks;
 
+import com.hivemem.auth.AccessProperties;
 import com.hivemem.auth.AuthFilter;
 import com.hivemem.auth.AuthPrincipal;
+import com.hivemem.auth.HumanPrincipalResolver;
 import com.hivemem.auth.RateLimiter;
+import com.hivemem.auth.SessionResolver;
 import com.hivemem.auth.TokenService;
 import com.hivemem.auth.support.FixedTokenService;
 import org.junit.jupiter.api.Test;
@@ -50,6 +53,19 @@ class HooksAuthSmokeTest {
         @Primary
         TokenService tokenService() {
             return new FixedTokenService(token -> Optional.<AuthPrincipal>empty());
+        }
+
+        // @WebMvcTest auto-detects every Filter bean in the app, including
+        // com.hivemem.web.HumanAuthFilter (it runs ahead of /hooks in the real chain, even
+        // though this test only targets AuthFilter) — its constructor needs these.
+        @Bean
+        HumanPrincipalResolver humanPrincipalResolver(TokenService tokenService) {
+            return new SessionResolver(tokenService);
+        }
+
+        @Bean
+        AccessProperties accessProperties() {
+            return new AccessProperties();
         }
     }
 

@@ -1,10 +1,13 @@
 package com.hivemem.web;
 
+import com.hivemem.auth.AccessProperties;
 import com.hivemem.auth.AuthFilter;
 import com.hivemem.auth.AuthPrincipal;
 import com.hivemem.auth.AuthRole;
+import com.hivemem.auth.HumanPrincipalResolver;
 import com.hivemem.auth.LoginController;
 import com.hivemem.auth.RateLimiter;
+import com.hivemem.auth.SessionResolver;
 import com.hivemem.auth.TokenService;
 import com.hivemem.auth.support.FixedTokenService;
 import org.junit.jupiter.api.Test;
@@ -28,10 +31,10 @@ import static org.mockito.Mockito.mock;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@WebMvcTest(controllers = SessionAuthFilterTest.TestController.class)
-@Import({SessionAuthFilter.class, AuthFilter.class, RateLimiter.class, com.hivemem.auth.SecurityProperties.class,
-        SessionAuthFilterTest.TestConfig.class})
-class SessionAuthFilterTest {
+@WebMvcTest(controllers = HumanAuthFilterSliceTest.TestController.class)
+@Import({HumanAuthFilter.class, AuthFilter.class, RateLimiter.class, com.hivemem.auth.SecurityProperties.class,
+        HumanAuthFilterSliceTest.TestConfig.class})
+class HumanAuthFilterSliceTest {
 
     @Autowired
     MockMvc mockMvc;
@@ -45,6 +48,18 @@ class SessionAuthFilterTest {
                     "valid-token".equals(token)
                             ? Optional.of(new AuthPrincipal("alice", AuthRole.READER))
                             : Optional.empty());
+        }
+
+        // Legacy mode (the only mode this WebMvcTest exercises): SessionResolver is the
+        // active HumanPrincipalResolver, backed by the fixed tokenService() above.
+        @Bean
+        HumanPrincipalResolver humanPrincipalResolver(TokenService tokenService) {
+            return new SessionResolver(tokenService);
+        }
+
+        @Bean
+        AccessProperties accessProperties() {
+            return new AccessProperties();
         }
 
         @Bean
@@ -98,7 +113,7 @@ class SessionAuthFilterTest {
         MockHttpSession session = new MockHttpSession();
         session.setAttribute(LoginController.SESSION_TOKEN_KEY, "bad-token");
 
-        // Invalid session token on /mcp: SessionAuthFilter invalidates session and passes to AuthFilter,
+        // Invalid session token on /mcp: HumanAuthFilter invalidates session and passes to AuthFilter,
         // which returns 401 (no Bearer token present).
         mockMvc.perform(get("/mcp").session(session))
                 .andExpect(status().isUnauthorized());
@@ -106,7 +121,7 @@ class SessionAuthFilterTest {
 
     @Test
     void vistieriePathWithoutSessionContinuesChain() throws Exception {
-        // Unauthenticated /vistierie requests must pass through SessionAuthFilter
+        // Unauthenticated /vistierie requests must pass through HumanAuthFilter
         // (mirrors /hooks behaviour) — NOT redirected to /login.
         mockMvc.perform(get("/vistierie/tools/find_isolated_cells"))
                 .andExpect(status().isOk());
@@ -149,7 +164,8 @@ class SessionAuthFilterTest {
 
     // Unit tests for PWA asset exemption (new tests covering Task 1)
     private static class UnitTestHelper {
-        private final SessionAuthFilter filter = new SessionAuthFilter(mock(TokenService.class));
+        private final HumanAuthFilter filter =
+                new HumanAuthFilter(mock(HumanPrincipalResolver.class), new AccessProperties());
 
         private boolean skip(String uri) {
             return filter.shouldNotFilter(new MockHttpServletRequest("GET", uri));

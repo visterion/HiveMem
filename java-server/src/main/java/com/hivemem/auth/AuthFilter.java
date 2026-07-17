@@ -83,8 +83,8 @@ public class AuthFilter extends OncePerRequestFilter {
         if (requestPath.startsWith("/vistierie")) return true;
         // /mcp, /hooks, /sync and /admin are bearer-authenticated here (/admin only when
         // the request carries an Authorization header — browser sessions are handled by
-        // SessionAuthFilter, which runs first and redirects sessionless /admin requests
-        // without a bearer to /login). /api/** is session-cookie-only: SessionAuthFilter
+        // HumanAuthFilter, which runs first and redirects sessionless /admin requests
+        // without a bearer to /login). /api/** is session-cookie-only: HumanAuthFilter
         // rejects it before this filter could ever see a bearer token, so it must not
         // be listed here.
         return !requestPath.startsWith("/mcp") && !requestPath.startsWith("/hooks")

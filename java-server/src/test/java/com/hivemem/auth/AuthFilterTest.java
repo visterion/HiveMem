@@ -134,7 +134,7 @@ class AuthFilterTest {
         MockHttpServletRequest admin = new MockHttpServletRequest();
         admin.setRequestURI("/admin/tokens");
         assertThat(filter.shouldNotFilter(admin)).isFalse();
-        // /api/** is session-cookie-only: SessionAuthFilter rejects it before this filter
+        // /api/** is session-cookie-only: HumanAuthFilter rejects it before this filter
         // could ever see a bearer, so it must not be in the bearer set (dead config).
         MockHttpServletRequest attachments = new MockHttpServletRequest();
         attachments.setRequestURI("/api/attachments/abc/thumbnail");
@@ -202,6 +202,19 @@ class AuthFilterTest {
                     "good-token".equals(token)
                             ? Optional.of(new AuthPrincipal("token-1", AuthRole.WRITER))
                             : Optional.empty());
+        }
+
+        // @WebMvcTest auto-detects every Filter bean in the app, including
+        // com.hivemem.web.HumanAuthFilter — its constructor needs these even though this
+        // test targets AuthFilter.
+        @Bean
+        HumanPrincipalResolver humanPrincipalResolver(TokenService tokenService) {
+            return new SessionResolver(tokenService);
+        }
+
+        @Bean
+        AccessProperties accessProperties() {
+            return new AccessProperties();
         }
 
         @Bean

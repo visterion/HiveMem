@@ -45,6 +45,19 @@ class LoginControllerTest {
                             ? Optional.of(new AuthPrincipal("alice", AuthRole.READER))
                             : Optional.empty());
         }
+
+        // @WebMvcTest auto-detects every Filter bean in the app, including
+        // com.hivemem.web.HumanAuthFilter — its constructor needs these even though this
+        // test targets LoginController.
+        @Bean
+        HumanPrincipalResolver humanPrincipalResolver(TokenService tokenService) {
+            return new SessionResolver(tokenService);
+        }
+
+        @Bean
+        AccessProperties accessProperties() {
+            return new AccessProperties();
+        }
     }
 
     @Test
