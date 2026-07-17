@@ -185,39 +185,73 @@ cmd_set_email() {
     # Without revoking those first, reassignment hits a unique violation and locks the
     # human out.
     #
-    # Success is verified via RETURNING on the reassign UPDATE itself (same pattern as
-    # cmd_revoke above), not a separate SELECT: a plain "does a row with this name+email
-    # exist" SELECT would false-positive on a REVOKED row that still carries the email
-    # (cmd_revoke never clears the email column), letting set-email on a revoked name
-    # report "ok" without actually updating anything.
+    # The revoke-then-reassign must be all-or-nothing: if the target name turns out to
+    # have no active row (typo, already revoked), a naive two-UPDATE transaction would
+    # still COMMIT the prior-holder revoke even though the reassign matched nothing --
+    # locking out a human who legitimately held the email, for no gain (the email ends
+    # up orphaned on nobody). A DO block raises an exception when the reassign matches
+    # zero rows, which aborts the whole statement -- including the prior-holder revoke --
+    # so a bad target name never has a side effect. The temp table (dropped ON COMMIT)
+    # carries the prior_revoked count out to the following SELECT only when the DO block
+    # actually succeeded; if it raised, nothing is ever inserted and psql (ON_ERROR_STOP=1)
+    # aborts before running the SELECT or the COMMIT, so the transaction rolls back on
+    # disconnect.
     #
     # WARNING: the previous row's bearer token dies with it. An api_tokens row is
     # dual-use -- it carries token_hash (Claude Code / CLI) AND email (the GUI). Moving
     # an email to a different row revokes the old row's bearer. Reissue it afterwards.
-    local result prior_revoked reassigned
-    result=$("${PSQL[@]}" -F $'\t' -v "tok_name=${name}" -v "tok_email=${email}" <<'SQL'
+    #
+    # Note on binding into the DO body: psql's `:'var'` substitution does NOT reach
+    # inside a dollar-quoted ($do$ ... $do$) string -- psql treats it as opaque, so a
+    # `:'var'` written there is sent to the server literally and fails to parse. Instead
+    # the values are bound via `SET LOCAL` (plain SQL, where `:'var'` substitution does
+    # apply) into session GUCs, and the DO block reads them back with current_setting() --
+    # still fully parameterized, no manual literal-quoting inside plpgsql.
+    local result rc=0
+    result=$("${PSQL[@]}" -F $'\t' -v "tok_name=${name}" -v "tok_email=${email}" <<'SQL' 2>&1
 BEGIN;
-WITH revoked_prior AS (
+CREATE TEMP TABLE set_email_result (prior_revoked int, reassigned int) ON COMMIT DROP;
+SET LOCAL hivemem.set_email_tok_name = :'tok_name';
+SET LOCAL hivemem.set_email_tok_email = :'tok_email';
+DO $do$
+DECLARE
+    prior_revoked int;
+    reassigned int;
+    v_name text := current_setting('hivemem.set_email_tok_name');
+    v_email text := current_setting('hivemem.set_email_tok_email');
+BEGIN
     UPDATE api_tokens
        SET revoked_at = now()
-     WHERE lower(email) = :'tok_email'
+     WHERE lower(email) = v_email
        AND revoked_at IS NULL
-       AND name <> :'tok_name'
-    RETURNING name
-), reassigned AS (
+       AND name <> v_name;
+    GET DIAGNOSTICS prior_revoked = ROW_COUNT;
+
     UPDATE api_tokens
-       SET email = :'tok_email'
-     WHERE name = :'tok_name'
-       AND revoked_at IS NULL
-    RETURNING name
-)
-SELECT (SELECT count(*) FROM revoked_prior)::text,
-       (SELECT count(*) FROM reassigned)::text;
+       SET email = v_email
+     WHERE name = v_name
+       AND revoked_at IS NULL;
+    GET DIAGNOSTICS reassigned = ROW_COUNT;
+
+    IF reassigned = 0 THEN
+        RAISE EXCEPTION 'no active token named %', v_name;
+    END IF;
+
+    INSERT INTO set_email_result VALUES (prior_revoked, reassigned);
+END
+$do$;
+SELECT prior_revoked::text, reassigned::text FROM set_email_result;
 COMMIT;
 SQL
-)
-    IFS=$'\t' read -r prior_revoked reassigned <<< "$result"
+) || rc=$?
+    if [ "$rc" -ne 0 ]; then
+        echo "Error: no active token named '${name}'" >&2
+        exit 1
+    fi
+    local prior_revoked reassigned
+    IFS=$'\t' read -r prior_revoked reassigned <<< "$(echo "$result" | tail -1)"
     if [ "$reassigned" != "1" ]; then
+        # Defensive: DO block should have raised already (caught above). Treat as failure.
         echo "Error: no active token named '${name}'" >&2
         exit 1
     fi
