@@ -3,17 +3,12 @@ import { computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useKnowledgeSearch, type KnowledgeFacetKey, type KnowledgeSort } from '../../composables/useKnowledgeSearch'
-import { useCellStore } from '../../stores/cell'
 import { useUiStore } from '../../stores/ui'
-import { cellLabel } from '../../api/cellLabel'
-import { realmColorFor } from '../../composables/realmMeta'
-import ScoreRing from './ScoreRing.vue'
 import HmIcon from '../shell/HmIcon.vue'
 import FacetGroup from '../scans/FacetGroup.vue'
 import SortMenu from '../scans/SortMenu.vue'
 
-const { query, facets, sort, shown, facetCounts, loading, error, run, toggleFacet, setSort, clearFacets } = useKnowledgeSearch()
-const cellStore = useCellStore()
+const { query, facets, sort, shown, facetCounts, run, toggleFacet, setSort, clearFacets } = useKnowledgeSearch()
 const ui = useUiStore()
 const route = useRoute()
 const { t } = useI18n()
@@ -69,34 +64,7 @@ const onToggle = (f: string, v: string) => toggleFacet(f as KnowledgeFacetKey, v
         :options="facetCounts.signal || []" :selected="facets.signal" @toggle="onToggle" />
       <FacetGroup :title="t('knowledge.facetsTag')" field="tag"
         :options="facetCounts.tag || []" :selected="facets.tag" :max="10" @toggle="onToggle" />
-
-      <div class="rows">
-        <div v-for="c in shown" :key="c.id"
-          :class="['row', { sel: cellStore.currentId === c.id }]" @click="cellStore.open(c)">
-          <!-- The ring shows the relevance score. It only carries information under a relevance
-               sort with a real query; an empty ring (score 0) otherwise reads as an unchecked
-               radio and invites a click that does nothing. Show it only when meaningful. -->
-          <ScoreRing v-if="sort === 'relevance' && (c.score_total ?? 0) > 0" :value="c.score_total ?? 0" />
-          <div class="row-main">
-            <div class="row-title">{{ cellLabel(c) }}</div>
-            <div v-if="c.summary" class="row-snip">{{ c.summary }}</div>
-            <div class="row-meta">
-              <span class="dot" :style="{ background: realmColorFor(c.realm) }" />
-              <span>{{ c.realm ?? '—' }}</span>
-              <span class="sep">·</span>
-              <span class="sig">{{ c.signal || '—' }}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div v-if="error" class="hint error">
-        {{ t('search.searchError') }}
-        <button class="retry-btn" @click="run()">{{ t('common.retry') }}</button>
-      </div>
-      <div v-else-if="loading" class="hint">{{ t('search.searching') }}</div>
-      <div v-else-if="!shown.length && (activeFilterCount || query)" class="hint">
-        {{ t('common.noResults') }}
-      </div>
+      <!-- Results moved to the stage (KnowledgeReader): the panel is filters only now. -->
     </div>
   </div>
 </template>
