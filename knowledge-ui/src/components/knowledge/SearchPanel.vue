@@ -73,7 +73,10 @@ const onToggle = (f: string, v: string) => toggleFacet(f as KnowledgeFacetKey, v
       <div class="rows">
         <div v-for="c in shown" :key="c.id"
           :class="['row', { sel: cellStore.currentId === c.id }]" @click="cellStore.open(c)">
-          <ScoreRing :value="c.score_total ?? 0" />
+          <!-- The ring shows the relevance score. It only carries information under a relevance
+               sort with a real query; an empty ring (score 0) otherwise reads as an unchecked
+               radio and invites a click that does nothing. Show it only when meaningful. -->
+          <ScoreRing v-if="sort === 'relevance' && (c.score_total ?? 0) > 0" :value="c.score_total ?? 0" />
           <div class="row-main">
             <div class="row-title">{{ cellLabel(c) }}</div>
             <div v-if="c.summary" class="row-snip">{{ c.summary }}</div>
