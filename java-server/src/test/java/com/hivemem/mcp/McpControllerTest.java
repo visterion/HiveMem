@@ -432,6 +432,7 @@ class McpControllerTest {
             com.hivemem.auth.SecurityProperties.class,
             ToolPermissionService.class,
             ToolRegistry.class,
+            ToolCallDispatcher.class,
             McpController.class
     })
     static class TestConfig {

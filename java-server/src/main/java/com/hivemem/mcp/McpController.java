@@ -5,11 +5,8 @@ import tools.jackson.databind.ObjectMapper;
 import com.hivemem.auth.AuthFilter;
 import com.hivemem.auth.AuthPrincipal;
 import com.hivemem.auth.ToolPermissionService;
-import com.hivemem.embedding.EmbeddingMigrationService;
 import java.util.List;
-import java.util.Set;
 import jakarta.servlet.http.HttpServletRequest;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -20,7 +17,6 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.Map;
-import java.util.Optional;
 import java.util.UUID;
 
 import org.slf4j.Logger;
@@ -32,10 +28,6 @@ public class McpController {
     private static final Logger log = LoggerFactory.getLogger(McpController.class);
 
     private static final String SESSION_HEADER = "Mcp-Session-Id";
-
-    /** Tools that require live embeddings and must be gated while re-encoding runs. */
-    private static final Set<String> EMBEDDING_TOOLS =
-            Set.of("search", "entity_overview", "search_kg", "data_quality_report", "add_cell");
 
     /**
      * MCP protocol versions this server can serve. 2025-06-18 is the latest (and default);
@@ -53,13 +45,13 @@ public class McpController {
 
     private final ToolRegistry toolRegistry;
     private final ToolPermissionService toolPermissionService;
-    private final EmbeddingMigrationService embeddingMigrationService;
+    private final ToolCallDispatcher toolCallDispatcher;
 
     public McpController(ToolRegistry toolRegistry, ToolPermissionService toolPermissionService,
-                         EmbeddingMigrationService embeddingMigrationService) {
+                         ToolCallDispatcher toolCallDispatcher) {
         this.toolRegistry = toolRegistry;
         this.toolPermissionService = toolPermissionService;
-        this.embeddingMigrationService = embeddingMigrationService;
+        this.toolCallDispatcher = toolCallDispatcher;
     }
 
     /**
@@ -166,62 +158,6 @@ public class McpController {
     }
 
     private ResponseEntity<McpResponse> handleToolCall(McpRequest request, AuthPrincipal principal) {
-        JsonNode params = request.params();
-        if (params == null || !params.hasNonNull("name")) {
-            return ResponseEntity.ok(
-                    McpResponse.invalidParams(request.id(), "Missing tool name"));
-        }
-
-        String toolName = params.get("name").asText();
-        if (toolName.isBlank()) {
-            return ResponseEntity.ok(
-                    McpResponse.invalidParams(request.id(), "Missing tool name"));
-        }
-        if (!toolPermissionService.isAllowed(principal.role(), toolName)) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(
-                    McpResponse.forbidden(request.id(), toolName));
-        }
-        Optional<String> realmDenied =
-                toolPermissionService.realmDenial(principal, toolName, params.path("arguments"));
-        if (realmDenied.isPresent()) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(
-                    McpResponse.forbidden(request.id(), toolName));
-        }
-
-        if (EMBEDDING_TOOLS.contains(toolName) && embeddingMigrationService.isReencodingActive()) {
-            String progress = embeddingMigrationService.getProgress().orElse("unknown");
-            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(
-                    McpResponse.internalError(request.id(),
-                            "Embedding re-encoding in progress (" + progress + "). This tool depends on embeddings and is temporarily unavailable."));
-        }
-
-        return toolRegistry.resolve(toolName)
-                .map(handler -> {
-                    try {
-                        JsonNode callArgs = toolPermissionService.rewriteReadArgs(
-                                principal, toolName, params.path("arguments"));
-                        Object result = handler.call(principal, callArgs);
-                        JsonNode filtered = toolPermissionService.filterReadResponse(
-                                principal, toolName, callArgs, MAPPER.valueToTree(result));
-                        String json = MAPPER.writeValueAsString(filtered);
-                        return ResponseEntity.ok(
-                                McpResponse.toolResult(request.id(), json));
-                    } catch (IllegalArgumentException e) {
-                        // Argument validation failures are protocol-level invalid params.
-                        return ResponseEntity.ok(
-                                McpResponse.invalidParams(request.id(), messageOf(e)));
-                    } catch (Exception e) {
-                        // Execution failures are reported inside the tool result
-                        // (isError: true) so the model can see and react to them.
-                        log.error("Tool call failed: {}", toolName, e);
-                        return ResponseEntity.ok(
-                                McpResponse.toolExecutionError(request.id(), messageOf(e)));
-                    }
-                })
-                .orElseGet(() -> ResponseEntity.ok(McpResponse.toolNotFound(request.id(), toolName)));
-    }
-
-    private static String messageOf(Exception e) {
-        return e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+        return toolCallDispatcher.dispatch(principal, request.id(), request.params());
     }
 }
