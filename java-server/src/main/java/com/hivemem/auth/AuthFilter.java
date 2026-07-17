@@ -175,7 +175,13 @@ public class AuthFilter extends OncePerRequestFilter {
      */
     private void sendUnauthorized(HttpServletRequest request, HttpServletResponse response, String clientIp)
             throws IOException {
-        rateLimiter.recordFailure(clientIp);
+        // Only count real guessing attempts: a request without an Authorization header
+        // presents no credential, so there is nothing to brute-force. Counting those would
+        // let a stale client (or any anonymous probe) ban the whole source IP — including
+        // legitimate bearer clients behind the same address.
+        if (request.getHeader("Authorization") != null) {
+            rateLimiter.recordFailure(clientIp);
+        }
         String requestPath = request.getRequestURI().substring(request.getContextPath().length());
         if (requestPath.startsWith("/mcp") && oauthProperties.isPresent()) {
             OAuthProperties props = oauthProperties.get();

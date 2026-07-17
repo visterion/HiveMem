@@ -319,10 +319,13 @@ class SecurityIntegrationTest {
          */
         @Test
         void xffDoesNotAffectRateLimitBucketing() throws Exception {
-            // Exhaust rate limit with 5 failures (no valid token)
+            // Exhaust rate limit with 5 failures. A bogus (but present) bearer is required:
+            // a headerless request presents no credential and no longer counts as a failed
+            // guess (see AuthFilter#sendUnauthorized), so it wouldn't trip the rate limiter.
             for (int i = 0; i < 5; i++) {
                 mockMvc.perform(post("/mcp")
                                 .header("X-Forwarded-For", "1.2.3.4")
+                                .header(HttpHeaders.AUTHORIZATION, "Bearer invalid-token-" + i)
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(TOOLS_LIST_REQUEST))
                         .andExpect(status().isUnauthorized());
@@ -331,6 +334,7 @@ class SecurityIntegrationTest {
             // The 6th request should be rate-limited despite different XFF
             mockMvc.perform(post("/mcp")
                             .header("X-Forwarded-For", "5.6.7.8")
+                            .header(HttpHeaders.AUTHORIZATION, "Bearer invalid-token-again")
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(TOOLS_LIST_REQUEST))
                     .andExpect(status().is(429));

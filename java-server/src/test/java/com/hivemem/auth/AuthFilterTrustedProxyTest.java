@@ -37,6 +37,10 @@ class AuthFilterTrustedProxyTest {
         if (cfConnectingIp != null) {
             req.addHeader(CF_HEADER, cfConnectingIp);
         }
+        // A bogus (but present) bearer is required to trip the rate limiter: a headerless
+        // request presents no credential and no longer counts as a failed guess (see
+        // AuthFilter#sendUnauthorized).
+        req.addHeader("Authorization", "Bearer invalid-token");
         return req;
     }
 
