@@ -2,11 +2,15 @@ package com.hivemem.embedding;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.UnknownContentTypeException;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -16,6 +20,8 @@ import java.util.List;
 
 @Component
 public class HttpEmbeddingClient implements EmbeddingClient {
+
+    private static final Logger log = LoggerFactory.getLogger(HttpEmbeddingClient.class);
 
     private final RestClient restClient;
     private volatile int expectedDimension = -1;
@@ -127,7 +133,16 @@ public class HttpEmbeddingClient implements EmbeddingClient {
                     throw new EmbeddingUnavailableException(
                             "Embedding service unavailable after " + attempt + " attempt(s)", e);
                 }
+                log.debug("Embedding call retry {} for mode={}: {}", attempt, mode, e.toString());
                 sleepBackoff(attempt);
+            } catch (RestClientException e) {
+                // e.g. UnknownContentTypeException when the service replies application/octet-stream:
+                // previously fell through uncaught and unlogged. Log it, then rethrow unchanged.
+                String contentType = (e instanceof UnknownContentTypeException uce)
+                        ? String.valueOf(uce.getContentType()) : "unknown";
+                log.warn("Embedding call failed for mode={} textLen={}: {} (content-type={})",
+                        mode, text.length(), e.getClass().getSimpleName(), contentType);
+                throw e;
             }
         }
     }
