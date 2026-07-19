@@ -5,6 +5,9 @@ import com.hivemem.testsupport.MockVistierieServer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.HttpClientErrorException;
 import tools.jackson.databind.JsonNode;
@@ -19,6 +22,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+@ExtendWith(OutputCaptureExtension.class)
 class AnthropicSummarizerTest {
 
     MockVistierieServer mock;
@@ -297,5 +301,27 @@ class AnthropicSummarizerTest {
 
         assertThat(r.documentType()).isNull();
         assertThat(r.facts()).isEmpty();
+    }
+
+    @Test
+    void logsModelAndTokenUsageOnSuccess(CapturedOutput output) {
+        mock.stubComplete("{\\\"summary\\\":\\\"s\\\",\\\"key_points\\\":[],\\\"insight\\\":null,\\\"tags\\\":[],\\\"facts\\\":[]}");
+
+        summarizer.summarize("some content", minimalProfile());
+
+        assertThat(output).contains(
+                "Vistierie /llm/complete purpose=summarize_cell model=claude-haiku-4-5 in=10 out=3");
+    }
+
+    @Test
+    void logsWarnAndRethrowsWhenCallFails(CapturedOutput output) {
+        // Port 1 is not listening → connection refused → ResourceAccessException (a RuntimeException).
+        AnthropicSummarizer broken = new AnthropicSummarizer(
+                RestClient.builder(), "http://localhost:1", "test-token",
+                "document-separator", "claude-haiku-4-5", 8000, 4096, "de");
+
+        assertThatThrownBy(() -> broken.summarize("x", minimalProfile()))
+                .isInstanceOf(RuntimeException.class);
+        assertThat(output).contains("Vistierie /llm/complete failed purpose=summarize_cell");
     }
 }

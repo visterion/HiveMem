@@ -2,6 +2,8 @@ package com.hivemem.summarize;
 
 import com.hivemem.extraction.ExtractionProfile;
 import com.hivemem.extraction.FactSpec;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 import tools.jackson.databind.JsonNode;
@@ -12,6 +14,8 @@ import java.util.List;
 import java.util.Map;
 
 public class AnthropicSummarizer {
+
+    private static final Logger log = LoggerFactory.getLogger(AnthropicSummarizer.class);
 
     private static final String BASE_SYSTEM = """
             You distill cells in HiveMem (a personal knowledge graph) and extract structured facts.
@@ -139,13 +143,7 @@ public class AnthropicSummarizer {
                 "max_tokens", maxOutputTokens
         );
 
-        JsonNode resp = client.post()
-                .uri("/llm/complete")
-                .header("Authorization", "Bearer " + tenantToken)
-                .header("content-type", "application/json")
-                .body(body)
-                .retrieve()
-                .body(JsonNode.class);
+        JsonNode resp = postComplete(body, "summarize_cell");
 
         if (resp == null) throw new IllegalStateException("Vistierie returned null body");
 
@@ -205,13 +203,7 @@ public class AnthropicSummarizer {
                 "messages", List.of(Map.of("role", "user", "content", summary)),
                 "max_tokens", 32
         );
-        JsonNode resp = client.post()
-                .uri("/llm/complete")
-                .header("Authorization", "Bearer " + tenantToken)
-                .header("content-type", "application/json")
-                .body(body)
-                .retrieve()
-                .body(JsonNode.class);
+        JsonNode resp = postComplete(body, "title_cell");
         if (resp == null) return new TitleResult(null, 0, 0);
         int inputTokens = resp.path("usage").path("inputTokens").asInt(0);
         int outputTokens = resp.path("usage").path("outputTokens").asInt(0);
@@ -252,13 +244,7 @@ public class AnthropicSummarizer {
                 "messages", List.of(Map.of("role", "user", "content", summary)),
                 "max_tokens", 32
         );
-        JsonNode resp = client.post()
-                .uri("/llm/complete")
-                .header("Authorization", "Bearer " + tenantToken)
-                .header("content-type", "application/json")
-                .body(body)
-                .retrieve()
-                .body(JsonNode.class);
+        JsonNode resp = postComplete(body, "classify_tax");
         if (resp == null) return new TaxClassification(false, null, 0, 0);
         int inputTokens = resp.path("usage").path("inputTokens").asInt(0);
         int outputTokens = resp.path("usage").path("outputTokens").asInt(0);
@@ -288,6 +274,32 @@ public class AnthropicSummarizer {
             case "en" -> "English";
             default -> code;
         };
+    }
+
+    /** Single POST to Vistierie /llm/complete with per-call INFO logging (model, token usage,
+     *  latency) and WARN-on-failure. Behavior is unchanged — exceptions are rethrown as-is. */
+    private JsonNode postComplete(Map<String, Object> body, String purpose) {
+        long t0 = System.nanoTime();
+        try {
+            JsonNode resp = client.post()
+                    .uri("/llm/complete")
+                    .header("Authorization", "Bearer " + tenantToken)
+                    .header("content-type", "application/json")
+                    .body(body)
+                    .retrieve()
+                    .body(JsonNode.class);
+            long ms = (System.nanoTime() - t0) / 1_000_000;
+            int in = resp == null ? 0 : resp.path("usage").path("inputTokens").asInt(0);
+            int out = resp == null ? 0 : resp.path("usage").path("outputTokens").asInt(0);
+            log.info("Vistierie /llm/complete purpose={} model={} in={} out={} took={}ms",
+                    purpose, model, in, out, ms);
+            return resp;
+        } catch (RuntimeException e) {
+            long ms = (System.nanoTime() - t0) / 1_000_000;
+            log.warn("Vistierie /llm/complete failed purpose={} model={} took={}ms: {}",
+                    purpose, model, ms, e.toString());
+            throw e;
+        }
     }
 
     /**
