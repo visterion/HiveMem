@@ -69,9 +69,12 @@ Cells throttled by the API:
 
 ## Logging & cost visibility
 
-Each summarize call emits two INFO log lines, so per-document model, token counts,
-cost, running daily spend vs. budget, and latency are readable straight from the
-application logs without a DB query:
+Each summarize call emits one INFO line per Vistierie call plus one summary line, so
+per-document model, token counts, cost, running daily spend vs. budget, and latency are
+readable straight from the application logs without a DB query. A full document pass makes
+several Vistierie calls (the main summarize plus the cheap `title_cell` / `classify_tax`
+completions), each logging its own `Vistierie /llm/complete` line, followed by the single
+`Summarize LLM call` summary line:
 
     Vistierie /llm/complete purpose=<purpose> model=<model> in=<tokens> out=<tokens> took=<ms>ms
     Summarize LLM call cell=<uuid> model=<model> in=<tokens> out=<tokens> cost=$<cost> day=$<spend>/<budget> took=<ms>ms
