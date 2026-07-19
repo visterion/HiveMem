@@ -20,6 +20,9 @@ import org.jooq.impl.DSL;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.web.client.RestClient;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -44,6 +47,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
 
 @Testcontainers
+@ExtendWith(OutputCaptureExtension.class)
 class SummarizerServiceIT {
 
     @Container
@@ -196,6 +200,20 @@ class SummarizerServiceIT {
             assertThat(actual.toInstant())
                     .isEqualTo(OffsetDateTime.parse("2025-03-09T00:00:00Z").toInstant());
         }
+    }
+
+    @Test
+    void logsCostAndLatencyLineOnSummarize(CapturedOutput output) throws Exception {
+        UUID id = seedLongCell();
+        String inner = "{\"summary\":\"s\",\"key_points\":[],\"insight\":null,"
+                + "\"tags\":[],\"document_type\":\"other\",\"facts\":[]}";
+        mockVistierie.stubComplete(inner.replace("\"", "\\\""));
+
+        buildService().summarizeOne(id);
+
+        assertThat(output).contains(
+                "Summarize LLM call cell=" + id + " model=claude-haiku-4-5 in=10 out=3");
+        assertThat(output).contains("/10.00");   // buildService sets dailyBudgetUsd = 10.0
     }
 
     // --- helpers ---

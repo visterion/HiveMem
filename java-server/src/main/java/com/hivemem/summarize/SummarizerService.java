@@ -151,6 +151,7 @@ public class SummarizerService {
 
         try {
             SummaryResult result;
+            long t0 = System.nanoTime();
             budget.beginCall();
             try {
                 result = anthropic.summarize(snap.content(), profile);
@@ -158,6 +159,11 @@ public class SummarizerService {
             } finally {
                 budget.endCall();
             }
+            long ms = (System.nanoTime() - t0) / 1_000_000;
+            log.info("Summarize LLM call cell={} model={} in={} out={} cost=${} day=${}/{} took={}ms",
+                    cellId, props.getModel(), result.inputTokens(), result.outputTokens(),
+                    SummarizeBudgetTracker.costOf(result.inputTokens(), result.outputTokens()),
+                    budget.todaySpendUsd(), String.format("%.2f", budget.dailyBudgetUsd()), ms);
 
             if (result.summary() == null || result.summary().isBlank()) {
                 // Loop guard: reviseCell(content, null) would re-tag needs_summary on the new
