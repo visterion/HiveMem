@@ -67,6 +67,29 @@ Cells throttled by the API:
 
     SELECT count(*) FROM cells WHERE 'summarize_throttled' = ANY(tags);
 
+## Logging & cost visibility
+
+Each summarize call emits two INFO log lines, so per-document model, token counts,
+cost, running daily spend vs. budget, and latency are readable straight from the
+application logs without a DB query:
+
+    Vistierie /llm/complete purpose=<purpose> model=<model> in=<tokens> out=<tokens> took=<ms>ms
+    Summarize LLM call cell=<uuid> model=<model> in=<tokens> out=<tokens> cost=$<cost> day=$<spend>/<budget> took=<ms>ms
+
+The first line comes from the Vistierie gateway client; the second from the
+summarizer itself and includes the cost of that call plus the cumulative spend for
+the current UTC day.
+
+Embedding failures caused by an unconvertible content type (e.g.
+`application/octet-stream`) log a WARN line before the original exception is
+rethrown:
+
+    Embedding call failed for mode=<mode> textLen=<n>: <ExceptionClass> (content-type=<type>)
+
+Log levels for both are independently tunable via `HIVEMEM_LOG_SUMMARIZE` and
+`HIVEMEM_LOG_EMBEDDING` (both default `INFO`). Set either to `DEBUG` for retry
+detail, or `WARN` to quiet the per-call lines during a large backfill batch.
+
 ## Configuration reference
 
 | Property | Default | Purpose |

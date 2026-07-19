@@ -146,6 +146,11 @@ hivemem:
     reassembly-purpose: ${HIVEMEM_CONSUMPTION_REASSEMBLY_PURPOSE:separator}
     reassembly-max-tokens: ${HIVEMEM_CONSUMPTION_REASSEMBLY_MAX_TOKENS:4096}
 
+logging:
+  level:
+    com.hivemem.summarize: ${HIVEMEM_LOG_SUMMARIZE:INFO}
+    com.hivemem.embedding: ${HIVEMEM_LOG_EMBEDDING:INFO}
+
 server:
   port: ${SERVER_PORT:8421}
   forward-headers-strategy: framework   # honor X-Forwarded-* from Cloudflare Tunnel / reverse proxies
