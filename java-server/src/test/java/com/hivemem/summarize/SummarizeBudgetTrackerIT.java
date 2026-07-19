@@ -11,6 +11,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import javax.sql.DataSource;
+import java.math.BigDecimal;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -149,5 +150,17 @@ class SummarizeBudgetTrackerIT {
         assertTrue(callsMade.get() < workers,
                 "expected the reservation to block at least some overlapping callers, got "
                         + callsMade.get() + "/" + workers);
+    }
+
+    @Test
+    void todaySpendUsd_reflectsRecordedCostAndExposesBudget() {
+        SummarizeBudgetTracker t = new SummarizeBudgetTracker(dsl, 5.00);
+        assertEquals(0, t.todaySpendUsd().signum(), "no usage yet → zero");
+        t.recordCall(1000, 200);
+        assertEquals(
+                SummarizeBudgetTracker.costOf(1000, 200).doubleValue(),
+                t.todaySpendUsd().doubleValue(),
+                1e-9);
+        assertEquals(5.00, t.dailyBudgetUsd());
     }
 }
