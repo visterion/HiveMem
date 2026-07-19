@@ -96,6 +96,31 @@ class SearchToolHandlerTest {
     }
 
     @Test
+    void stringifiedLimitAndWhereAreCoerced() throws Exception {
+        // Some LLM/mcp providers stringify tool arguments (observed live: limit:"20" and a
+        // stringified where object). The search tool must coerce them instead of failing with
+        // "Invalid limit" — for a native mcp tool that error is run-fatal.
+        JsonNode args = MAPPER.readTree(
+                "{\"query\": \"prey\", \"limit\": \"20\", \"where\": \"{\\\"realm\\\": \\\"dracul-research\\\"}\"}");
+
+        handler.call(PRINCIPAL, args);
+
+        verify(readToolService).search(
+                eq("prey"), eq(20), eq("dracul-research"), isNull(), isNull(), any(),
+                anyDouble(), anyDouble(), anyDouble(), anyDouble(), anyDouble(), anyDouble(),
+                isNull(), isNull(), isNull(), anyBoolean());
+    }
+
+    @Test
+    void nonNumericStringLimitStillRejected() throws Exception {
+        JsonNode args = MAPPER.readTree("{\"query\": \"prey\", \"limit\": \"lots\"}");
+
+        assertThatThrownBy(() -> handler.call(PRINCIPAL, args))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Invalid limit");
+    }
+
+    @Test
     void blankQueryWithoutAnyFilterStillFailsWithMissingQuery() throws Exception {
         JsonNode args = MAPPER.readTree("{\"query\": \"\"}");
 

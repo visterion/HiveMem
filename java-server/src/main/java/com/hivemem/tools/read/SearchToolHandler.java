@@ -1,6 +1,7 @@
 package com.hivemem.tools.read;
 
 import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 import com.hivemem.auth.AuthPrincipal;
 import com.hivemem.mcp.ToolHandler;
 import com.hivemem.mcp.ToolInputSchema;
@@ -21,6 +22,7 @@ public class SearchToolHandler implements ToolHandler {
 
     private static final int DEFAULT_LIMIT = 10;
     private static final int MAX_LIMIT = 100;
+    private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final String[] INCLUDE_FIELDS = includeFieldsWithScores();
 
     private static String[] includeFieldsWithScores() {
@@ -98,6 +100,15 @@ public class SearchToolHandler implements ToolHandler {
             }
         }
         JsonNode whereNode = arguments == null ? null : arguments.get("where");
+        if (whereNode != null && whereNode.isTextual()) {
+            // Some LLM/mcp providers stringify object arguments (e.g. where:"{\"realm\":\"x\"}").
+            // Parse the JSON string back into an object so the filter applies instead of failing.
+            try {
+                whereNode = MAPPER.readTree(whereNode.asText());
+            } catch (RuntimeException e) {
+                throw new IllegalArgumentException("Invalid where");
+            }
+        }
         if (whereNode != null && !whereNode.isNull()) {
             if (realm != null || signal != null || topic != null || tags != null || status != null) {
                 throw new IllegalArgumentException("where is mutually exclusive with flat filter params");
@@ -161,7 +172,7 @@ public class SearchToolHandler implements ToolHandler {
     }
 
     private static int boundedLimit(JsonNode arguments, String field, int defaultValue, int max) {
-        Integer value = WriteArgumentParser.optionalInteger(arguments, field);
+        Integer value = coercedInteger(arguments, field);
         if (value == null) {
             return defaultValue;
         }
@@ -169,6 +180,35 @@ public class SearchToolHandler implements ToolHandler {
             throw new IllegalArgumentException("Invalid limit");
         }
         return value;
+    }
+
+    /**
+     * Lenient integer read for the search tool: accepts an integral JSON number OR a numeric
+     * string. Some LLM/mcp providers stringify tool arguments (observed: {@code limit:"20"} and a
+     * stringified {@code where}); the strict {@link WriteArgumentParser#optionalInteger} rejects
+     * those as "Invalid limit" and, for a native mcp tool, that error is run-fatal. Blank/missing
+     * -> null (caller falls back to the default). Non-numeric -> "Invalid limit".
+     */
+    private static Integer coercedInteger(JsonNode arguments, String field) {
+        if (arguments == null || !arguments.has(field) || arguments.get(field).isNull()) {
+            return null;
+        }
+        JsonNode node = arguments.get(field);
+        if (node.isIntegralNumber()) {
+            return node.asInt();
+        }
+        if (node.isTextual()) {
+            String text = node.asText().trim();
+            if (text.isEmpty()) {
+                return null;
+            }
+            try {
+                return Integer.valueOf(text);
+            } catch (NumberFormatException e) {
+                throw new IllegalArgumentException("Invalid " + field);
+            }
+        }
+        throw new IllegalArgumentException("Invalid " + field);
     }
 
     private static double optionalWeight(JsonNode arguments, String field, double defaultValue) {
