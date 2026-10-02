@@ -26,6 +26,12 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    ignore:
+      # Dependabot misreads the floating tag "maven:3-eclipse-temurin-NN" as a newer
+      # version than the pinned "3.9.x-eclipse-temurin-26" and proposes a JDK downgrade
+      # (e.g. #127: temurin 26 -> 24), which breaks the image build.
+      - dependency-name: "maven"
+        versions: ["3"]
     groups:
       docker-minor-patch:
         update-types:
