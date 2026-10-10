@@ -28,4 +28,16 @@ describe('MarkdownTab KaTeX rendering (H7)', () => {
     const w = mount(MarkdownTab, { props: { content: '$$\\sqrt{3x-1}$$' } })
     expect(w.find('.katex-display').exists()).toBe(true)
   })
+
+  it('renders with the same KaTeX version whose stylesheet is imported', () => {
+    // MarkdownTab imports katex/dist/katex.min.css from the top-level katex
+    // package, while @vscode/markdown-it-katex renders with whatever katex it
+    // resolves. KaTeX 0.18 prefixed its internal classes (base -> katex-base,
+    // strut -> katex-strut), so a renderer older than the stylesheet emits
+    // markup the CSS no longer styles. Guard that both resolve to 0.18+.
+    const w = mount(MarkdownTab, { props: { content: 'Formula: $\\frac{a}{b}$' } })
+    expect(w.find('.katex .katex-base').exists()).toBe(true)
+    expect(w.find('.katex .katex-strut').exists()).toBe(true)
+    expect(w.find('.katex .base').exists()).toBe(false)
+  })
 })
