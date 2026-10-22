@@ -27,7 +27,7 @@
     "highlight.js": "^11.10.0",
     "jszip": "^3.10.1",
     "katex": "^0.18.2",
-    "markdown-it": "^14.3.2",
+    "markdown-it": "^14.3.3",
     "pdfjs-dist": "^4.7.76",
     "pinia": "^3.0.4",
     "pixi-filters": "^6.0.5",
