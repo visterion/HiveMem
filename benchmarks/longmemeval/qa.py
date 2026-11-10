@@ -122,8 +122,9 @@ class Cache:
         self._lock = lock
         self._enabled = enabled
         self._entries: dict[str, dict] = {}
-        if enabled:
-            for entry in jsonl.read(self._path):
+        # Always read: it repairs a cut-off last line, even when entries are not served.
+        for entry in jsonl.read(self._path):
+            if enabled:
                 self._entries[entry["key"]] = entry
 
     def get(self, key: str) -> dict | None:
@@ -216,6 +217,7 @@ def run_qa(corpus, rankings: Mapping, run_dir: pathlib.Path, cache_dir: pathlib.
     plan = {}
     for question in corpus.questions:
         for arm in arms:
+            judge_template(question.type, question.is_abstention)  # unknown type stops early
             ctx = context(question, arm, rankings, corpus)
             plan[(question.id, arm)] = (ctx, reader_prompt(question, ctx))
 
@@ -246,7 +248,11 @@ def run_qa(corpus, rankings: Mapping, run_dir: pathlib.Path, cache_dir: pathlib.
         for arm in arms:
             answer_key, judge_key = judged[(question.id, arm)]
             verdict_raw = judge_entries[judge_key]["result"]
-            flag = parse_verdict(verdict_raw) is True
+            verdict = parse_verdict(verdict_raw)
+            if verdict is None:
+                raise QaError(f"unusable judgment for question {question.id} and arm {arm}: "
+                              f"{verdict_raw[:100]!r}")
+            flag = verdict
             correct[arm].append(flag)
             lines.append({"question_id": question.id, "arm": arm,
                           "context": [document.key for _, document in plan[(question.id, arm)][0]],

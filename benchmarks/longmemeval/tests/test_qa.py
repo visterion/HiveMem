@@ -156,6 +156,19 @@ class CacheTest(unittest.TestCase):
         self.assertEqual(reloaded.get("c")["result"], "C")
         self.assertEqual(qa.Cache(self.path, threading.Lock()).get("c")["result"], "C")
 
+    def test_disabled_cache_still_repairs_a_cut_off_tail(self):
+        cache = qa.Cache(self.path, threading.Lock())
+        cache.put("a", {"key": "a", "result": "A"})
+        with open(self.path, "a", encoding="utf-8") as handle:
+            handle.write('{"key": "b", "res')
+        with mock.patch("sys.stderr"):
+            off = qa.Cache(self.path, threading.Lock(), enabled=False)
+        self.assertIsNone(off.get("a"))
+        off.put("c", {"key": "c", "result": "C"})
+        reloaded = qa.Cache(self.path, threading.Lock())
+        self.assertEqual(reloaded.get("a")["result"], "A")
+        self.assertEqual(reloaded.get("c")["result"], "C")
+
 
 class FakeModels:
     """Records ``(model, prompt, kwargs)`` per call; ``respond(model, prompt)`` makes the text."""
@@ -270,6 +283,30 @@ class RunQaTest(unittest.TestCase):
             self._run(models, workers=1)
         self.assertFalse((self.run_dir / "qa.json").exists())
         self.assertFalse((self.run_dir / "qa.jsonl").exists())
+        written = [json.loads(line) for line in
+                   (self.cache_dir / "answers.jsonl").read_text().splitlines()]
+        # calls already started when the failure surfaces may still finish and stay cached
+        self.assertGreaterEqual(len(written), 2)
+        self.assertTrue(all(entry["result"] == "yes" for entry in written))
+
+    def test_unknown_question_type_stops_before_any_call(self):
+        odd = dataclasses.replace(self.corpus.questions[0], type="unknown-type")
+        self.corpus = dataclasses.replace(self.corpus, questions=(odd,) + self.corpus.questions[1:])
+        models = _good_marker_models(self.corpus)
+        with self.assertRaises(qa.QaError):
+            self._run(models)
+        self.assertEqual(models.calls, [])
+
+    def test_unparseable_cached_judgment_stops_the_run(self):
+        self._run(_good_marker_models(self.corpus))
+        question = next(q for q in self.corpus.questions if q.id == "q_rain")
+        text = qa.judge_prompt(question, "MARK-BAD")
+        key = qa.cache_key(JUDGE_MODEL, llm.SYSTEM_PROMPT, text)
+        qa.Cache(self.cache_dir / "judgments.jsonl", threading.Lock()).put(
+            key, {"key": key, "model": JUDGE_MODEL, "result": "Yesterday the user ...",
+                  "model_usage": {JUDGE_MODEL: {}}, "usage": {}})
+        with self.assertRaisesRegex(qa.QaError, "q_rain.*bm25"):
+            self._run(_good_marker_models(self.corpus))
 
     def test_missing_ranking_stops_before_any_call(self):
         del self.rankings[("q_rain", "cosine")]
