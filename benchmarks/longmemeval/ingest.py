@@ -114,8 +114,12 @@ def _settle(psql: db.Psql, timeout: float, sleep: Callable, clock: Callable, out
         sleep(_SETTLE_POLL)
 
 
-def integrity(corpus: dataset.Corpus, psql: db.Psql, max_chars: int) -> dict:
-    """Check the database against the corpus; raise one ``IngestError`` naming every failure."""
+def integrity(corpus: dataset.Corpus, psql: db.Psql, max_chars: int,
+              out: Callable = lambda message: None) -> dict:
+    """Check the database against the corpus; raise one ``IngestError`` naming every failure.
+
+    Every figure is printed through ``out`` before the verdict, so it is visible on failure too.
+    """
     rows = psql.rows(REALM_CELLS_SQL)
     topics = [row[0] for row in rows]
     vectorless = sorted(row[0] for row in rows if row[3] == "t")
@@ -130,7 +134,12 @@ def integrity(corpus: dataset.Corpus, psql: db.Psql, max_chars: int) -> dict:
         "chunks_without_vector": chunks_without, "unsettled": _count(psql, UNSETTLED_SQL),
         "created_at_min": span[0], "created_at_max": span[1],
     }
+    for name, value in result.items():
+        out(f"integrity {name}: {value}")
     failures = []
+    bad_state = sorted(row[0] for row in rows if row[1] != "committed" or row[2] != "t")
+    if bad_state:
+        failures.append(f"cell(s) not committed and current: {bad_state}")
     if not result["cells"] == result["distinct_topics"] == result["expected"]:
         failures.append(f"cells {result['cells']} / distinct topics {result['distinct_topics']} "
                         f"/ expected {result['expected']} differ")
@@ -174,9 +183,7 @@ def run_ingest(corpus: dataset.Corpus, mcp, psql: db.Psql, sidecar, token: str,
             out(f"ingest: {index}/{len(todo)} documents, {rate:.2f}/s, "
                 f"~{(len(todo) - index) / rate:.0f} s left")
     _settle(psql, settle_timeout, sleep, clock, out)
-    result = integrity(corpus, psql, info["max_chars"])
-    for name, value in result.items():
-        out(f"integrity {name}: {value}")
+    result = integrity(corpus, psql, info["max_chars"], out)
     state = {"dataset_sha256": corpus.sha256, "limit_questions": corpus.limit_questions,
              "documents": len(corpus.documents), "sidecar_info": info, "integrity": result,
              "started_at": started_at, "finished_at": _now()}

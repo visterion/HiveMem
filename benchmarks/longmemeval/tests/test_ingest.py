@@ -59,6 +59,25 @@ class UnsettledQueryTest(TmpCase):
                 settle_timeout=1800, clock=lambda: next(ticks))
 
 
+class SqlTextTest(unittest.TestCase):
+    def test_sql_constants_are_pinned(self):
+        self.assertEqual(ingest.TOKEN_SQL, "SELECT count(*) FROM api_tokens WHERE token_hash = {hash}")
+        self.assertEqual(ingest.FOREIGN_SQL,
+                         "SELECT count(*) FROM cells WHERE realm IS DISTINCT FROM 'longmemeval'")
+        self.assertEqual(ingest.REALM_CELLS_SQL,
+                         "SELECT topic, status, valid_until IS NULL, embedding IS NULL "
+                         "FROM cells WHERE realm = 'longmemeval' ORDER BY topic")
+        self.assertEqual(ingest.TOPIC_SQL,
+                         "SELECT count(*) FROM cells WHERE realm = 'longmemeval' AND topic = {topic}")
+        self.assertEqual(ingest.UNSETTLED_SQL,
+                         "SELECT count(*) FROM cells WHERE status = 'committed' AND valid_until IS NULL "
+                         "AND length(content) > 2000 AND chunked_content_md5 IS DISTINCT FROM content_md5")
+        self.assertEqual(ingest.CHUNKS_SQL,
+                         "SELECT count(*), count(*) FILTER (WHERE embedding IS NULL) FROM cell_chunks")
+        self.assertEqual(ingest.SPAN_SQL,
+                         "SELECT min(created_at), max(created_at) FROM cells WHERE realm = 'longmemeval'")
+
+
 class GateTest(TmpCase):
     def check(self, database, pattern=None, sidecar=None, exc=ingest.IngestError):
         mcp = support.FakeMcp(database)
@@ -143,6 +162,8 @@ class WriteLoopTest(TmpCase):
         self.assertIn(first, str(caught.exception))
         self.assertEqual(len(mcp.calls), 4)
         self.assertTrue(all(c["topic"] == first for c in mcp.calls))
+        topic_script = ingest.TOPIC_SQL.format(topic=db.quote(first))
+        self.assertEqual(database.scripts.count(topic_script), 4)
 
     def test_first_write_must_be_visible_through_psql(self):
         mcp = support.FakeMcp(db=None)
@@ -197,6 +218,28 @@ class IntegrityTest(unittest.TestCase):
         cells = [cell(k, vectorless=True) for k in sorted(corpus.documents)]
         result = self.check(cells, max_chars=10)
         self.assertEqual(result["vectorless"], result["expected_vectorless"])
+
+    def test_fails_on_uncommitted_cell(self):
+        cells = [cell(k) for k in self.keys()]
+        cells[0]["status"] = "pending"
+        self.check(cells, pattern="committed")
+
+    def test_fails_on_cell_with_valid_until_set(self):
+        cells = [cell(k) for k in self.keys()]
+        cells[0]["valid_until_null"] = False
+        self.check(cells, pattern="current")
+
+    def test_prints_every_figure_even_on_failure(self):
+        out = []
+        psql = db.Psql(["psql"], runner=ready_db(cells=[cell(k) for k in self.keys()],
+                                                 chunks=(12, 1)))
+        with self.assertRaises(ingest.IngestError):
+            ingest.integrity(support.fixture_corpus(), psql, 50000, out.append)
+        for name in ("expected", "cells", "distinct_topics", "vectorless", "expected_vectorless",
+                     "chunks", "chunks_without_vector", "unsettled", "created_at_min",
+                     "created_at_max"):
+            self.assertTrue(any(line.startswith(f"integrity {name}:") for line in out), name)
+        self.assertIn("integrity chunks: 12", out)
 
     def test_expected_vectorless_uses_utf16_length(self):
         self.assertEqual(ingest.utf16_length("a\U0001F600"), 3)

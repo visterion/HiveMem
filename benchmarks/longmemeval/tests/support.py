@@ -179,7 +179,7 @@ class FakeBenchDb:
 
 
 class FakeMcp:
-    """Records ``add_cell`` keyword dicts in ``calls`` and ``search`` arguments in ``searches``.
+    """Records ``add_cell`` keyword dicts and ``search`` argument dicts, in order, in ``calls``.
 
     ``add_cell`` inserts a committed cell into ``db`` (when given) unless
     ``fail(call_index, kwargs)`` returns an exception, which is then raised. A
@@ -190,7 +190,6 @@ class FakeMcp:
         self.db = db
         self.fail = fail
         self.calls: list[dict] = []
-        self.searches: list[dict] = []
 
     def add_cell(self, **kwargs):
         index = len(self.calls)
@@ -206,7 +205,7 @@ class FakeMcp:
         return {"inserted": True}
 
     def search(self, arguments):
-        self.searches.append(dict(arguments))
+        self.calls.append(dict(arguments))
         return []
 
 
