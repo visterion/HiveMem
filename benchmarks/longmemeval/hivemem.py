@@ -5,6 +5,7 @@ names the tool (or endpoint) and carries up to 300 characters of the server's
 text.
 """
 
+import http.client
 import json
 import urllib.error
 import urllib.request
@@ -35,14 +36,14 @@ def _http(url: str, data: bytes | None, headers: dict, timeout: float, label: st
         finally:
             error.close()
         raise HiveMemError(f"{label}: HTTP {error.code}: {_snippet(text)}") from error
-    except (urllib.error.URLError, TimeoutError, OSError) as error:
+    except (urllib.error.URLError, TimeoutError, OSError, http.client.HTTPException) as error:
         raise HiveMemError(f"{label}: {_snippet(error)}") from error
 
 
 def _parse_json(text: str, label: str) -> object:
     try:
         return json.loads(text)
-    except ValueError as error:
+    except (ValueError, TypeError) as error:
         raise HiveMemError(f"{label}: invalid JSON: {_snippet(text)}") from error
 
 

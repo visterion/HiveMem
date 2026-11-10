@@ -1,6 +1,7 @@
 """Tests for hivemem.py against a loopback fake HTTP server."""
 
 import http.server
+import socket
 import json
 import threading
 import time
@@ -34,11 +35,11 @@ class _Server:
                                        "headers": dict(self.headers), "body": raw})
                 if outer.delay:
                     time.sleep(outer.delay)
-                self.send_response(outer.status)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(outer.body)))
-                self.end_headers()
                 try:
+                    self.send_response(outer.status)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", str(len(outer.body)))
+                    self.end_headers()
                     self.wfile.write(outer.body)
                 except OSError:
                     pass
@@ -124,6 +125,31 @@ class McpClientTest(unittest.TestCase):
         self.server.reply(envelope([]))
         with self.assertRaises(hivemem.HiveMemError):
             hivemem.McpClient(self.server.url, "tok", timeout=0.2).call("search", {})
+
+    def test_malformed_status_line_raises_hivemem_error(self):
+        listener = socket.socket()
+        listener.bind(("127.0.0.1", 0))
+        listener.listen(1)
+        self.addCleanup(listener.close)
+
+        def serve():
+            conn, _ = listener.accept()
+            with conn:
+                conn.recv(65536)
+                conn.sendall(b"garbage\r\n\r\n")
+
+        thread = threading.Thread(target=serve, daemon=True)
+        thread.start()
+        client = hivemem.McpClient(f"http://127.0.0.1:{listener.getsockname()[1]}", "tok", timeout=2)
+        with self.assertRaises(hivemem.HiveMemError):
+            client.call("search", {})
+        thread.join()
+
+    def test_non_string_text_raises_hivemem_error(self):
+        self.server.reply({"jsonrpc": "2.0", "id": 1,
+                           "result": {"content": [{"type": "text", "text": None}]}})
+        with self.assertRaises(hivemem.HiveMemError):
+            self.client.call("search", {})
 
     def test_search_returns_list(self):
         hits = [{"topic": "dabc", "score_total": 0.5}]
