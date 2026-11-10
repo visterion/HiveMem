@@ -8,6 +8,7 @@ import unittest
 import support
 from support import cell
 
+import dataset
 import db
 import hivemem
 import ingest
@@ -27,6 +28,21 @@ def run(corpus, database, mcp=None, sidecar=None, **kw):
                               pathlib.Path(kw.pop("tmp")) / "ingest.json",
                               sleep=lambda s: None, out=out.append, **kw)
     return state, mcp, out
+
+
+LOW_LIMIT = 20
+
+
+def synthetic_corpus(n=200, long_keys=(), gold=("d000",)):
+    """Corpus of ``n`` short documents; ``long_keys`` exceed ``LOW_LIMIT`` characters."""
+    documents = {}
+    for i in range(n):
+        key = f"d{i:03d}"
+        text = "SYNTHETIC: " + ("x" * 50 if key in long_keys else "y")
+        documents[key] = dataset.Document(key, text, "2023/05/01 (Mon) 10:00", (f"s{i}",), ())
+    question = dataset.Question("q", "single-session-user", "SYNTHETIC: q?", "2023/06/01 (Thu) 10:00",
+                                "a", False, frozenset(gold), frozenset(documents), {})
+    return dataset.Corpus("0" * 64, None, (question,), documents), set(long_keys)
 
 
 def full_cells(corpus):
@@ -172,6 +188,31 @@ class WriteLoopTest(TmpCase):
         self.assertEqual(len(mcp.calls), 1)
 
 
+class CoverageGateTest(TmpCase):
+    def test_low_limit_leaving_gold_without_vector_aborts_before_any_write(self):
+        mcp = support.FakeMcp()
+        with self.assertRaisesRegex(ingest.IngestError, "gold"):
+            run(support.fixture_corpus(), ready_db(), mcp=mcp, tmp=self.tmp,
+                sidecar=support.FakeSidecar(info={"model": "m", "max_chars": 10}))
+        self.assertEqual(mcp.calls, [])
+
+    def test_more_than_one_percent_without_vector_aborts_before_any_write(self):
+        corpus, _ = synthetic_corpus(long_keys=["d100", "d101", "d102"])
+        mcp = support.FakeMcp()
+        with self.assertRaisesRegex(ingest.IngestError, "share.*raised|raised") as caught:
+            run(corpus, ready_db(), mcp=mcp, tmp=self.tmp,
+                sidecar=support.FakeSidecar(info={"model": "m", "max_chars": LOW_LIMIT}))
+        self.assertIn("share", str(caught.exception))
+        self.assertEqual(mcp.calls, [])
+
+    def test_exactly_one_percent_without_vector_passes_the_gate(self):
+        corpus, _ = synthetic_corpus(long_keys=["d100", "d101"])
+        present, _ = ingest.gates(corpus, db.Psql(["psql"], runner=ready_db()),
+                                  support.FakeSidecar(info={"model": "m", "max_chars": LOW_LIMIT}),
+                                  TOKEN)
+        self.assertEqual(present, set())
+
+
 class IntegrityTest(unittest.TestCase):
     def check(self, cells, max_chars=50000, chunks=(0, 0), pattern=None):
         corpus = support.fixture_corpus()
@@ -214,10 +255,37 @@ class IntegrityTest(unittest.TestCase):
         self.check([cell(k) for k in self.keys()], max_chars=10, pattern="vector")
 
     def test_vectorless_matches_long_documents(self):
-        corpus = support.fixture_corpus()
-        cells = [cell(k, vectorless=True) for k in sorted(corpus.documents)]
-        result = self.check(cells, max_chars=10)
+        # Adapted: on the 6-document fixture a vectorless set would hit the 1 % rule, so a
+        # 200-document corpus with one long non-gold document is used instead.
+        corpus, long_keys = synthetic_corpus(long_keys=["d150"])
+        cells = [cell(k, vectorless=k in long_keys) for k in sorted(corpus.documents)]
+        psql = db.Psql(["psql"], runner=ready_db(cells=cells))
+        result = ingest.integrity(corpus, psql, LOW_LIMIT)
+        self.assertEqual(result["vectorless"], ["d150"])
         self.assertEqual(result["vectorless"], result["expected_vectorless"])
+
+    def synthetic_check(self, vectorless, gold=("d000",), pattern=None):
+        corpus, _ = synthetic_corpus(long_keys=vectorless, gold=gold)
+        cells = [cell(k, vectorless=k in vectorless) for k in sorted(corpus.documents)]
+        out = []
+        psql = db.Psql(["psql"], runner=ready_db(cells=cells))
+        if pattern is None:
+            return ingest.integrity(corpus, psql, LOW_LIMIT, out.append), out
+        with self.assertRaisesRegex(ingest.IngestError, pattern):
+            ingest.integrity(corpus, psql, LOW_LIMIT, out.append)
+        return None, out
+
+    def test_fails_when_a_gold_document_has_no_vector(self):
+        _, out = self.synthetic_check(["d000"], pattern="gold document")
+        self.assertIn("integrity gold_vectorless: ['d000']", out)
+
+    def test_fails_when_more_than_one_percent_have_no_vector(self):
+        self.synthetic_check(["d100", "d101", "d102"], pattern="more than 1 %")
+
+    def test_passes_with_exactly_one_percent_without_vector(self):
+        result, out = self.synthetic_check(["d100", "d101"])
+        self.assertEqual(result["gold_vectorless"], [])
+        self.assertIn("integrity gold_vectorless: []", out)
 
     def test_fails_on_uncommitted_cell(self):
         cells = [cell(k) for k in self.keys()]

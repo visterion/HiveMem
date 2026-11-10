@@ -169,8 +169,9 @@ docker compose -f benchmarks/longmemeval/docker-compose.yml down -v
   30 abstention questions have no gold session) for k in 1, 3, 5, 10, 30 and 50. The headline
   table shows `recall_all@5`, `ndcg_any@5`, `recall_all@10`, `ndcg_any@10`, `recall_any@5`
   and `recall_all@50`.
-- **Why `recall_all@5` cannot reach 1.** Three questions have six gold documents (after identical sessions are merged), which cannot
-  fit into five slots. The report states the exact number of such questions.
+- **Why `recall_all@5` cannot reach 1.** Three questions have six gold documents (after
+  identical sessions are merged), which cannot fit into five slots. The report states the
+  exact number of such questions.
 - **Paired comparisons.** For `hivemem` against every other arm on `recall_all@5`: `b` is the
   number of questions only `hivemem` gets right, `c` the number only the other arm gets right,
   `z = (b - c) / sqrt(b + c)`, and `p` an exact two-sided binomial test on `b` and `c`.
@@ -201,9 +202,11 @@ From production HiveMem, on purpose:
 - **Large embedding limits.** The embedding service takes up to 50,000 characters and 8,192
   tokens per document. With the defaults of the GPU-oriented Ollama backend (8,000
   characters), most sessions (64.5 % are longer than that) would get no cell vector at all,
-  because the bench writes no summary. The integrity gate of `ingest` catches exactly this:
-  the set of cells without a vector must equal the set of documents longer than the
-  embedding service's `max_chars`.
+  because the bench writes no summary. `ingest` refuses to start, and its integrity gate
+  fails, when a gold document would have no cell vector or when more than 1 % of the
+  documents would have none, which is what the 8,000-character default would cause. The
+  cells without a vector must also equal the documents longer than the embedding service's
+  `max_chars`.
 
 From upstream LongMemEval:
 
@@ -250,7 +253,8 @@ The unit tests use only the standard library, need no Docker, no network and no 
 python3 -m unittest discover -s benchmarks/longmemeval/tests
 ```
 
-CI runs them on pushes to `main` and on pull requests into `main`. The benchmark itself never runs in CI.
+CI runs them on pushes to `main` and on pull requests into `main`. The benchmark itself
+never runs in CI.
 
 ## Attribution
 

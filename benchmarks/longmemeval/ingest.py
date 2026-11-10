@@ -28,6 +28,7 @@ UNSETTLED_SQL = ("SELECT count(*) FROM cells WHERE status = 'committed' AND vali
 CHUNKS_SQL = "SELECT count(*), count(*) FILTER (WHERE embedding IS NULL) FROM cell_chunks"
 SPAN_SQL = "SELECT min(created_at), max(created_at) FROM cells WHERE realm = 'longmemeval'"
 
+MAX_VECTORLESS_SHARE = 0.01
 _RESENDS = 3
 _SETTLE_POLL = 5.0
 _PROGRESS_EVERY = 100
@@ -57,6 +58,20 @@ def same_instance(psql: db.Psql, token: str) -> None:
         raise IngestError("token is unknown to the database behind the psql channel")
 
 
+def _coverage_failures(corpus: dataset.Corpus, vectorless: set[str]) -> list[str]:
+    """Vector-coverage rules: no gold document and at most 1 % of all documents without a vector."""
+    failures = []
+    gold = set().union(*(question.gold for question in corpus.questions)) & vectorless
+    if gold:
+        failures.append(f"{len(gold)} gold document(s) without a cell vector: {sorted(gold)[:5]}")
+    share = len(vectorless) / len(corpus.documents) if corpus.documents else 0.0
+    if share > MAX_VECTORLESS_SHARE:
+        failures.append(f"more than 1 % of the documents have no cell vector "
+                        f"(share {share * 100:.2f} %, {len(vectorless)} of {len(corpus.documents)}: "
+                        f"{sorted(vectorless)[:5]})")
+    return failures
+
+
 def gates(corpus: dataset.Corpus, psql: db.Psql, sidecar, token: str) -> tuple[set[str], dict]:
     """Run gates 1-4; return the topics already written and the sidecar ``/info`` reply."""
     same_instance(psql, token)
@@ -77,6 +92,12 @@ def gates(corpus: dataset.Corpus, psql: db.Psql, sidecar, token: str) -> tuple[s
     max_chars = info.get("max_chars")
     if not isinstance(max_chars, int) or isinstance(max_chars, bool):
         raise IngestError(f"sidecar /info has no integer max_chars: {info!r}")
+    too_long = {key for key, doc in corpus.documents.items() if utf16_length(doc.text) > max_chars}
+    failures = _coverage_failures(corpus, too_long)
+    if failures:
+        raise IngestError(f"sidecar max_chars {max_chars} leaves documents without a cell vector: "
+                          + "; ".join(failures)
+                          + ". The embedding service's character limit must be raised.")
     return present, info
 
 
@@ -133,6 +154,8 @@ def integrity(corpus: dataset.Corpus, psql: db.Psql, max_chars: int,
         "expected_vectorless": expected_vectorless, "chunks": chunks,
         "chunks_without_vector": chunks_without, "unsettled": _count(psql, UNSETTLED_SQL),
         "created_at_min": span[0], "created_at_max": span[1],
+        "gold_vectorless": sorted(set().union(*(q.gold for q in corpus.questions))
+                                  & set(vectorless)),
     }
     for name, value in result.items():
         out(f"integrity {name}: {value}")
@@ -148,6 +171,7 @@ def integrity(corpus: dataset.Corpus, psql: db.Psql, max_chars: int,
                         f"extra {sorted(set(topics) - set(corpus.documents))}")
     if vectorless != expected_vectorless:
         failures.append(f"vector mismatch: vectorless {vectorless}, expected {expected_vectorless}")
+    failures.extend(_coverage_failures(corpus, set(vectorless)))
     if chunks_without:
         failures.append(f"{chunks_without} chunk(s) without vector")
     if result["unsettled"]:
