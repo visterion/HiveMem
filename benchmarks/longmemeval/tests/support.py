@@ -126,7 +126,10 @@ class FakeBenchDb:
     Output mimics ``psql -At -F '\\t'``: tab-separated, booleans as t / f.
     """
 
-    def __init__(self, cells=None, token_hashes=(), chunks=(0, 0), unsettled=(0,)):
+    def __init__(self, cells=None, token_hashes=(), chunks=(0, 0), unsettled=(0,),
+                 plan="Limit\n  ->  Sort\n        ->  Seq Scan on cells c", similarity=None):
+        self.plan = plan
+        self.similarity = dict(similarity or {})
         self.cells = list(cells or [])
         self.token_hashes = set(token_hashes)
         self.chunks = tuple(chunks)
@@ -170,6 +173,13 @@ class FakeBenchDb:
         topic = self._literal(script, ingest.TOPIC_SQL)
         if topic is not None:
             return f"{sum(1 for c in self.cells if c['realm'] == 'longmemeval' and c['topic'] == topic)}\n"
+        if "EXPLAIN" in script and "<=>" in script:
+            return f"BEGIN\nSET\nSET\n{self.plan}\nCOMMIT\n"
+        if "<=>" in script:
+            mine = [c["topic"] for c in self.cells if c["realm"] == "longmemeval"]
+            ranked = sorted(mine, key=lambda t: (-self.similarity.get(t, 0.5), t))[:50]
+            return "BEGIN\nSET\nSET\n" + "".join(
+                f"{t}\t{self.similarity.get(t, 0.5)}\n" for t in ranked) + "COMMIT\n"
         raise AssertionError(f"FakeBenchDb: unknown script {script!r}")
 
     def __call__(self, command, input=None, capture_output=False, text=False, **kwargs):
@@ -184,11 +194,13 @@ class FakeMcp:
     ``add_cell`` inserts a committed cell into ``db`` (when given) unless
     ``fail(call_index, kwargs)`` returns an exception, which is then raised. A
     ``(exception, True)`` tuple inserts the cell first and then raises.
+    ``hits(arguments)`` supplies what ``search`` returns (default: no hits).
     """
 
-    def __init__(self, db=None, fail=None):
+    def __init__(self, db=None, fail=None, hits=None):
         self.db = db
         self.fail = fail
+        self.hits = hits
         self.calls: list[dict] = []
 
     def add_cell(self, **kwargs):
@@ -206,7 +218,7 @@ class FakeMcp:
 
     def search(self, arguments):
         self.calls.append(dict(arguments))
-        return []
+        return self.hits(arguments) if self.hits else []
 
 
 class FakeSidecar:
