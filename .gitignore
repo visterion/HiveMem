@@ -54,3 +54,6 @@ cli/bin/
 
 # LongMemEval benchmark working directory (dataset, token, runs, caches)
 benchmarks/longmemeval/.work/
+
+# Python bytecode caches
+__pycache__/
