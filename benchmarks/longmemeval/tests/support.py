@@ -109,3 +109,116 @@ class FakeRunner:
         else:
             code, out, err = 0, result, ""
         return subprocess.CompletedProcess(list(command), code, out, err)
+
+
+def cell(topic, realm="longmemeval", status="committed", valid_until_null=True, vectorless=False):
+    """One in-memory cell row for ``FakeBenchDb``."""
+    return {"topic": topic, "realm": realm, "status": status,
+            "valid_until_null": valid_until_null, "vectorless": vectorless}
+
+
+class FakeBenchDb:
+    """Runner for ``db.Psql`` answering the SQL constants of ``ingest`` from memory.
+
+    State lives in plain attributes: ``cells`` (list of dicts, see ``cell``),
+    ``token_hashes``, ``chunks`` (total, without vector), ``unsettled`` (values
+    popped per UNSETTLED_SQL call, the last one repeats) and ``scripts``.
+    Output mimics ``psql -At -F '\\t'``: tab-separated, booleans as t / f.
+    """
+
+    def __init__(self, cells=None, token_hashes=(), chunks=(0, 0), unsettled=(0,)):
+        self.cells = list(cells or [])
+        self.token_hashes = set(token_hashes)
+        self.chunks = tuple(chunks)
+        self.unsettled = list(unsettled)
+        self.scripts: list[str] = []
+
+    def insert(self, topic, realm="longmemeval", vectorless=False):
+        self.cells.append(cell(topic, realm=realm, vectorless=vectorless))
+
+    @staticmethod
+    def _bool(value):
+        return "t" if value else "f"
+
+    @staticmethod
+    def _literal(script, template):
+        import re
+        pattern = re.escape(template).replace(re.escape("{hash}"), "'(.*)'") \
+                                     .replace(re.escape("{topic}"), "'(.*)'")
+        match = re.fullmatch(pattern, script)
+        return match.group(1).replace("''", "'") if match else None
+
+    def _answer(self, script):
+        import ingest
+        if script == ingest.FOREIGN_SQL:
+            return f"{sum(1 for c in self.cells if c['realm'] != 'longmemeval')}\n"
+        if script == ingest.REALM_CELLS_SQL:
+            mine = sorted((c for c in self.cells if c["realm"] == "longmemeval"),
+                          key=lambda c: c["topic"])
+            return "".join(f"{c['topic']}\t{c['status']}\t{self._bool(c['valid_until_null'])}\t"
+                           f"{self._bool(c['vectorless'])}\n" for c in mine)
+        if script == ingest.UNSETTLED_SQL:
+            value = self.unsettled[0] if len(self.unsettled) == 1 else self.unsettled.pop(0)
+            return f"{value}\n"
+        if script == ingest.CHUNKS_SQL:
+            return f"{self.chunks[0]}\t{self.chunks[1]}\n"
+        if script == ingest.SPAN_SQL:
+            return "2026-01-01 00:00:00+00\t2026-01-01 00:05:00+00\n"
+        token = self._literal(script, ingest.TOKEN_SQL)
+        if token is not None:
+            return f"{1 if token in self.token_hashes else 0}\n"
+        topic = self._literal(script, ingest.TOPIC_SQL)
+        if topic is not None:
+            return f"{sum(1 for c in self.cells if c['realm'] == 'longmemeval' and c['topic'] == topic)}\n"
+        raise AssertionError(f"FakeBenchDb: unknown script {script!r}")
+
+    def __call__(self, command, input=None, capture_output=False, text=False, **kwargs):
+        import subprocess
+        self.scripts.append(input)
+        return subprocess.CompletedProcess(list(command), 0, self._answer(input), "")
+
+
+class FakeMcp:
+    """Records ``add_cell`` keyword dicts in ``calls`` and ``search`` arguments in ``searches``.
+
+    ``add_cell`` inserts a committed cell into ``db`` (when given) unless
+    ``fail(call_index, kwargs)`` returns an exception, which is then raised. A
+    ``(exception, True)`` tuple inserts the cell first and then raises.
+    """
+
+    def __init__(self, db=None, fail=None):
+        self.db = db
+        self.fail = fail
+        self.calls: list[dict] = []
+        self.searches: list[dict] = []
+
+    def add_cell(self, **kwargs):
+        index = len(self.calls)
+        self.calls.append(dict(kwargs))
+        outcome = self.fail(index, kwargs) if self.fail else None
+        insert_first = False
+        if isinstance(outcome, tuple):
+            outcome, insert_first = outcome
+        if (outcome is None or insert_first) and self.db is not None:
+            self.db.insert(kwargs["topic"], realm=kwargs["realm"])
+        if outcome is not None:
+            raise outcome
+        return {"inserted": True}
+
+    def search(self, arguments):
+        self.searches.append(dict(arguments))
+        return []
+
+
+class FakeSidecar:
+    """Stand-in for ``hivemem.Sidecar``."""
+
+    def __init__(self, info=None, vector=None):
+        self._info = {"model": "synthetic-model", "max_chars": 50000} if info is None else info
+        self._vector = [0.0, 1.0] if vector is None else vector
+
+    def info(self):
+        return dict(self._info)
+
+    def embed_query(self, text):
+        return list(self._vector)
