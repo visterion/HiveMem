@@ -1,0 +1,77 @@
+# Dedicated, disposable HiveMem stack for the LongMemEval benchmark.
+# It shares nothing with the main stack: own project name, no container_name, loopback-only ports.
+# LME_DB_PASSWORD has no default — put it into a git-ignored .env next to this file (see README).
+name: hivemem-lme-bench
+
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_DB: hivemem
+      POSTGRES_USER: hivemem
+      POSTGRES_PASSWORD: ${LME_DB_PASSWORD:?set LME_DB_PASSWORD in benchmarks/longmemeval/.env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    shm_size: 1g
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hivemem -d hivemem"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  embeddings:
+    image: ${LME_EMBEDDINGS_IMAGE:-ghcr.io/visterion/hivemem-embeddings:main}
+    environment:
+      EMBEDDING_BACKEND: ${LME_EMBEDDING_BACKEND:-onnx}
+      MODEL_REPO: ${LME_MODEL_REPO:-Snowflake/snowflake-arctic-embed-l-v2.0}
+      ONNX_FILE: ${LME_ONNX_FILE:-onnx/model_quantized.onnx}
+      POOLING: ${LME_POOLING:-cls}
+      QUERY_PREFIX: "${LME_QUERY_PREFIX:-query: }"
+      MAX_LENGTH: "${LME_MAX_LENGTH:-8192}"
+      EMBEDDING_DIMS: "${LME_EMBEDDING_DIMS:-1024}"
+      EMBEDDING_MAX_CHARS: "${LME_EMBEDDING_MAX_CHARS:-50000}"
+      ORT_INTRA_OP_THREADS: "${LME_ORT_INTRA_OP_THREADS:-6}"
+    volumes:
+      - models:/app/models
+    ports:
+      - "127.0.0.1:18080:80"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:80/health', timeout=5)"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 300s
+    mem_limit: 14g
+    cpus: 6
+
+  hivemem:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    environment:
+      HIVEMEM_JDBC_URL: jdbc:postgresql://db:5432/hivemem
+      HIVEMEM_DB_USER: hivemem
+      HIVEMEM_DB_PASSWORD: ${LME_DB_PASSWORD:?set LME_DB_PASSWORD in benchmarks/longmemeval/.env}
+      HIVEMEM_EMBEDDING_URL: http://embeddings:80
+      HIVEMEM_EMBEDDING_TIMEOUT: PT120S
+      HIVEMEM_CHUNK_SWEEP_INTERVAL: PT5S
+      HIVEMEM_CHUNK_BACKOFF: PT1M
+      HIVEMEM_CHUNK_MIN_CELL_CHARS: "2000"
+    ports:
+      - "127.0.0.1:18421:8421"
+    depends_on:
+      db:
+        condition: service_healthy
+      embeddings:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -o /dev/null http://127.0.0.1:8421/"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
+volumes:
+  pgdata:
+  models:

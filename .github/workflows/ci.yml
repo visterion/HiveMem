@@ -124,6 +124,17 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
+  # Unit tests of the LongMemEval harness. Standard library only, so no setup step:
+  # the runner's own python3 is enough. The benchmark itself never runs in CI.
+  benchmark-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Unit tests (unittest, no dependencies)
+        run: python3 -m unittest discover -s benchmarks/longmemeval/tests -v
+
   # Builds the shipped image on pull requests without publishing it. docker.yml
   # only runs on push to main and on tags, so without this job a change to the
   # Dockerfile would first be built *after* it was merged.
