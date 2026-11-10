@@ -5,6 +5,7 @@ control arm, a changed embedding model) is turned into ``ArmError`` and never
 reaches ``rankings.jsonl``.
 """
 
+import math
 import pathlib
 import time
 from collections.abc import Callable, Collection, Mapping, Sequence
@@ -66,7 +67,7 @@ def chunkmax_script(literal: str, explain: bool = False) -> str:
 
 def check_plan(plan: str) -> None:
     """Raise ``ArmError`` when the plan uses an index scan."""
-    for marker in ("Index Scan", "Bitmap"):
+    for marker in ("Index Scan", "Index Only Scan", "Bitmap"):
         if marker in plan:
             raise ArmError(f"control arm plan contains {marker!r}: {plan.strip()}")
 
@@ -95,11 +96,14 @@ def validate_hits(arm: str, hits: Sequence[Mapping]) -> None:
     for hit in hits:
         if not _number(hit.get("score_semantic")) or not _number(hit.get("score_total")):
             raise ArmError(f"{arm}: hit {hit.get('topic')!r} lacks numeric score_semantic/score_total")
+    for hit in hits:
+        if not (math.isfinite(hit["score_semantic"]) and math.isfinite(hit["score_total"])):
+            raise ArmError(f"{arm}: hit {hit.get('topic')!r} has a non-finite score")
     if not any(hit["score_semantic"] > 0 for hit in hits):
         raise ArmError(f"{arm}: no hit has score_semantic > 0 (keyword-only fallback?)")
     if arm == "hivemem-semantic":
         for hit in hits:
-            if abs(hit["score_total"] - hit["score_semantic"]) > _TOLERANCE:
+            if not abs(hit["score_total"] - hit["score_semantic"]) <= _TOLERANCE:
                 raise ArmError(f"{arm}: weights not honoured for {hit.get('topic')!r}: total "
                                f"{hit['score_total']} vs semantic {hit['score_semantic']}")
 
@@ -159,6 +163,9 @@ def run_retrieve(corpus: dataset.Corpus, mcp, psql: db.Psql, sidecar, token: str
     for the run metadata. Pairs already in ``rankings.jsonl`` are skipped; when
     nothing is pending for the SQL arms the plans are not re-taken (``{}``).
     """
+    unknown = [arm for arm in arms if arm not in ARMS]
+    if unknown:
+        raise ArmError(f"unknown arm(s) {unknown}; known: {list(ARMS)}")
     start_info = _gate(corpus, psql, sidecar, token, ingest_state)
     path = pathlib.Path(run_dir) / "rankings.jsonl"
     done = set(load_rankings(path))

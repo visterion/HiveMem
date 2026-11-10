@@ -127,9 +127,11 @@ class FakeBenchDb:
     """
 
     def __init__(self, cells=None, token_hashes=(), chunks=(0, 0), unsettled=(0,),
-                 plan="Limit\n  ->  Sort\n        ->  Seq Scan on cells c", similarity=None):
+                 plan="Limit\n  ->  Sort\n        ->  Seq Scan on cells c", similarity=None,
+                 chunk_similarity=None):
         self.plan = plan
         self.similarity = dict(similarity or {})
+        self.chunk_similarity = dict(chunk_similarity or {})
         self.cells = list(cells or [])
         self.token_hashes = set(token_hashes)
         self.chunks = tuple(chunks)
@@ -150,6 +152,31 @@ class FakeBenchDb:
                                      .replace(re.escape("{topic}"), "'(.*)'")
         match = re.fullmatch(pattern, script)
         return match.group(1).replace("''", "'") if match else None
+
+    _FRAME_HEAD = ("BEGIN;\nSET LOCAL enable_indexscan = off;\n"
+                   "SET LOCAL enable_bitmapscan = off;\n")
+    _FRAME_TAIL = ";\nCOMMIT;\n"
+
+    def _arm_answer(self, script):
+        """Answer a cosine / chunkmax script; the transaction frame must be exact."""
+        if not (script.startswith(self._FRAME_HEAD) and script.endswith(self._FRAME_TAIL)):
+            raise AssertionError(f"FakeBenchDb: arm script without the exact frame: {script!r}")
+        body = script[len(self._FRAME_HEAD):-len(self._FRAME_TAIL)]
+        if body.startswith("EXPLAIN SELECT"):
+            return f"BEGIN\nSET\nSET\n{self.plan}\nCOMMIT\n"
+        if not body.startswith("SELECT c.topic"):
+            raise AssertionError(f"FakeBenchDb: unexpected arm select: {script!r}")
+        mine = [c["topic"] for c in self.cells if c["realm"] == "longmemeval"]
+        if "LEFT JOIN cell_chunks" in body:
+            table = self.chunk_similarity
+            ranked = sorted(mine, key=lambda t: (-table.get(t, 0.4), t), reverse=not table)
+        else:
+            table = self.similarity
+            ranked = sorted(mine, key=lambda t: (-table.get(t, 0.5), t))
+        ranked = ranked[:50]
+        default = 0.4 if table is self.chunk_similarity else 0.5
+        return "BEGIN\nSET\nSET\n" + "".join(
+            f"{t}\t{table.get(t, default)}\n" for t in ranked) + "COMMIT\n"
 
     def _answer(self, script):
         import ingest
@@ -173,13 +200,8 @@ class FakeBenchDb:
         topic = self._literal(script, ingest.TOPIC_SQL)
         if topic is not None:
             return f"{sum(1 for c in self.cells if c['realm'] == 'longmemeval' and c['topic'] == topic)}\n"
-        if "EXPLAIN" in script and "<=>" in script:
-            return f"BEGIN\nSET\nSET\n{self.plan}\nCOMMIT\n"
         if "<=>" in script:
-            mine = [c["topic"] for c in self.cells if c["realm"] == "longmemeval"]
-            ranked = sorted(mine, key=lambda t: (-self.similarity.get(t, 0.5), t))[:50]
-            return "BEGIN\nSET\nSET\n" + "".join(
-                f"{t}\t{self.similarity.get(t, 0.5)}\n" for t in ranked) + "COMMIT\n"
+            return self._arm_answer(script)
         raise AssertionError(f"FakeBenchDb: unknown script {script!r}")
 
     def __call__(self, command, input=None, capture_output=False, text=False, **kwargs):

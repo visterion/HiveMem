@@ -49,7 +49,7 @@ def append(path: pathlib.Path, record: Mapping) -> None:
     """Append ``record`` as one JSON line and flush it; creates parent directories."""
     path = pathlib.Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    line = json.dumps(record, ensure_ascii=False) + "\n"
+    line = json.dumps(record) + "\n"
     with open(path, "ab+") as handle:
         size = handle.seek(0, 2)
         if size:

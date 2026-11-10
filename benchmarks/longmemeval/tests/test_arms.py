@@ -46,6 +46,8 @@ class SqlTest(unittest.TestCase):
             arms.check_plan("Index Scan using cells_embedding_hnsw on cells")
         with self.assertRaises(arms.ArmError):
             arms.check_plan("Bitmap Index Scan on idx")
+        with self.assertRaises(arms.ArmError):
+            arms.check_plan("Index Only Scan using cells_pkey on cells")
 
     def test_vector_literal(self):
         self.assertEqual(arms.vector_literal([0.5, -1, 2e-05]), "[0.5,-1.0,2e-05]")
@@ -67,6 +69,13 @@ class ValidationTest(unittest.TestCase):
         with self.assertRaises(arms.ArmError):
             arms.validate_hits("hivemem-semantic", [hit("da", 0.5046, 0.5402)])
         arms.validate_hits("hivemem-semantic", [hit("da", 0.5046, 0.5046), hit("db", 0.3, 0.30005)])
+
+    def test_non_finite_scores_are_rejected(self):
+        nan = float("nan")
+        with self.assertRaises(arms.ArmError):
+            arms.validate_hits("hivemem-semantic", [hit("da", 0.5, nan)])
+        with self.assertRaises(arms.ArmError):
+            arms.validate_hits("hivemem", [hit("da", nan, 0.5), hit("db", 0.4, 0.5)])
 
     def test_search_arguments(self):
         base = {"query": "q?", "limit": 50, "where": {"realm": "longmemeval"}, "include": ["scores"]}
@@ -193,6 +202,51 @@ class RunTest(unittest.TestCase):
         with self.assertRaises(arms.ArmError):
             self.retrieve(sidecar=FlippingSidecar())
 
+    def test_cosine_and_chunkmax_rank_differently(self):
+        self.retrieve()
+        records = self.records()
+        for question in self.corpus.questions:
+            self.assertEqual(records[(question.id, "cosine")]["ranking"], self.keys)
+            self.assertEqual(records[(question.id, "chunkmax")]["ranking"], self.keys[::-1])
+
+    def test_explain_scripts_are_exact_and_first(self):
+        database = self.database()
+        mcp = self.mcp()
+        self.retrieve(database=database, mcp=mcp)
+        literal = arms.vector_literal(support.FakeSidecar().embed_query("x"))
+        explains = [s for s in database.scripts if s and "EXPLAIN" in s]
+        self.assertEqual(explains, [arms.cosine_script(literal, explain=True),
+                                    arms.chunkmax_script(literal, explain=True)])
+        arm_scripts = [s for s in database.scripts if s and "<=>" in s]
+        self.assertEqual(arm_scripts[:2], explains)
+        self.assertEqual(len(arm_scripts), 2 + 8)
+        self.assertEqual(arm_scripts[2], arms.cosine_script(literal))
+
+    def assert_gate_stops(self, database):
+        mcp = self.mcp()
+        with self.assertRaises(RuntimeError):
+            self.retrieve(database=database, mcp=mcp)
+        self.assertEqual(mcp.calls, [])
+        self.assertFalse([s for s in database.scripts if s and "<=>" in s])
+        self.assertEqual(self.records(), {})
+
+    def test_unknown_token_stops_at_the_gate(self):
+        database = support.FakeBenchDb(cells=[support.cell(k) for k in self.keys])
+        self.assert_gate_stops(database)
+
+    def test_missing_cell_stops_at_the_gate(self):
+        database = support.FakeBenchDb(cells=[support.cell(k) for k in self.keys[1:]],
+                                       token_hashes={ingest.token_hash(TOKEN)})
+        self.assert_gate_stops(database)
+
+    def test_unknown_arm_is_rejected(self):
+        database = self.database()
+        with self.assertRaisesRegex(arms.ArmError, "hivemem_semantic"):
+            arms.run_retrieve(self.corpus, self.mcp(), db.Psql(["psql"], runner=database),
+                              support.FakeSidecar(), TOKEN, self.state, self.run_dir,
+                              arms=("hivemem_semantic",))
+        self.assertEqual(database.scripts, [])
+
     def test_dataset_mismatch_stops(self):
         with self.assertRaises(arms.ArmError):
             self.retrieve(state={**self.state, "dataset_sha256": "0" * 64})
@@ -208,9 +262,10 @@ class RunTest(unittest.TestCase):
                 Counting.embeds += 1
                 return super().embed_query(text)
 
-        self.retrieve(mcp=mcp, sidecar=Counting())
+        result, _ = self.retrieve(mcp=mcp, sidecar=Counting())
         self.assertEqual(mcp.calls, [])
         self.assertEqual(Counting.embeds, 0)
+        self.assertEqual(result["plans"], {})
         self.assertEqual(len(self.records()), 20)
 
     def test_resume_after_cut_off_write(self):

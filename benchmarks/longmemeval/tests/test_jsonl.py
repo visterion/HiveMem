@@ -45,6 +45,17 @@ class JsonlTest(unittest.TestCase):
         with self.assertRaisesRegex(jsonl.JsonlError, r"x\.jsonl.*2"):
             jsonl.read(path)
 
+    def test_cut_inside_multibyte_character_is_repaired(self):
+        path = self.tmp / "x.jsonl"
+        jsonl.append(path, {"a": 1})
+        jsonl.append(path, {"text": "SYNTHETIC: \u00e4\u00f6\u00fc \u20ac"})
+        data = path.read_bytes()
+        first = data.index(b"\n") + 1
+        path.write_bytes(data[:first + (len(data) - first) // 2])
+        with contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(jsonl.read(path), [{"a": 1}])
+        self.assertEqual(path.read_text(), '{"a": 1}\n')
+
     def test_blank_lines_are_ignored(self):
         path = self.tmp / "x.jsonl"
         path.write_text('{"a": 1}\n\n{"a": 2}\n\n', encoding="utf-8")
