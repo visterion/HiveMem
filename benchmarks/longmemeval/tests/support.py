@@ -83,3 +83,29 @@ def fixture_corpus(limit: int | None = None) -> "dataset.Corpus":
 
 def key_of(session_id: str) -> str:
     return dataset.document_key(dataset.render(_SESSIONS[session_id]))
+
+
+class FakeRunner:
+    """Stand-in for ``subprocess.run`` that feeds the script to a responder.
+
+    The responder takes the script text and returns a ``str`` (stdout of a
+    successful run), a ``(returncode, stdout, stderr)`` tuple, or an exception
+    instance, which is raised. Each call is recorded in ``calls`` as
+    ``(command, script)``.
+    """
+
+    def __init__(self, responder):
+        self._responder = responder
+        self.calls: list[tuple[list[str], str]] = []
+
+    def __call__(self, command, input=None, capture_output=False, text=False, **kwargs):
+        import subprocess
+        self.calls.append((list(command), input))
+        result = self._responder(input)
+        if isinstance(result, BaseException):
+            raise result
+        if isinstance(result, tuple):
+            code, out, err = result
+        else:
+            code, out, err = 0, result, ""
+        return subprocess.CompletedProcess(list(command), code, out, err)
