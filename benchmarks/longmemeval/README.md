@@ -70,8 +70,10 @@ with their counts.
 ## Setup
 
 You need Docker with Compose, Python 3.12 or newer, `curl`, and `openssl`. Running the answer
-stage also needs the `claude` CLI, logged in. The stack uses about 14 GB of RAM for the
-embedding service and a few GB of disk; the full ingest needs a CPU with at least six cores.
+stage also needs the `claude` CLI, logged in. The harness is standard library only. The
+dataset file is about 277 MB. The embedding service is limited to six cores and 14 GB of
+memory by default (`cpus` and `mem_limit` in the compose file), sized for the large model;
+adjust them to your host.
 
 Start the stack from this directory. The database password is generated once and lives only
 in a git-ignored `.env` file next to the compose file:
@@ -108,18 +110,18 @@ python3 benchmarks/longmemeval/run.py corpus
 
 It prints `questions=500 non_abstention=470 documents=18464 …`.
 
-All stack settings can be overridden through `LME_*` variables in `.env` (for example
-`LME_EMBEDDINGS_IMAGE`, `LME_MODEL_REPO`, `LME_ONNX_FILE`, `LME_ORT_INTRA_OP_THREADS`); see the
-compose file.
+The embedding service and its image can be overridden through `LME_*` variables in `.env` (for
+example `LME_EMBEDDINGS_IMAGE`, `LME_MODEL_REPO`, `LME_ONNX_FILE`, `LME_ORT_INTRA_OP_THREADS`);
+see the compose file. The settings of the `hivemem` service (embedding timeout, chunk backoff,
+sweep interval) are fixed in the compose file on purpose.
 
 ## Running
 
 All commands run from the repository root. Outputs go to `benchmarks/longmemeval/.work/`.
 
 ```bash
-# 1. Write the corpus into the bench HiveMem. About a day on CPU for the full set; it is
-#    resumable (re-run the same command). Try it first with a stratified subset:
-python3 benchmarks/longmemeval/run.py ingest --limit-questions 5
+# 1. Write the corpus into the bench HiveMem. About a day on CPU for the full set. An
+#    interrupted ingest of the same selection is resumable: re-run the same command.
 python3 benchmarks/longmemeval/run.py ingest
 
 # 2. Rank every question with the five retrieval arms. Prints a run id and the report path.
@@ -135,9 +137,16 @@ python3 benchmarks/longmemeval/run.py qa --run-id <run-id>
 python3 benchmarks/longmemeval/run.py report --run-id <run-id>
 ```
 
-Use `--limit-questions N` on `retrieve` and `qa` as well for a smoke run, and `--arms a,b` to
-pick arms. The corpus of a limited run is the union of the haystacks of the selected questions,
-so ingest with the same `--limit-questions` first. The answer stage caches answers and
+Use `--limit-questions N` on `ingest`, `retrieve` and `qa` for a smoke run (for example
+`ingest --limit-questions 5`), and `--arms a,b` to pick arms. The corpus of a limited run is
+the union of the haystacks of the selected questions, so use the same `--limit-questions` on
+all commands of that run.
+
+**Never grow a smoke database into a measured run.** HiveMem scores recency from each cell's
+`created_at`, so documents ingested earlier would be favoured and the default `hivemem` arm
+would be measured on a skewed store. After a smoke run, throw the stack away and start fresh
+before the full `ingest`: run the `down -v` command below, then `up -d --build --wait` and the
+token command of the Setup section again. The answer stage caches answers and
 judgments under `.work/cache/`; `--no-cache` ignores the cache.
 
 A run lives in `.work/runs/<run-id>/`: `meta.json` (dataset hash, repository commit, ingest
@@ -160,7 +169,7 @@ docker compose -f benchmarks/longmemeval/docker-compose.yml down -v
   30 abstention questions have no gold session) for k in 1, 3, 5, 10, 30 and 50. The headline
   table shows `recall_all@5`, `ndcg_any@5`, `recall_all@10`, `ndcg_any@10`, `recall_any@5`
   and `recall_all@50`.
-- **Why `recall_all@5` cannot reach 1.** Three questions have six gold sessions, which cannot
+- **Why `recall_all@5` cannot reach 1.** Three questions have six gold documents (after identical sessions are merged), which cannot
   fit into five slots. The report states the exact number of such questions.
 - **Paired comparisons.** For `hivemem` against every other arm on `recall_all@5`: `b` is the
   number of questions only `hivemem` gets right, `c` the number only the other arm gets right,
@@ -190,8 +199,11 @@ From production HiveMem, on purpose:
 - **Chunk backoff 1 minute and chunk sweep every 5 seconds**, so a throttled cell recovers
   while ingest waits for embeddings to settle. Neither value influences ranking.
 - **Large embedding limits.** The embedding service takes up to 50,000 characters and 8,192
-  tokens per document. The defaults of the GPU-oriented Ollama backend (8,000 characters)
-  would silently embed most sessions only by their beginning.
+  tokens per document. With the defaults of the GPU-oriented Ollama backend (8,000
+  characters), most sessions (64.5 % are longer than that) would get no cell vector at all,
+  because the bench writes no summary. The integrity gate of `ingest` catches exactly this:
+  the set of cells without a vector must equal the set of documents longer than the
+  embedding service's `max_chars`.
 
 From upstream LongMemEval:
 
@@ -224,10 +236,11 @@ integrity gate must pass: exactly one cell per document, no cell without a vecto
 over-long documents, no chunk without a vector, and no cell still waiting for its chunks.
 
 The harness reaches Postgres only through `docker compose exec -T db psql` of the bench
-compose file; `--psql` overrides that command for experiments. Retrieval stops with an error,
-and appends no `hivemem` record, when the embedding service is unreachable, instead of
-recording keyword-only results as if they were hybrid ones. The SQL plans of the control arms
-are stored in `meta.json` and must show sequential scans.
+compose file; `--psql` overrides that command for experiments. The harness rejects a
+`hivemem` reply in which no hit has a semantic score, which is the signature of HiveMem's
+keyword-only fallback when the embedding service is unavailable, and stops instead of
+recording it. The SQL plans of the control arms are stored in `meta.json`, and the harness
+aborts if a control arm's plan contains an index or bitmap scan.
 
 ## Tests
 
@@ -237,7 +250,7 @@ The unit tests use only the standard library, need no Docker, no network and no 
 python3 -m unittest discover -s benchmarks/longmemeval/tests
 ```
 
-CI runs them on every push and pull request. The benchmark itself never runs in CI.
+CI runs them on pushes to `main` and on pull requests into `main`. The benchmark itself never runs in CI.
 
 ## Attribution
 
