@@ -51,3 +51,6 @@ knowledge-ui/docs/*.md
 
 # CLI build output
 cli/bin/
+
+# LongMemEval benchmark working directory (dataset, token, runs, caches)
+benchmarks/longmemeval/.work/
