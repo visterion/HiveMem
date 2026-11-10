@@ -37,9 +37,32 @@ def build_command(model: str, system_prompt: str = SYSTEM_PROMPT) -> list[str]:
             "--output-format", "json"]
 
 
+def _clip(value: object) -> str:
+    return str(value).strip()[:_DETAIL_LIMIT]
+
+
+def _parse(stdout: object) -> dict | None:
+    """Returns stdout as a JSON object, or None when it is not one."""
+    try:
+        body = json.loads(stdout)
+    except (TypeError, ValueError):
+        return None
+    return body if isinstance(body, dict) else None
+
+
 def _detail(proc: subprocess.CompletedProcess) -> str:
-    parts = [str(part).strip() for part in (proc.stdout, proc.stderr) if part and str(part).strip()]
-    return " | ".join(parts)[:_DETAIL_LIMIT]
+    """Describes a process result: parsed JSON fields (else raw stdout), then stderr."""
+    parts = []
+    body = _parse(proc.stdout)
+    if body is not None:
+        fields = [f"{key}={_clip(body[key])!r}"
+                  for key in ("is_error", "subtype", "stop_reason", "result") if key in body]
+        parts.append(" ".join(fields))
+    elif proc.stdout and str(proc.stdout).strip():
+        parts.append(_clip(proc.stdout))
+    if proc.stderr and str(proc.stderr).strip():
+        parts.append(f"stderr: {_clip(proc.stderr)}")
+    return " | ".join(parts)
 
 
 def _check(proc: subprocess.CompletedProcess, model: str,
@@ -47,11 +70,8 @@ def _check(proc: subprocess.CompletedProcess, model: str,
     """Returns the Reply of a valid process result; raises ValueError naming the reason otherwise."""
     if proc.returncode != 0:
         raise ValueError(f"exit code {proc.returncode}: {_detail(proc)}")
-    try:
-        body = json.loads(proc.stdout)
-    except (TypeError, ValueError):
-        raise ValueError(f"stdout is not JSON: {_detail(proc)}") from None
-    if not isinstance(body, dict):
+    body = _parse(proc.stdout)
+    if body is None:
         raise ValueError(f"stdout is not a JSON object: {_detail(proc)}")
     if body.get("is_error") is not False:
         raise ValueError(f"is_error is {body.get('is_error')!r}: {_detail(proc)}")
@@ -63,9 +83,9 @@ def _check(proc: subprocess.CompletedProcess, model: str,
     model_usage = body.get("modelUsage")
     if not isinstance(model_usage, dict) or set(model_usage) != {model}:
         names = sorted(model_usage) if isinstance(model_usage, dict) else model_usage
-        raise ValueError(f"modelUsage {names!r} is not exactly {model!r}")
+        raise ValueError(f"modelUsage {names!r} is not exactly {model!r}; result: {_clip(text)!r}")
     if validate is not None and not validate(text):
-        raise ValueError(f"validator rejected the reply: {text[:_DETAIL_LIMIT]!r}")
+        raise ValueError(f"validator rejected the reply: {_clip(text)!r}")
     usage = body.get("usage")
     return Reply(text, model_usage, usage if isinstance(usage, dict) else {})
 

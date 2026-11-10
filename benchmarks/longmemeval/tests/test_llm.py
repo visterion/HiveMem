@@ -82,13 +82,39 @@ class LlmTest(unittest.TestCase):
 
     def test_validator_rejection_counts_as_invalid(self):
         runner = Recorder(reply(result="Maybe, the user ..."))
-        with self.assertRaises(llm.LlmError):
+        with self.assertRaisesRegex(llm.LlmError, "Maybe, the user"):
             self.call(runner, validate=lambda text: text.lower().startswith(("yes", "no")))
         self.assertEqual(len(runner.calls), 4)
 
     def test_not_logged_in_message_reaches_the_error(self):
         with self.assertRaisesRegex(llm.LlmError, "Not logged in"):
             self.call(Recorder(subprocess.CompletedProcess([], 1, "", "Not logged in")))
+
+    @staticmethod
+    def long_body(**override):
+        body = {"type": "result", "subtype": "success", "duration_ms": 1234, "duration_api_ms": 1200,
+                "num_turns": 1, "stop_reason": "end_turn", "session_id": "0" * 36,
+                "total_cost_usd": 0.001, "usage": {"input_tokens": 2, "output_tokens": 3, "pad": "x" * 600},
+                "modelUsage": {"claude-sonnet-5-5": {}}, "is_error": False, "result": "yes"}
+        body.update(override)
+        return json.dumps(body)
+
+    def test_error_text_past_the_first_300_characters_reaches_the_error(self):
+        out = self.long_body(is_error=True, result="Not logged in - Please run /login")
+        self.assertGreater(out.index("Not logged in"), 300)
+        with self.assertRaisesRegex(llm.LlmError, "Not logged in - Please run /login"):
+            self.call(Recorder(subprocess.CompletedProcess([], 0, out, "")))
+
+    def test_nonzero_exit_reports_parsed_result_and_stderr(self):
+        out = self.long_body(is_error=True, result="parsed cause text")
+        with self.assertRaises(llm.LlmError) as ctx:
+            self.call(Recorder(subprocess.CompletedProcess([], 1, out, "stderr cause text")))
+        self.assertIn("parsed cause text", str(ctx.exception))
+        self.assertIn("stderr cause text", str(ctx.exception))
+
+    def test_model_mismatch_error_includes_the_result(self):
+        with self.assertRaisesRegex(llm.LlmError, "wrong model answer"):
+            self.call(Recorder(reply(result="wrong model answer", modelUsage={"claude-haiku-5-5": {}})))
 
     def test_missing_binary_is_not_retried(self):
         runner = Recorder(FileNotFoundError("claude"))
