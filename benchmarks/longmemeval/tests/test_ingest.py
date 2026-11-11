@@ -49,6 +49,17 @@ def full_cells(corpus):
     return [cell(key) for key in sorted(corpus.documents)]
 
 
+def write_state(tmp, corpus, **overrides):
+    """A state file of ``corpus`` as an unfinished ingest leaves it; ``overrides`` replace fields."""
+    state = {"started_at": "2026-01-01T00:00:00Z", "dataset_sha256": corpus.sha256,
+             "limit_questions": corpus.limit_questions, "documents": len(corpus.documents),
+             "sidecar_info": support.FakeSidecar().info(), "finished_at": None, "integrity": None}
+    state.update(overrides)
+    path = pathlib.Path(tmp) / "ingest.json"
+    path.write_text(json.dumps(state), encoding="utf-8")
+    return path
+
+
 class TmpCase(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -67,6 +78,19 @@ class UnsettledQueryTest(TmpCase):
         database = ready_db(unsettled=(3, 1, 0))
         run(support.fixture_corpus(), database, tmp=self.tmp)
         self.assertGreaterEqual(database.scripts.count(ingest.UNSETTLED_SQL), 3)
+
+    def test_settle_prints_only_when_the_count_changes(self):
+        ticks = iter(range(0, 10**6, 5))
+        _, _, out = run(support.fixture_corpus(), ready_db(unsettled=(3, 3, 3, 2, 2, 0)),
+                        tmp=self.tmp, clock=lambda: next(ticks))
+        self.assertEqual([line for line in out if line.startswith("settle:")],
+                         ["settle: 3 cell(s) still unsettled", "settle: 2 cell(s) still unsettled"])
+
+    def test_settle_repeats_an_unchanged_count_once_per_minute(self):
+        ticks = iter(range(0, 10**6, 5))
+        _, _, out = run(support.fixture_corpus(), ready_db(unsettled=(4,) * 30 + (0,)),
+                        tmp=self.tmp, clock=lambda: next(ticks))
+        self.assertEqual(len([line for line in out if line.startswith("settle:")]), 3)
 
     def test_settle_times_out(self):
         ticks = iter(range(0, 10**6, 600))
@@ -92,6 +116,8 @@ class SqlTextTest(unittest.TestCase):
                          "SELECT count(*), count(*) FILTER (WHERE embedding IS NULL) FROM cell_chunks")
         self.assertEqual(ingest.SPAN_SQL,
                          "SELECT min(created_at), max(created_at) FROM cells WHERE realm = 'longmemeval'")
+        self.assertEqual(ingest.MODEL_SQL,
+                         "SELECT content FROM identity WHERE key = 'embedding_model'")
 
 
 class GateTest(TmpCase):
@@ -120,6 +146,24 @@ class GateTest(TmpCase):
 
     def test_sidecar_without_max_chars_aborts(self):
         self.check(ready_db(), "max_chars", sidecar=support.FakeSidecar(info={"model": "m"}))
+
+    def test_embedding_model_mismatch_aborts(self):
+        self.check(ready_db(embedding_model="other-model"), "embedding model.*other-model")
+
+    def test_missing_embedding_model_row_aborts(self):
+        self.check(ready_db(embedding_model=None), "embedding model")
+
+    def test_no_foreign_cells_is_public(self):
+        ingest.no_foreign_cells(db.Psql(["psql"], runner=ready_db(cells=[cell("dabc")])))
+        with self.assertRaisesRegex(ingest.IngestError, "outside realm"):
+            ingest.no_foreign_cells(db.Psql(["psql"], runner=ready_db(
+                cells=[cell("personal-note", realm="personal")])))
+
+    def test_check_embedding_model_is_public(self):
+        psql = db.Psql(["psql"], runner=ready_db())
+        ingest.check_embedding_model(psql, {"model": support.SIDECAR_MODEL})
+        with self.assertRaisesRegex(ingest.IngestError, "embedding model"):
+            ingest.check_embedding_model(psql, {"model": "other-model"})
 
     def test_stack_down_aborts_without_writing(self):
         runner = support.FakeRunner(lambda script: (1, "", 'service "db" is not running'))
@@ -151,11 +195,24 @@ class WriteLoopTest(TmpCase):
         self.assertEqual(twin["valid_from"], "2023-04-01T07:00:00Z")
 
     def test_resume_skips_existing_topics(self):
+        # Adapted (M3): a pre-filled database now needs the state file of its selection.
         corpus = support.fixture_corpus()
         keys = sorted(corpus.documents)[:2]
-        _, mcp, _ = run(corpus, ready_db(cells=[cell(k) for k in keys]), tmp=self.tmp)
+        write_state(self.tmp, corpus)
+        state, mcp, _ = run(corpus, ready_db(cells=[cell(k) for k in keys]), tmp=self.tmp)
         self.assertEqual(len(mcp.calls), 4)
         self.assertFalse({c["topic"] for c in mcp.calls} & set(keys))
+        self.assertEqual(state["started_at"], "2026-01-01T00:00:00Z")
+        self.assertIsNotNone(state["finished_at"])
+
+    def test_progress_line_every_100_documents(self):
+        corpus, _ = synthetic_corpus(n=200)
+        ticks = iter(range(0, 10**6))
+        _, _, out = run(corpus, ready_db(), tmp=self.tmp, clock=lambda: next(ticks))
+        progress = [line for line in out if line.startswith("ingest:")]
+        self.assertEqual(len(progress), 2)
+        self.assertRegex(progress[0], r"^ingest: 100/200 documents, \d+\.\d\d/s, ~\d+ s left$")
+        self.assertRegex(progress[1], r"^ingest: 200/200 documents, \d+\.\d\d/s, ~0 s left$")
 
     def test_retry_checks_database_first_and_does_not_resend(self):
         corpus = support.fixture_corpus()
@@ -207,7 +264,8 @@ class CoverageGateTest(TmpCase):
 
     def test_exactly_one_percent_without_vector_passes_the_gate(self):
         corpus, _ = synthetic_corpus(long_keys=["d100", "d101"])
-        present, _ = ingest.gates(corpus, db.Psql(["psql"], runner=ready_db()),
+        # Adapted (M2): the database's embedding model must equal the sidecar's model "m".
+        present, _ = ingest.gates(corpus, db.Psql(["psql"], runner=ready_db(embedding_model="m")),
                                   support.FakeSidecar(info={"model": "m", "max_chars": LOW_LIMIT}),
                                   TOKEN)
         self.assertEqual(present, set())
@@ -247,12 +305,18 @@ class IntegrityTest(unittest.TestCase):
         self.check([cell(k) for k in self.keys()], chunks=(12, 1), pattern="chunk")
 
     def test_fails_on_unexpected_vectorless(self):
-        cells = [cell(k) for k in self.keys()]
-        cells[0]["vectorless"] = True
-        self.check(cells, pattern="vector")
+        # 200 documents: one non-gold document without a vector stays within the coverage
+        # rule, so only the mismatch check can fail.
+        corpus, _ = synthetic_corpus()
+        cells = [cell(k, vectorless=k == "d150") for k in sorted(corpus.documents)]
+        psql = db.Psql(["psql"], runner=ready_db(cells=cells))
+        with self.assertRaisesRegex(ingest.IngestError, "vector mismatch") as caught:
+            ingest.integrity(corpus, psql, 50000)
+        self.assertNotIn("more than 1 %", str(caught.exception))
+        self.assertNotIn("gold document", str(caught.exception))
 
     def test_fails_when_long_document_has_a_vector(self):
-        self.check([cell(k) for k in self.keys()], max_chars=10, pattern="vector")
+        self.check([cell(k) for k in self.keys()], max_chars=10, pattern="vector mismatch")
 
     def test_vectorless_matches_long_documents(self):
         # Adapted: on the 6-document fixture a vectorless set would hit the 1 % rule, so a
@@ -317,6 +381,67 @@ class IntegrityTest(unittest.TestCase):
         message = self.check([cell(k) for k in keys] + [cell(keys[0])], chunks=(12, 1),
                              pattern="chunk")
         self.assertRegex(message, "distinct")
+
+
+class SelectionGuardTest(TmpCase):
+    def refused(self, database, pattern="another selection or of unknown origin"):
+        mcp = support.FakeMcp(database)
+        with self.assertRaisesRegex(ingest.IngestError, pattern) as caught:
+            run(support.fixture_corpus(), database, mcp=mcp, tmp=self.tmp)
+        self.assertEqual(mcp.calls, [])
+        self.assertIn("down -v", str(caught.exception))
+
+    def some_cells(self):
+        return [cell(k) for k in sorted(support.fixture_corpus().documents)[:2]]
+
+    def test_cells_without_a_state_file_are_refused(self):
+        self.refused(ready_db(cells=self.some_cells()))
+
+    def test_cells_of_another_limit_are_refused(self):
+        write_state(self.tmp, support.fixture_corpus(), limit_questions=2)
+        self.refused(ready_db(cells=self.some_cells()))
+
+    def test_cells_of_another_dataset_are_refused(self):
+        write_state(self.tmp, support.fixture_corpus(), dataset_sha256="0" * 64)
+        self.refused(ready_db(cells=self.some_cells()))
+
+    def test_unreadable_state_file_is_refused(self):
+        (pathlib.Path(self.tmp) / "ingest.json").write_text("{cut", encoding="utf-8")
+        self.refused(ready_db(cells=self.some_cells()))
+
+    def test_resume_of_the_same_selection_works(self):
+        corpus = support.fixture_corpus()
+        write_state(self.tmp, corpus)
+        _, mcp, _ = run(corpus, ready_db(cells=self.some_cells()), tmp=self.tmp)
+        self.assertEqual(len(mcp.calls), 4)
+
+    def test_stale_state_file_of_an_empty_database_is_replaced(self):
+        corpus = support.fixture_corpus()
+        write_state(self.tmp, corpus, limit_questions=2)
+        state, mcp, _ = run(corpus, ready_db(), tmp=self.tmp)
+        self.assertEqual(len(mcp.calls), 6)
+        self.assertIsNone(state["limit_questions"])
+
+    def test_state_file_is_written_before_the_first_write(self):
+        corpus = support.fixture_corpus()
+        path = pathlib.Path(self.tmp) / "ingest.json"
+        seen = []
+
+        def fail(index, kwargs):
+            seen.append(json.loads(path.read_text()))
+            return hivemem.HiveMemError("synthetic failure")
+
+        database = ready_db()
+        with self.assertRaises(ingest.IngestError):
+            run(corpus, database, mcp=support.FakeMcp(database, fail=fail), tmp=self.tmp)
+        early = seen[0]
+        self.assertEqual(set(early), {"started_at", "dataset_sha256", "limit_questions",
+                                      "documents", "sidecar_info", "finished_at", "integrity"})
+        self.assertEqual((early["dataset_sha256"], early["limit_questions"], early["documents"]),
+                         (corpus.sha256, None, 6))
+        self.assertIsNone(early["finished_at"])
+        self.assertIsNone(early["integrity"])
+        self.assertEqual(json.loads(path.read_text()), early)
 
 
 class StateTest(TmpCase):

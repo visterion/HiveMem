@@ -7,6 +7,7 @@ reaches ``rankings.jsonl``.
 
 import math
 import pathlib
+import re
 import time
 from collections.abc import Callable, Collection, Mapping, Sequence
 
@@ -72,6 +73,15 @@ def check_plan(plan: str) -> None:
             raise ArmError(f"control arm plan contains {marker!r}: {plan.strip()}")
 
 
+_VECTOR_LITERAL = re.compile(r"\[[0-9eE+\-.,]{201,}\]")
+
+
+def redact_plan(plan: str) -> str:
+    """The plan with every query-vector literal (a bracketed number run over 200 characters)
+    replaced by ``[<query vector>]``, for storage; ``check_plan`` reads the full text."""
+    return _VECTOR_LITERAL.sub("[<query vector>]", plan)
+
+
 def search_arguments(arm: str, question: str) -> dict:
     """Arguments of the ``search`` tool for a ``hivemem`` arm."""
     arguments = {"query": question, "limit": LIMIT, "where": {"realm": ingest.REALM},
@@ -133,11 +143,14 @@ def _gate(corpus, psql, sidecar, token, ingest_state) -> dict:
     ingest.same_instance(psql, token)
     if ingest_state.get("dataset_sha256") != corpus.sha256:
         raise ArmError("ingest state belongs to a different dataset")
+    # The chunk candidate pool of `search` is global: a foreign cell changes `hivemem`.
+    ingest.no_foreign_cells(psql)
     recorded = ingest_state["sidecar_info"]
     ingest.integrity(corpus, psql, recorded["max_chars"])
     info = sidecar.info()
     if info.get("model") != recorded["model"]:
         raise ArmError(f"embedding model changed: {info.get('model')!r} != {recorded['model']!r}")
+    ingest.check_embedding_model(psql, info)
     return info
 
 
@@ -159,9 +172,11 @@ def run_retrieve(corpus: dataset.Corpus, mcp, psql: db.Psql, sidecar, token: str
                  clock: Callable = time.perf_counter, out: Callable = print) -> dict:
     """Rank every question with every requested arm, appending each record at once.
 
-    Returns the plan texts, the sidecar ``/info`` reply and the arm definitions
-    for the run metadata. Pairs already in ``rankings.jsonl`` are skipped; when
-    nothing is pending for the SQL arms the plans are not re-taken (``{}``).
+    Returns the plan texts (vector literals redacted), the sidecar ``/info``
+    reply and the arm definitions for the run metadata. Pairs already in
+    ``rankings.jsonl`` are skipped; when nothing is pending for the SQL arms the
+    plans are not re-taken (``{}``). When ``/info`` changed during the run,
+    ``rankings.jsonl`` is moved to ``rankings.invalid.jsonl`` before ``ArmError``.
     """
     unknown = [arm for arm in arms if arm not in ARMS]
     if unknown:
@@ -179,8 +194,9 @@ def run_retrieve(corpus: dataset.Corpus, mcp, psql: db.Psql, sidecar, token: str
         literal = vector_literal(first_vector)
         for name, builder in (("cosine", cosine_script), ("chunkmax", chunkmax_script)):
             if name in wanted:
-                plans[name] = psql.run(builder(literal, explain=True))
-                check_plan(plans[name])
+                plan = psql.run(builder(literal, explain=True))
+                check_plan(plan)
+                plans[name] = redact_plan(plan)
     bm = bm25.Bm25({key: doc.text for key, doc in corpus.documents.items()}) \
         if any(arm == "bm25" for _, arm in pending) else None
     vectors: dict[str, str] = {}
@@ -203,7 +219,10 @@ def run_retrieve(corpus: dataset.Corpus, mcp, psql: db.Psql, sidecar, token: str
         if number % 50 == 0:
             out(f"retrieve: {number}/{len(pending)} pairs")
     if sidecar.info() != start_info:
-        raise ArmError("sidecar /info changed during the run")
+        if path.exists():
+            path.replace(path.with_name("rankings.invalid.jsonl"))
+        raise ArmError("sidecar /info changed during the run; rankings.jsonl was moved to "
+                       "rankings.invalid.jsonl and no record of it counts; use a new --run-id")
     return {"plans": plans, "sidecar_info": start_info,
             "arms": {"bm25": "BM25 over rendered documents", "cosine": "exact cosine over cell vectors",
                      "chunkmax": "exact cosine, max over cell and chunk vectors",

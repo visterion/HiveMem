@@ -1,8 +1,9 @@
-"""Guarded write path: pre-write gates, add_cell loop, settle wait, integrity gate.
+"""Guarded write path: pre-write gates, add_cell loop, settle wait, integrity gate, state file.
 
 Nothing is sent to HiveMem before every gate has passed, so a stack that holds
-real data is never written to. Database errors (``db.DbError``) propagate
-unchanged.
+real data is never written to, and a database that already holds documents is
+only grown when the state file shows they belong to the current selection.
+Database errors (``db.DbError``) propagate unchanged.
 """
 
 import hashlib
@@ -27,10 +28,12 @@ UNSETTLED_SQL = ("SELECT count(*) FROM cells WHERE status = 'committed' AND vali
                  "AND length(content) > 2000 AND chunked_content_md5 IS DISTINCT FROM content_md5")
 CHUNKS_SQL = "SELECT count(*), count(*) FILTER (WHERE embedding IS NULL) FROM cell_chunks"
 SPAN_SQL = "SELECT min(created_at), max(created_at) FROM cells WHERE realm = 'longmemeval'"
+MODEL_SQL = "SELECT content FROM identity WHERE key = 'embedding_model'"
 
 MAX_VECTORLESS_SHARE = 0.01
 _RESENDS = 3
 _SETTLE_POLL = 5.0
+_SETTLE_REPEAT = 60.0
 _PROGRESS_EVERY = 100
 
 
@@ -72,12 +75,29 @@ def _coverage_failures(corpus: dataset.Corpus, vectorless: set[str]) -> list[str
     return failures
 
 
-def gates(corpus: dataset.Corpus, psql: db.Psql, sidecar, token: str) -> tuple[set[str], dict]:
-    """Run gates 1-4; return the topics already written and the sidecar ``/info`` reply."""
-    same_instance(psql, token)
+def no_foreign_cells(psql: db.Psql) -> None:
+    """Gate 2: the database holds no cell outside the benchmark realm."""
     foreign = _count(psql, FOREIGN_SQL)
     if foreign:
         raise IngestError(f"{foreign} cell(s) outside realm {REALM!r}: not a benchmark database")
+
+
+def check_embedding_model(psql: db.Psql, info: dict) -> None:
+    """The model HiveMem recorded for its stored vectors must be the sidecar's model."""
+    rows = psql.rows(MODEL_SQL)
+    if len(rows) != 1:
+        raise IngestError(f"the database records no single embedding model ({len(rows)} identity "
+                          "row(s) for 'embedding_model'); cannot tie its vectors to the sidecar")
+    stored = "\t".join(rows[0])
+    if stored != info.get("model"):
+        raise IngestError(f"embedding model of the database {stored!r} differs from the sidecar's "
+                          f"{info.get('model')!r}")
+
+
+def gates(corpus: dataset.Corpus, psql: db.Psql, sidecar, token: str) -> tuple[set[str], dict]:
+    """Run gates 1-4; return the topics already written and the sidecar ``/info`` reply."""
+    same_instance(psql, token)
+    no_foreign_cells(psql)
     present: set[str] = set()
     for row in psql.rows(REALM_CELLS_SQL):
         topic, status, valid_until_null = row[0], row[1], row[2]
@@ -98,6 +118,7 @@ def gates(corpus: dataset.Corpus, psql: db.Psql, sidecar, token: str) -> tuple[s
         raise IngestError(f"sidecar max_chars {max_chars} leaves documents without a cell vector: "
                           + "; ".join(failures)
                           + ". The embedding service's character limit must be raised.")
+    check_embedding_model(psql, info)
     return present, info
 
 
@@ -124,14 +145,19 @@ def _write_one(mcp, psql: db.Psql, doc: dataset.Document, sleep: Callable,
 
 
 def _settle(psql: db.Psql, timeout: float, sleep: Callable, clock: Callable, out: Callable) -> None:
+    """Wait until no cell is unsettled; print when the count changes, else once a minute."""
     start = clock()
+    shown, shown_at = None, None
     while True:
         unsettled = _count(psql, UNSETTLED_SQL)
         if unsettled == 0:
             return
-        if clock() - start > timeout:
+        now = clock()
+        if now - start > timeout:
             raise IngestError(f"{unsettled} cell(s) still unsettled after {timeout:.0f} s")
-        out(f"settle: {unsettled} cell(s) still unsettled")
+        if unsettled != shown or now - shown_at >= _SETTLE_REPEAT:
+            out(f"settle: {unsettled} cell(s) still unsettled")
+            shown, shown_at = unsettled, now
         sleep(_SETTLE_POLL)
 
 
@@ -185,13 +211,57 @@ def _now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+_FRESH_DATABASE = ("start from a fresh database: "
+                   "docker compose -f benchmarks/longmemeval/docker-compose.yml down -v")
+
+
+def _previous_state(state_path: pathlib.Path) -> dict | None:
+    try:
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return state if isinstance(state, dict) else None
+
+
+def _same_selection(corpus: dataset.Corpus, state_path: pathlib.Path) -> dict:
+    """The state file of the database's documents; it must describe the current selection.
+
+    Called only when realm cells already exist: growing a database of another
+    selection, or of unknown origin, would skew the recency of the stored cells.
+    """
+    state = _previous_state(state_path)
+    if (state is None or state.get("dataset_sha256") != corpus.sha256
+            or "limit_questions" not in state
+            or state["limit_questions"] != corpus.limit_questions):
+        raise IngestError("the database holds documents of another selection or of unknown "
+                          "origin; " + _FRESH_DATABASE)
+    return state
+
+
+def _write_state(state_path: pathlib.Path, state: dict) -> None:
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+
+
 def run_ingest(corpus: dataset.Corpus, mcp, psql: db.Psql, sidecar, token: str,
                state_path: pathlib.Path, *, settle_timeout: float = 3600.0,
                retry_pause: float = 10.0, sleep: Callable = time.sleep,
                clock: Callable = time.monotonic, out: Callable = print) -> dict:
-    """Gate, write missing documents, wait for settling, verify, and write the state file."""
+    """Gate, write missing documents, wait for settling, verify, and write the state file.
+
+    The state file is written once before the first write (``finished_at`` and
+    ``integrity`` null) and replaced by the full state at the end. A resumed
+    ingest keeps the ``started_at`` of the state it continues.
+    """
+    state_path = pathlib.Path(state_path)
     started_at = _now()
     present, info = gates(corpus, psql, sidecar, token)
+    if present:
+        started_at = _same_selection(corpus, state_path).get("started_at") or started_at
+    state = {"started_at": started_at, "dataset_sha256": corpus.sha256,
+             "limit_questions": corpus.limit_questions, "documents": len(corpus.documents),
+             "sidecar_info": info, "finished_at": None, "integrity": None}
+    _write_state(state_path, state)
     todo = [corpus.documents[key] for key in sorted(corpus.documents) if key not in present]
     begin = clock()
     verified = False
@@ -207,11 +277,6 @@ def run_ingest(corpus: dataset.Corpus, mcp, psql: db.Psql, sidecar, token: str,
             out(f"ingest: {index}/{len(todo)} documents, {rate:.2f}/s, "
                 f"~{(len(todo) - index) / rate:.0f} s left")
     _settle(psql, settle_timeout, sleep, clock, out)
-    result = integrity(corpus, psql, info["max_chars"], out)
-    state = {"dataset_sha256": corpus.sha256, "limit_questions": corpus.limit_questions,
-             "documents": len(corpus.documents), "sidecar_info": info, "integrity": result,
-             "started_at": started_at, "finished_at": _now()}
-    state_path = pathlib.Path(state_path)
-    state_path.parent.mkdir(parents=True, exist_ok=True)
-    state_path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+    state.update(integrity=integrity(corpus, psql, info["max_chars"], out), finished_at=_now())
+    _write_state(state_path, state)
     return state

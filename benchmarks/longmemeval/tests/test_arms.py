@@ -49,6 +49,18 @@ class SqlTest(unittest.TestCase):
         with self.assertRaises(arms.ArmError):
             arms.check_plan("Index Only Scan using cells_pkey on cells")
 
+    def test_redact_plan_replaces_every_long_vector_literal(self):
+        literal = arms.vector_literal([0.012345678, -1.5e-05] * 60)
+        self.assertGreater(len(literal), 200)
+        plan = (f"Limit\n  ->  Sort\n        Sort Key: ((1 - (c.embedding <=> '{literal}'::vector))) DESC\n"
+                f"        ->  Seq Scan on cells c\n  Filter: (x <=> '{literal}'::vector)\n"
+                "  Output: '[1.0,2.0]'::vector")
+        redacted = arms.redact_plan(plan)
+        self.assertNotIn(literal, redacted)
+        self.assertEqual(redacted.count("[<query vector>]"), 2)
+        self.assertIn("'[1.0,2.0]'::vector", redacted)
+        self.assertEqual(redacted, plan.replace(literal, "[<query vector>]"))
+
     def test_vector_literal(self):
         self.assertEqual(arms.vector_literal([0.5, -1, 2e-05]), "[0.5,-1.0,2e-05]")
 
@@ -199,8 +211,31 @@ class RunTest(unittest.TestCase):
         self.assertFalse((self.run_dir / "rankings.jsonl").exists())
 
     def test_info_changed_during_run_stops(self):
+        with self.assertRaisesRegex(arms.ArmError, "rankings.invalid.jsonl"):
+            self.retrieve(sidecar=FlippingSidecar())
+        self.assertFalse((self.run_dir / "rankings.jsonl").exists())
+        invalid = self.run_dir / "rankings.invalid.jsonl"
+        self.assertEqual(len(invalid.read_text().splitlines()), 20)
+
+    def test_info_change_replaces_an_older_invalid_file(self):
+        (self.run_dir / "rankings.invalid.jsonl").write_text("old\n", encoding="utf-8")
         with self.assertRaises(arms.ArmError):
             self.retrieve(sidecar=FlippingSidecar())
+        self.assertNotIn("old", (self.run_dir / "rankings.invalid.jsonl").read_text())
+
+    def test_stored_plans_carry_no_vector_literal(self):
+        literal = "[" + ",".join(["0.123456789"] * 30) + "]"
+        result, _ = self.retrieve(database=self.database(
+            plan=f"Limit\n  ->  Sort Key: (c.embedding <=> '{literal}'::vector)\n  ->  Seq Scan on cells c"))
+        for plan in result["plans"].values():
+            self.assertNotIn(literal, plan)
+            self.assertIn("'[<query vector>]'::vector", plan)
+
+    def test_plan_check_reads_the_full_text(self):
+        literal = "[" + ",".join(["0.123456789"] * 30) + "]"
+        with self.assertRaises(arms.ArmError):
+            self.retrieve(database=self.database(
+                plan=f"Index Scan using x\n  Order By: (c.embedding <=> '{literal}'::vector)"))
 
     def test_cosine_and_chunkmax_rank_differently(self):
         self.retrieve()
@@ -238,6 +273,15 @@ class RunTest(unittest.TestCase):
         database = support.FakeBenchDb(cells=[support.cell(k) for k in self.keys[1:]],
                                        token_hashes={ingest.token_hash(TOKEN)})
         self.assert_gate_stops(database)
+
+    def test_foreign_cell_stops_at_the_gate(self):
+        database = self.database()
+        database.insert("personal-note", realm="personal")
+        self.assert_gate_stops(database)
+
+    def test_embedding_model_of_the_database_must_match_the_sidecar(self):
+        self.assert_gate_stops(self.database(embedding_model="other-model"))
+        self.assert_gate_stops(self.database(embedding_model=None))
 
     def test_unknown_arm_is_rejected(self):
         database = self.database()

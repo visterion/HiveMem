@@ -12,6 +12,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import dataset  # noqa: E402
 
+SIDECAR_MODEL = "synthetic-model"
+
 
 def _turns(topic: str) -> list[dict]:
     return [
@@ -122,14 +124,16 @@ class FakeBenchDb:
 
     State lives in plain attributes: ``cells`` (list of dicts, see ``cell``),
     ``token_hashes``, ``chunks`` (total, without vector), ``unsettled`` (values
-    popped per UNSETTLED_SQL call, the last one repeats) and ``scripts``.
+    popped per UNSETTLED_SQL call, the last one repeats), ``embedding_model``
+    (the ``identity`` row; ``None`` means no row) and ``scripts``.
     Output mimics ``psql -At -F '\\t'``: tab-separated, booleans as t / f.
     """
 
     def __init__(self, cells=None, token_hashes=(), chunks=(0, 0), unsettled=(0,),
                  plan="Limit\n  ->  Sort\n        ->  Seq Scan on cells c", similarity=None,
-                 chunk_similarity=None):
+                 chunk_similarity=None, embedding_model=SIDECAR_MODEL):
         self.plan = plan
+        self.embedding_model = embedding_model
         self.similarity = dict(similarity or {})
         self.chunk_similarity = dict(chunk_similarity or {})
         self.cells = list(cells or [])
@@ -194,6 +198,8 @@ class FakeBenchDb:
             return f"{self.chunks[0]}\t{self.chunks[1]}\n"
         if script == ingest.SPAN_SQL:
             return "2026-01-01 00:00:00+00\t2026-01-01 00:05:00+00\n"
+        if script == ingest.MODEL_SQL:
+            return "" if self.embedding_model is None else f"{self.embedding_model}\n"
         token = self._literal(script, ingest.TOKEN_SQL)
         if token is not None:
             return f"{1 if token in self.token_hashes else 0}\n"
@@ -247,7 +253,7 @@ class FakeSidecar:
     """Stand-in for ``hivemem.Sidecar``."""
 
     def __init__(self, info=None, vector=None):
-        self._info = {"model": "synthetic-model", "max_chars": 50000} if info is None else info
+        self._info = {"model": SIDECAR_MODEL, "max_chars": 50000} if info is None else info
         self._vector = [0.0, 1.0] if vector is None else vector
 
     def info(self):
