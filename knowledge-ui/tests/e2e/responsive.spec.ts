@@ -18,33 +18,49 @@ for (const vp of VIEWPORTS) {
     test.use({ viewport: { width: vp.width, height: vp.height } })
     for (const route of ROUTES) {
       test(`${route} no horizontal overflow`, async ({ page }) => {
-        await gotoMock(page, route)
-        const res = await page.evaluate(() => {
-          const de = document.documentElement
-          const docOverflow = de.scrollWidth - de.clientWidth
-          // An element legitimately extending past the viewport edge is fine *iff* an
-          // ancestor scrolls it horizontally (overflow-x: auto/scroll) — same intentional
-          // pattern as the bottom rail (the photo grid and queen KPI strip scroll this way).
-          // Such elements don't cause page-level overflow; flag only true layout escapes.
-          const inScrollContainer = (el: Element): boolean => {
-            let cur: Element | null = el.parentElement
-            while (cur && cur !== document.body) {
-              const ox = getComputedStyle(cur).overflowX
-              if (ox === 'auto' || ox === 'scroll') return true
-              cur = cur.parentElement
+        await page.addInitScript(() => localStorage.setItem('hivemem_mock', 'true'))
+        await page.goto(route)
+        let res!: { docOverflow: number; worst: string }
+        await expect(async () => {
+          // Read the origin first: everything checked below is tied to this document.
+          const origin = await page.evaluate(() => performance.timeOrigin)
+          await expect(page.locator('.rail')).toBeVisible()
+          // On the first visit of a route the dev server holds the route's view back until its
+          // dependencies are bundled and then reloads the page; the app shell alone is already
+          // there, so the mounted view must be required too.
+          await expect(page.locator('.stage-body > *').first()).toBeAttached()
+          // The mounted view loads its mock data and lays out. A throw (document replaced
+          // mid-call) or a changed origin means the page reloaded meanwhile, so retry.
+          await page.waitForTimeout(700)
+          const measured = await page.evaluate(() => {
+            const de = document.documentElement
+            const docOverflow = de.scrollWidth - de.clientWidth
+            // An element legitimately extending past the viewport edge is fine *iff* an
+            // ancestor scrolls it horizontally (overflow-x: auto/scroll) — same intentional
+            // pattern as the bottom rail (the photo grid and queen KPI strip scroll this way).
+            // Such elements don't cause page-level overflow; flag only true layout escapes.
+            const inScrollContainer = (el: Element): boolean => {
+              let cur: Element | null = el.parentElement
+              while (cur && cur !== document.body) {
+                const ox = getComputedStyle(cur).overflowX
+                if (ox === 'auto' || ox === 'scroll') return true
+                cur = cur.parentElement
+              }
+              return false
             }
-            return false
-          }
-          let worst = ''
-          for (const el of Array.from(document.querySelectorAll('body *'))) {
-            const r = el.getBoundingClientRect()
-            if (r.right > window.innerWidth + 2 && r.width < 4000) {
-              if (inScrollContainer(el)) continue
-              worst = (el.className || el.tagName).toString().slice(0, 60); break
+            let worst = ''
+            for (const el of Array.from(document.querySelectorAll('body *'))) {
+              const r = el.getBoundingClientRect()
+              if (r.right > window.innerWidth + 2 && r.width < 4000) {
+                if (inScrollContainer(el)) continue
+                worst = (el.className || el.tagName).toString().slice(0, 60); break
+              }
             }
-          }
-          return { docOverflow, worst }
-        })
+            return { docOverflow, worst, origin: performance.timeOrigin }
+          })
+          expect(measured.origin).toBe(origin)
+          res = measured
+        }).toPass({ timeout: 15_000 })
         expect(res.docOverflow, `document overflow on ${route}`).toBeLessThanOrEqual(1)
         expect(res.worst, `offscreen element on ${route}`).toBe('')
       })
