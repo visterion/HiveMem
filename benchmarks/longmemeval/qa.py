@@ -188,8 +188,9 @@ def _strict(text: str) -> bool:
     return parse_verdict(text) is not None
 
 
-def _accuracy(flags: Sequence[bool]) -> float:
-    return sum(flags) / len(flags) if flags else 0.0
+def _accuracy(flags: Sequence[bool]) -> float | None:
+    """Share of correct answers; ``None`` for an empty group (no answer is not a wrong one)."""
+    return sum(flags) / len(flags) if flags else None
 
 
 def _arm_summary(questions: Sequence, flags: Sequence[bool]) -> dict:
@@ -259,6 +260,7 @@ def run_qa(corpus, rankings: Mapping, run_dir: pathlib.Path, cache_dir: pathlib.
                           "answer": reader_entries[answer_key]["result"],
                           "verdict_raw": verdict_raw, "correct": flag})
     summary = {
+        "questions": len(corpus.questions),
         "reader": {"requested": reader_model,
                    "served": _served([reader_entries[a] for a, _ in judged.values()])},
         "judge": {"requested": judge_model,
@@ -277,7 +279,8 @@ def run_qa(corpus, rankings: Mapping, run_dir: pathlib.Path, cache_dir: pathlib.
                                       encoding="utf-8")
     (run_dir / "qa.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     for arm in arms:
-        out(f"{arm}: accuracy {summary['arms'][arm]['accuracy']:.3f}")
+        accuracy = summary["arms"][arm]["accuracy"]
+        out(f"{arm}: accuracy {'-' if accuracy is None else f'{accuracy:.3f}'}")
     return summary
 
 

@@ -13,7 +13,10 @@ def recall_any(ranking: Sequence[str], gold: Collection[str], k: int) -> float:
 
 
 def recall_all(ranking: Sequence[str], gold: Collection[str], k: int) -> float:
-    """1.0 when every gold key is in the top k, else 0.0."""
+    """1.0 when every gold key is in the top k, else 0.0.
+
+    An empty gold set yields 1.0; callers score non-abstention questions only.
+    """
     top = set(ranking[:k])
     return 1.0 if all(key in top for key in gold) else 0.0
 

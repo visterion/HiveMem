@@ -89,6 +89,37 @@ class DatasetTest(unittest.TestCase):
             with self.assertRaisesRegex(dataset.DatasetError, "limit"):
                 dataset.load(support.write_fixture(tmp), limit_questions=0)
 
+    def test_malformed_session_or_turn_raises_dataset_error_naming_the_path(self):
+        def broken(change):
+            rows = json.loads(json.dumps(support.fixture_rows()))  # the fixture shares its turns
+            change(rows[0])
+            return rows
+
+        def drop_content(row):
+            del row["haystack_sessions"][1][0]["content"]
+
+        def drop_role(row):
+            del row["haystack_sessions"][1][1]["role"]
+
+        def session_text(row):
+            row["haystack_sessions"][0] = "SYNTHETIC: not a list of turns"
+
+        def turn_text(row):
+            row["haystack_sessions"][0][0] = "SYNTHETIC: not a turn"
+
+        cases = ((drop_content, "content"), (drop_role, "role"), (session_text, "session"),
+                 (turn_text, "turn"))
+        with tempfile.TemporaryDirectory() as tmp:
+            for change, word in cases:
+                path = os.path.join(tmp, f"{change.__name__}.json")
+                pathlib.Path(path).write_text(json.dumps(broken(change)), encoding="utf-8")
+                with self.assertRaisesRegex(dataset.DatasetError, f"{change.__name__}.json.*q_tea"):
+                    dataset.load(path)
+                try:
+                    dataset.load(path)
+                except dataset.DatasetError as error:
+                    self.assertIn(word, str(error))
+
 
 if __name__ == "__main__":
     unittest.main()

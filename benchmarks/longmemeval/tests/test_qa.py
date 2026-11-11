@@ -331,6 +331,19 @@ class RunQaTest(unittest.TestCase):
         self.assertEqual(summary["judge"], {"requested": JUDGE_MODEL, "served": [JUDGE_MODEL]})
         self.assertEqual(json.loads((self.run_dir / "qa.json").read_text()), summary)
 
+    def test_empty_group_has_no_accuracy(self):
+        self.corpus = dataclasses.replace(self.corpus, questions=tuple(
+            q for q in self.corpus.questions if not q.is_abstention))
+        summary = self._run(_good_marker_models(self.corpus))
+        for arm in summary["arms"].values():
+            self.assertEqual(arm["abstention"], {"n": 0, "accuracy": None})
+        stored = json.loads((self.run_dir / "qa.json").read_text())
+        self.assertIsNone(stored["arms"]["hivemem"]["abstention"]["accuracy"])
+        self.assertIn('"accuracy": null', (self.run_dir / "qa.json").read_text())
+
+    def test_summary_counts_the_graded_questions(self):
+        self.assertEqual(self._run(_good_marker_models(self.corpus))["questions"], 4)
+
     def test_paired_only_for_answered_arms(self):
         summary = self._run(_good_marker_models(self.corpus), arms=("hivemem", "bm25"))
         self.assertEqual(set(summary["paired"]), {"bm25"})

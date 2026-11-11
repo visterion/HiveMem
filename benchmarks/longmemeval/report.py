@@ -5,6 +5,7 @@
 ``qa.json`` alone; it never opens the dataset or ``rankings.jsonl``.
 """
 
+import datetime
 import json
 import pathlib
 from collections.abc import Mapping, Sequence
@@ -63,6 +64,7 @@ def _diagnostics(questions, records, corpus, gold_of_selected) -> dict:
     return {"top5_outside_haystack": _mean(outside), "top5_other_gold": _mean(other_gold),
             "top5_after_question_date": _mean(late),
             "fewer_than_50": sum(1 for r in records if len(r["ranking"]) < 50),
+            "empty_rankings": sum(1 for r in records if not r["ranking"]),
             "match_share": sum(matches) / sum(lengths) if matches and sum(lengths) else None,
             "recency_min": min(recency_min) if recency_min else None,
             "recency_max": max(recency_max) if recency_max else None}
@@ -160,8 +162,41 @@ def _breakdown(title: str, key: str, retrieval: Mapping) -> list[str]:
     return [f"### {title}", ""] + _table(["group", "n"] + list(arms), rows)
 
 
-def _qa_section(qa: Mapping) -> list[str]:
-    lines = ["## Answer accuracy", "",
+STALE_QA = "Answer stage: stale — the rankings changed after it ran; run qa again."
+UNFINISHED_QA = "Answer stage: not recorded as finished in meta.json; run qa again."
+
+
+def _time(stamp: str) -> datetime.datetime:
+    return datetime.datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+
+
+def _qa_problem(meta: Mapping) -> str | None:
+    """Why ``qa.json`` must not be rendered, or ``None`` when it describes the current rankings."""
+    finished, ranked = meta.get("qa_finished_at"), meta.get("retrieve_finished_at")
+    if finished is None:
+        return UNFINISHED_QA
+    if ranked is not None and _time(finished) < _time(ranked):
+        return STALE_QA
+    return None
+
+
+def _graded_line(qa: Mapping, meta: Mapping) -> str:
+    graded = qa.get("questions", max((arm["n"] for arm in qa["arms"].values()), default=0))
+    total = meta.get("questions")
+    if total is None:
+        return f"Questions graded: {graded}."
+    if graded < total:
+        limit = meta.get("qa_limit_questions")
+        how = f", qa --limit-questions {limit}" if limit is not None else ""
+        return f"Questions graded: {graded} of the run's {total} (a stratified subset{how})."
+    return f"Questions graded: {graded} of the run's {total}."
+
+
+def _qa_section(qa: Mapping, meta: Mapping) -> list[str]:
+    problem = _qa_problem(meta)
+    if problem is not None:
+        return ["## Answer accuracy", "", problem, ""]
+    lines = ["## Answer accuracy", "", _graded_line(qa, meta), "",
              f"Reader: requested {qa['reader']['requested']}, served "
              f"{', '.join(qa['reader']['served']) or '-'}.",
              f"Judge: requested {qa['judge']['requested']}, served "
@@ -216,7 +251,7 @@ def render(run_dir: pathlib.Path) -> str:
     lines += ["## Latency (hivemem, ms)", "",
               f"p50 {_f(latency['p50'])}, p95 {_f(latency['p95'])}, max {_f(latency['max'])}", ""]
     if qa is not None:
-        lines += _qa_section(qa)
+        lines += _qa_section(qa, meta)
     return "\n".join(lines).rstrip() + "\n"
 
 

@@ -111,6 +111,19 @@ def _read(path: str) -> tuple[bytes, list]:
     return raw, rows
 
 
+def _check_session(path: str, question_id: object, position: int, session: object) -> None:
+    """A session must be a list of turns with string ``role`` and ``content``."""
+    where = f"dataset {path}: question {question_id} haystack session {position}"
+    if not isinstance(session, list):
+        raise DatasetError(f"{where} is not a list of turns")
+    for number, turn in enumerate(session):
+        if not isinstance(turn, dict):
+            raise DatasetError(f"{where}: turn {number} is not an object")
+        for name in ("role", "content"):
+            if not isinstance(turn.get(name), str):
+                raise DatasetError(f"{where}: turn {number} has no string {name}")
+
+
 def load(path: str, limit_questions: int | None = None,
          key_fn: Callable[[str], str] = document_key) -> Corpus:
     """Load the dataset, merge sessions into documents and select questions."""
@@ -137,7 +150,8 @@ def load(path: str, limit_questions: int | None = None,
             raise DatasetError(f"dataset {path}: question {row['question_id']} has "
                                "haystack lists of different length")
         haystack_dates: dict[str, str] = {}
-        for session_id, date, session in zip(ids, dates, sessions):
+        for position, (session_id, date, session) in enumerate(zip(ids, dates, sessions)):
+            _check_session(path, row["question_id"], position, session)
             text = render(session)
             key = key_fn(text)
             if text_by_key.setdefault(key, text) != text:

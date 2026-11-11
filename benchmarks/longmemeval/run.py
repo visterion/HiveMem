@@ -6,6 +6,7 @@ failed gate or run, 2 for a usage problem.
 """
 
 import argparse
+import dataclasses
 import datetime
 import json
 import pathlib
@@ -26,12 +27,20 @@ import report
 
 HERE = pathlib.Path(__file__).resolve().parent
 SELFCHECK_THRESHOLD = 0.9
-_RUN_ERRORS = (ingest.IngestError, arms.ArmError, qa.QaError, llm.LlmError, db.DbError,
-               hivemem.HiveMemError, jsonl.JsonlError)
+# Sidecar /info keys that do not change a vector: excluded from the run fingerprint.
+_NOT_FINGERPRINTED = ("intra_op_threads",)
 
 
 class UsageError(Exception):
     """A usage problem (exit code 2) detected after parsing."""
+
+
+class RunError(RuntimeError):
+    """A run-level check failed (exit code 1)."""
+
+
+_RUN_ERRORS = (RunError, ingest.IngestError, arms.ArmError, qa.QaError, llm.LlmError,
+               db.DbError, hivemem.HiveMemError, jsonl.JsonlError)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -120,7 +129,42 @@ def new_run_id(now: datetime.datetime | None = None) -> str:
 
 
 def _now() -> str:
-    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    # Microseconds: report.py orders qa_finished_at against retrieve_finished_at.
+    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+
+
+def _read_json(path: pathlib.Path, what: str) -> dict:
+    """The JSON object in ``path``; a missing, unreadable or non-object file is a usage error."""
+    try:
+        value = json.loads(pathlib.Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        raise UsageError(f"cannot read {what} {path}: {error}") from error
+    if not isinstance(value, dict):
+        raise UsageError(f"{what} {path} is not a JSON object")
+    return value
+
+
+def fingerprint(corpus: dataset.Corpus, ingest_state: dict, sidecar_info: dict) -> dict:
+    """The conditions a run's rankings were made under; a resumed run must match them."""
+    return {"dataset_sha256": corpus.sha256, "limit_questions": corpus.limit_questions,
+            "ingest_started_at": ingest_state.get("started_at"),
+            "ingest_finished_at": ingest_state.get("finished_at"),
+            "sidecar_info": {key: value for key, value in sidecar_info.items()
+                             if key not in _NOT_FINGERPRINTED}}
+
+
+def _invocations(meta: dict, command: str, git: dict) -> list[dict]:
+    return list(meta.get("invocations", [])) + [
+        {"command": command, "at": _now(), "commit": git["commit"], "dirty": git["dirty"]}]
+
+
+def complete_arms(corpus: dataset.Corpus, rankings: dict) -> tuple[list[str], list[str]]:
+    """Arms ranked for every non-abstention question, and arms only partly ranked."""
+    present = {arm for _, arm in rankings}
+    ordered = [arm for arm in arms.ARMS if arm in present] + sorted(present - set(arms.ARMS))
+    scored = [q.id for q in corpus.questions if not q.is_abstention]
+    complete = [arm for arm in ordered if all((qid, arm) in rankings for qid in scored)]
+    return complete, [arm for arm in ordered if arm not in complete]
 
 
 def update_meta(run_dir: pathlib.Path, **fields) -> dict:
@@ -187,27 +231,50 @@ def _cmd_retrieve(args) -> int:
     state_path = args.work_dir / "ingest.json"
     if not state_path.exists():
         raise UsageError(f"no ingest state at {state_path}: run ingest first")
-    ingest_state = json.loads(state_path.read_text(encoding="utf-8"))
+    ingest_state = _read_json(state_path, "ingest state")
+    if ingest_state.get("finished_at") is None:
+        raise UsageError(f"ingest has not finished ({state_path} has no finished_at): "
+                         "run ingest to completion first")
     corpus = _load(args, args.limit_questions)
     token, mcp, sidecar, psql = _stack(args)
     run_id = args.run_id or new_run_id()
     run_dir = args.work_dir / "runs" / run_id
-    wanted = _csv(args.arms)
-    previous = run_dir / "meta.json"
-    started = json.loads(previous.read_text(encoding="utf-8")).get("started_at") \
-        if previous.exists() else None
+    meta_path = run_dir / "meta.json"
+    meta = _read_json(meta_path, "run metadata") if meta_path.exists() else {}
+    current = fingerprint(corpus, ingest_state, sidecar.info())
+    if meta or (run_dir / "rankings.jsonl").exists():
+        recorded = meta.get("fingerprint")
+        if recorded is None:
+            raise RunError(f"run {run_id} has no recorded fingerprint; use a new --run-id")
+        differing = sorted(key for key in set(recorded) | set(current)
+                           if recorded.get(key) != current.get(key))
+        if differing:
+            raise RunError(f"run {run_id} was started under different conditions "
+                           f"({', '.join(differing)}); use a new --run-id")
+    git = git_state()
     update_meta(run_dir, dataset_sha256=corpus.sha256, questions=len(corpus.questions),
                 documents=len(corpus.documents), limit_questions=corpus.limit_questions,
-                ingest=ingest_state, started_at=started or _now(), **git_state())
+                ingest=ingest_state, fingerprint=current,
+                started_at=meta.get("started_at") or _now(),
+                commit=meta.get("commit", git["commit"]), dirty=meta.get("dirty", git["dirty"]),
+                invocations=_invocations(meta, "retrieve", git))
     result = arms.run_retrieve(corpus, mcp, psql, sidecar, token, ingest_state, run_dir,
-                               arms=wanted)
-    rankings = {key: record for key, record in arms.load_rankings(run_dir / "rankings.jsonl").items()
-                if key[1] in wanted}
-    summary = report.summarize_retrieval(corpus, rankings)
+                               arms=_csv(args.arms))
+    rankings = arms.load_rankings(run_dir / "rankings.jsonl")
+    complete, partial = complete_arms(corpus, rankings)
+    for arm in partial:
+        print(f"warning: arm {arm} lacks rankings for some questions of the run; "
+              "left out of retrieval.json", file=sys.stderr)
+    try:
+        summary = report.summarize_retrieval(
+            corpus, {key: record for key, record in rankings.items() if key[1] in complete})
+    except ValueError as error:
+        raise RunError(f"cannot summarise the rankings of run {run_id}: {error}") from error
     (run_dir / "retrieval.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
-    fields = {"arms": result["arms"], "retrieve_finished_at": _now()}
+    fields = {"arms": {arm: result["arms"].get(arm, "not a harness arm") for arm in complete},
+              "retrieve_sidecar_info": result["sidecar_info"], "retrieve_finished_at": _now()}
     if result["plans"]:  # a fully resumed run takes no plans; keep the recorded ones
-        fields["plans"] = result["plans"]
+        fields["plans"] = {**meta.get("plans", {}), **result["plans"]}
     update_meta(run_dir, **fields)
     path = report.write(run_dir)
     print(f"run id: {run_id}")
@@ -219,7 +286,8 @@ def _cmd_selfcheck(args) -> int:
     corpus = _load(args, None)  # always the full dataset
     result = qa.run_selfcheck(corpus, args.work_dir / "cache", judge_model=args.judge_model,
                               count=args.selfcheck_questions, workers=args.workers,
-                              use_cache=not args.no_cache, call=llm.call)
+                              use_cache=not args.no_cache, call=llm.call,
+                              out=lambda message: None)  # the line below is the one printed
     print(f"judge self-check agreement: {result['agreement']:.3f} "
           f"({result['agreed']}/{result['checks']})")
     for item in result["disagreements"]:
@@ -231,14 +299,33 @@ def _cmd_qa(args) -> int:
     if args.selfcheck:
         return _cmd_selfcheck(args)
     run_dir = _run_dir(args)
-    corpus = _load(args, args.limit_questions)
+    meta_path = run_dir / "meta.json"
+    if not meta_path.exists():
+        raise UsageError(f"{run_dir} has no meta.json: run retrieve first")
+    meta = _read_json(meta_path, "run metadata")
+    if "dataset_sha256" not in meta or "limit_questions" not in meta:
+        raise UsageError(f"{meta_path} records no dataset selection: run retrieve first")
+    corpus = _load(args, meta["limit_questions"])  # the run's selection, whatever --limit-questions says
+    if corpus.sha256 != meta["dataset_sha256"]:
+        raise RunError(f"dataset sha256 {corpus.sha256} is not the dataset of run {args.run_id} "
+                       f"({meta['dataset_sha256']})")
+    if args.limit_questions is not None:
+        if args.limit_questions < 1:
+            raise UsageError(f"--limit-questions must be at least 1, got {args.limit_questions}")
+        # A stratified subset of the run's questions; the documents stay the run's corpus.
+        corpus = dataclasses.replace(
+            corpus, questions=tuple(dataset.stratified(corpus.questions, args.limit_questions)))
+    qa_arms = _csv(args.arms)
+    claude_version = llm.cli_version()  # before any paid call
+    update_meta(run_dir, invocations=_invocations(meta, "qa", git_state()))
     rankings = arms.load_rankings(run_dir / "rankings.jsonl")
     summary = qa.run_qa(corpus, rankings, run_dir, args.work_dir / "cache",
                         reader_model=args.reader_model, judge_model=args.judge_model,
-                        arms=_csv(args.arms), workers=args.workers,
+                        arms=qa_arms, workers=args.workers,
                         use_cache=not args.no_cache, call=llm.call)
-    update_meta(run_dir, claude_version=llm.cli_version(), reader=summary["reader"],
-                judge=summary["judge"], qa_finished_at=_now())
+    update_meta(run_dir, claude_version=claude_version, reader=summary["reader"],
+                judge=summary["judge"], qa_limit_questions=args.limit_questions,
+                qa_arms=list(qa_arms), qa_finished_at=_now())
     print(f"report: {report.write(run_dir)}")
     return 0
 
@@ -257,6 +344,11 @@ _COMMANDS = {"corpus": _cmd_corpus, "ingest": _cmd_ingest, "retrieve": _cmd_retr
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Run one command; returns the process exit code."""
+    # Progress must reach a log file or a background terminal as it happens.
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(line_buffering=True)
     args = build_parser().parse_args(argv)
     if args.command == "qa" and not args.selfcheck and not args.run_id:
         return _usage("qa needs --run-id (unless --selfcheck)")

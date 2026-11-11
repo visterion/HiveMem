@@ -134,12 +134,72 @@ class SummaryTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "q_rain.*cosine"):
             report.summarize_retrieval(self.corpus, rankings)
 
+    def test_empty_rankings_are_counted(self):
+        summary = self.summarize(overrides={("q_rain", "bm25"): record("q_rain", "bm25", []),
+                                            ("q_tea", "bm25"): record("q_tea", "bm25", [])})
+        self.assertEqual(summary["arms"]["bm25"]["diagnostics"]["empty_rankings"], 2)
+        self.assertEqual(self.summarize()["arms"]["bm25"]["diagnostics"]["empty_rankings"], 0)
+
     def test_abstention_ranking_is_ignored_for_metrics(self):
         plain = self.summarize()
         junk = {("q_parrot_abs", "bm25"): record("q_parrot_abs", "bm25", [key("noise_bike_3")])}
         with_junk = report.summarize_retrieval(
             self.corpus, rankings_for(("bm25",), extra=junk))
         self.assertEqual(plain, with_junk)
+
+
+def _length_corpus():
+    """One question per gold-length boundary plus questions with 3 and 4 gold documents."""
+    lengths = (8000, 8001, 12000, 12001, 16000, 16001)
+    documents, questions = {}, []
+
+    def doc(key, length):
+        documents[key] = dataset.Document(key, "S" * length, "2023/05/01 (Mon) 10:00", (key,), ())
+        return key
+
+    def question(qid, gold):
+        questions.append(dataset.Question(qid, "multi-session", "SYNTHETIC: q?",
+                                          "2023/06/01 (Thu) 10:00", "a", False, frozenset(gold),
+                                          frozenset(gold), {}))
+
+    for length in lengths:
+        question(f"q_len_{length}", [doc(f"d_len_{length}", length)])
+    question("q_three", [doc(f"d_three_{i}", 10) for i in range(3)])
+    question("q_four", [doc(f"d_four_{i}", 10) for i in range(4)])
+    return dataset.Corpus("0" * 64, None, tuple(questions), documents)
+
+
+class BucketTest(unittest.TestCase):
+    def setUp(self):
+        self.corpus = _length_corpus()
+        rankings = {(q.id, "bm25"): record(q.id, "bm25", sorted(q.gold)) for q in self.corpus.questions}
+        # q_len_8001 and q_four miss: their groups must show it.
+        rankings[("q_len_8001", "bm25")] = record("q_len_8001", "bm25", [])
+        rankings[("q_four", "bm25")] = record("q_four", "bm25", sorted(self.corpus.questions[-1].gold)[:2])
+        self.arm = report.summarize_retrieval(self.corpus, rankings)["arms"]["bm25"]
+
+    def test_gold_length_boundaries(self):
+        by_length = self.arm["by_gold_length"]
+        self.assertEqual({name: group["n"] for name, group in by_length.items()},
+                         {"<=8000": 3, "8001-12000": 2, "12001-16000": 2, ">16000": 1})
+        self.assertEqual(by_length["8001-12000"]["recall_all@5"], 0.5)
+        self.assertEqual(by_length[">16000"]["recall_all@5"], 1.0)
+
+    def test_bucket_of_each_boundary_length(self):
+        for length, bucket in ((8000, "<=8000"), (8001, "8001-12000"), (12000, "8001-12000"),
+                               (12001, "12001-16000"), (16000, "12001-16000"), (16001, ">16000")):
+            corpus = dataclasses.replace(self.corpus, questions=tuple(
+                q for q in self.corpus.questions if q.id == f"q_len_{length}"))
+            rankings = {(q.id, "bm25"): record(q.id, "bm25", sorted(q.gold)) for q in corpus.questions}
+            groups = report.summarize_retrieval(corpus, rankings)["arms"]["bm25"]["by_gold_length"]
+            self.assertEqual([name for name, group in groups.items() if group["n"]], [bucket], length)
+
+    def test_three_or_more_gold_documents(self):
+        by_size = self.arm["by_gold_size"]
+        self.assertEqual({name: group["n"] for name, group in by_size.items()},
+                         {"1": 6, "2": 0, ">=3": 2})
+        self.assertEqual(by_size[">=3"]["recall_all@5"], 0.5)
+        self.assertIsNone(by_size["2"]["recall_all@5"])
 
 
 class HeadlineTest(unittest.TestCase):
@@ -183,7 +243,9 @@ QA = {
     "paired": {"bm25": {"b": 2, "c": 1, "z": 0.577, "p": 1.0}},
 }
 META = {"dataset_sha256": "0" * 64, "questions": 4, "documents": 6, "commit": "abc1234",
-        "dirty": False, "ingest": {"sidecar_info": {"model": "synthetic-model"}}}
+        "dirty": False, "ingest": {"sidecar_info": {"model": "synthetic-model"}},
+        "retrieve_finished_at": "2026-01-01T10:00:00.000000Z",
+        "qa_finished_at": "2026-01-01T11:00:00.000000Z", "qa_limit_questions": None}
 
 
 class RenderTest(unittest.TestCase):
@@ -238,6 +300,52 @@ class RenderTest(unittest.TestCase):
         text = report.render(self.run_dir)
         self.assertNotIn("Answer accuracy", text)
         self.assertIn(self.summary["headline"], text)
+
+    def write_meta(self, **fields):
+        (self.run_dir / "meta.json").write_text(json.dumps({**META, **fields}), encoding="utf-8")
+
+    def write_qa(self, qa):
+        (self.run_dir / "qa.json").write_text(json.dumps(qa), encoding="utf-8")
+
+    def answer_section(self):
+        return report.render(self.run_dir).split("## Answer accuracy", 1)[1]
+
+    def test_empty_abstention_group_renders_a_dash(self):
+        qa = json.loads(json.dumps(QA))
+        for arm in qa["arms"].values():
+            arm["abstention"] = {"n": 0, "accuracy": None}
+        self.write_qa(qa)
+        rows = [line for line in self.answer_section().splitlines() if line.startswith("| hivemem |")]
+        self.assertEqual(rows, ["| hivemem | 4 | 0.750 | 0.500 | - |"])
+
+    def test_stale_answer_stage_is_not_rendered(self):
+        self.write_meta(qa_finished_at="2026-01-01T09:59:59.999999Z")
+        section = self.answer_section()
+        self.assertIn("Answer stage: stale — the rankings changed after it ran; run qa again.", section)
+        self.assertNotIn("| hivemem", section)
+        self.assertNotIn("Paired comparison", section)
+
+    def test_answer_stage_after_the_rankings_is_rendered(self):
+        self.assertIn("| hivemem", self.answer_section())
+
+    def test_answer_stage_without_a_finish_time_is_not_rendered(self):
+        meta = dict(META)
+        del meta["qa_finished_at"]
+        (self.run_dir / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+        section = self.answer_section()
+        self.assertIn("run qa again", section)
+        self.assertNotIn("| hivemem", section)
+
+    def test_answer_section_states_the_graded_questions(self):
+        self.write_qa({**QA, "questions": 4})
+        self.assertIn("Questions graded: 4 of the run's 4.", self.answer_section())
+        self.write_qa({**QA, "questions": 2})
+        self.write_meta(qa_limit_questions=2)
+        self.assertIn("Questions graded: 2 of the run's 4 (a stratified subset, "
+                      "qa --limit-questions 2).", self.answer_section())
+
+    def test_empty_rankings_column_is_rendered(self):
+        self.assertIn("empty_rankings", report.render(self.run_dir))
 
     def test_write_creates_report_md(self):
         path = report.write(self.run_dir)
