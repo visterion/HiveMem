@@ -125,6 +125,7 @@ All commands run from the repository root. Outputs go to `benchmarks/longmemeval
 python3 benchmarks/longmemeval/run.py ingest
 
 # 2. Rank every question with the five retrieval arms. Prints a run id and the report path.
+#    An interrupted run is resumed with --run-id <run-id>.
 python3 benchmarks/longmemeval/run.py retrieve
 
 # 3. Check the judge on gold answers (needs no run). It must agree at 0.9 or better.
@@ -137,22 +138,43 @@ python3 benchmarks/longmemeval/run.py qa --run-id <run-id>
 python3 benchmarks/longmemeval/run.py report --run-id <run-id>
 ```
 
-Use `--limit-questions N` on `ingest`, `retrieve` and `qa` for a smoke run (for example
+Use `--limit-questions N` on `ingest` and `retrieve` for a smoke run (for example
 `ingest --limit-questions 5`), and `--arms a,b` to pick arms. The corpus of a limited run is
 the union of the haystacks of the selected questions, so use the same `--limit-questions` on
-all commands of that run.
+both commands; `retrieve` checks the database against exactly that corpus. `qa` takes the
+selection from the run's `meta.json` and refuses a dataset file whose sha256 differs from
+the run's. On `qa`, `--limit-questions N` grades a stratified subset of N of the run's
+questions, still answered from the run's rankings over the run's whole corpus; the report
+says when the answer stage covers such a subset.
+
+`retrieve --run-id <run-id>` resumes a run and skips the question and arm pairs already
+ranked. It records the conditions of the run when the run starts (dataset hash, selection,
+start and finish time of the ingest, and the embedding service's `/info` reply except its
+thread count) and refuses to add to a run whose conditions differ; start a new run id then.
+`retrieval.json` summarises every arm that has a ranking for every scored question of the
+run, whichever `--arms` each invocation named; an arm that is only partly ranked is left out
+and named on stderr.
 
 **Never grow a smoke database into a measured run.** HiveMem scores recency from each cell's
 `created_at`, so documents ingested earlier would be favoured and the default `hivemem` arm
-would be measured on a skewed store. After a smoke run, throw the stack away and start fresh
-before the full `ingest`: run the `down -v` command below, then `up -d --build --wait` and the
-token command of the Setup section again. The answer stage caches answers and
-judgments under `.work/cache/`; `--no-cache` ignores the cache.
+would be measured on a skewed store. `ingest` therefore refuses to add to a database that
+already holds documents unless `.work/ingest.json` shows they belong to the same dataset and
+the same `--limit-questions`. After a smoke run, throw the stack away and start fresh before
+the full `ingest`: run the `down -v` command below, then `up -d --build --wait` and the token
+command of the Setup section again. The answer stage caches answers and judgments under
+`.work/cache/`; `--no-cache` ignores the cache.
 
-A run lives in `.work/runs/<run-id>/`: `meta.json` (dataset hash, repository commit, ingest
-integrity figures, SQL plans of the control arms, model ids, timestamps), `rankings.jsonl`,
-`retrieval.json`, `qa.jsonl`, `qa.json` and `report.md`. The report contains only public
-dataset ids and numbers.
+`ingest` writes its state file `.work/ingest.json` before the first write, with the dataset
+hash, the selection, the embedding service's `/info` reply and an empty finish time, and
+replaces it with the integrity figures and the finish time once the integrity gate has
+passed. `retrieve` refuses to start while the finish time is empty.
+
+A run lives in `.work/runs/<run-id>/`: `meta.json` (dataset hash, the run's recorded
+conditions, the repository commit of the first invocation and one entry with commit and dirty
+flag per `retrieve` or `qa` invocation, ingest integrity figures, the embedding service's
+`/info` reply read by `retrieve`, SQL plans of the control arms with the query vector replaced
+by `[<query vector>]`, model ids, timestamps), `rankings.jsonl`, `retrieval.json`, `qa.jsonl`,
+`qa.json` and `report.md`. The report contains only public dataset ids and numbers.
 
 To throw everything away, including the database and the model cache:
 
@@ -178,15 +200,19 @@ docker compose -f benchmarks/longmemeval/docker-compose.yml down -v
 - **Breakdowns of `recall_all@5`.** By question type, by number of gold sessions (1, 2, 3 or
   more), and by the length of the longest gold session.
 - **Diagnostics.** Per arm: how many of the top five documents come from outside the
-  question's own haystack, how many of those are another question's gold session, how many are
-  dated after the question date, and how many questions got fewer than 50 results. For the
-  `hivemem` arms it also shows the share of hits that carry a match snippet, the range of
+  question's own haystack; how many of the top five are a gold session of another selected
+  question, wherever they lie (identical sessions are merged, so such a document can also be
+  part of the question's own haystack); how many are dated after the question date; how many
+  questions got fewer than 50 results; and how many got no result at all. For the `hivemem`
+  arms it also shows the share of hits that carry a match snippet, the range of
   `score_recency` seen, and the latency percentiles.
 - **The `oracle` arm** gives the reader the gold sessions themselves. Its accuracy is the
   ceiling set by reader and judge, independent of retrieval; compare the other arms against it.
-- **Answer stage.** Accuracy per arm over all 500 questions, per question type, and for the
-  abstention questions separately, plus the paired comparison on correctness between
-  `hivemem` and each of `bm25` and `cosine`.
+- **Answer stage.** Accuracy per arm over the graded questions (all 500 unless `qa` was run
+  with `--limit-questions`), per question type, and for the abstention questions separately,
+  plus the paired comparison on correctness between `hivemem` and each of `bm25` and
+  `cosine`. A group without questions shows `-`, not an accuracy. When the rankings changed
+  after the answer stage ran, the report shows a stale notice instead of the answer tables.
 
 ## Deliberate differences
 
@@ -201,12 +227,12 @@ From production HiveMem, on purpose:
   while ingest waits for embeddings to settle. Neither value influences ranking.
 - **Large embedding limits.** The embedding service takes up to 50,000 characters and 8,192
   tokens per document. With the defaults of the GPU-oriented Ollama backend (8,000
-  characters), most sessions (64.5 % are longer than that) would get no cell vector at all,
-  because the bench writes no summary. `ingest` refuses to start, and its integrity gate
-  fails, when a gold document would have no cell vector or when more than 1 % of the
-  documents would have none, which is what the 8,000-character default would cause. The
-  cells without a vector must also equal the documents longer than the embedding service's
-  `max_chars`.
+  characters), most documents (63.5 %, 11,728 of the 18,464 merged documents, are longer
+  than that) would get no cell vector at all, because the bench writes no summary. `ingest`
+  refuses to start, and its integrity gate fails, when a gold document would have no cell
+  vector or when more than 1 % of the documents would have none, which is what the
+  8,000-character default would cause. The cells without a vector must also equal the
+  documents longer than the embedding service's `max_chars`.
 
 From upstream LongMemEval:
 
@@ -232,11 +258,23 @@ Before the first write, `ingest` checks, and aborts if any check fails, that:
 2. that database holds no cell outside the realm `longmemeval`;
 3. every topic already in the realm belongs to the current selection, no topic occurs twice,
    and every cell of the realm is committed and current;
-4. the embedding service reports its character limit, which is recorded.
+4. the embedding service reports its character limit, which is recorded; no gold document
+   and at most 1 % of the documents are longer than it; and the embedding model HiveMem
+   records for its stored vectors (the `embedding_model` row of its `identity` table) equals
+   the model the embedding service reports;
+5. when the realm already holds documents, the state file shows they belong to the same
+   dataset and selection.
 
 After the first successful write the psql channel must see that cell. When ingest is done, an
 integrity gate must pass: exactly one cell per document, no cell without a vector except the
 over-long documents, no chunk without a vector, and no cell still waiting for its chunks.
+
+Before its first query, `retrieve` checks the token, the absence of cells outside the realm
+(HiveMem's chunk candidate pool is global, so a foreign cell would change the `hivemem` arm),
+the integrity gate, and that the embedding model equals both the one recorded by `ingest` and
+the one recorded in HiveMem's `identity` table. It reads the embedding service's `/info` again
+at the end; if the reply changed during the run, `rankings.jsonl` is moved to
+`rankings.invalid.jsonl` and the command fails, so no later resume counts those rankings.
 
 The harness reaches Postgres only through `docker compose exec -T db psql` of the bench
 compose file; `--psql` overrides that command for experiments. The harness rejects a
@@ -244,6 +282,14 @@ compose file; `--psql` overrides that command for experiments. The harness rejec
 keyword-only fallback when the embedding service is unavailable, and stops instead of
 recording it. The SQL plans of the control arms are stored in `meta.json`, and the harness
 aborts if a control arm's plan contains an index or bitmap scan.
+
+These guards were seen working on a live smoke run (5 questions, 238 documents). With the
+embedding service stopped, HiveMem answered a `search` for an uncached query with HTTP 200
+and 50 hits whose `score_semantic` was 0.0 throughout (keyword scores up to 0.99), and the
+harness's reply validation rejected the reply; `retrieve` itself stopped at its gate because
+the embedding service's `/info` was unreachable, and recorded nothing. The stored plans of
+both control arms were sequential scans. The plan check runs again on every run, so the full
+corpus is covered by the check itself, not by this observation.
 
 ## Tests
 
