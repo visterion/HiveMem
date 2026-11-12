@@ -310,4 +310,144 @@ Di Wu).
 
 ## Results
 
-No baseline run recorded yet.
+### Baseline 2026-11-12
+
+This is the first full run (run id `baseline-2026-11-12`). Terms and columns are those
+defined in "What this measures", "The arms" and [How to read the report](#how-to-read-the-report).
+
+- Repository commit `5dcd996` (clean tree); dataset sha256 `d6f21ea9d60a0d56f34a05b609c79c88a451d2ae03597821ea3d5a9678c3a442`.
+- 500 questions (470 scored for retrieval, 30 abstention questions), 18,464 documents.
+- Embedding model: `snowflake-arctic-embed-l-v2.0/mrl0/t8192/c50000/cls/model_quantized-28ac86/noprefix/contentfirst` (int8-quantised ONNX model on CPU, 50,000-character embedding limit).
+- Ingest: 2026-11-11T06:18Z to 2026-11-12T04:23Z (about 22 hours on a CPU-only development
+  machine, 0.23 documents per second). The integrity gate passed with 18,464 cells, 77,287
+  chunks, no chunk without a vector, and one document without a cell vector (it exceeds the
+  embedding limit and is not a gold document).
+- Retrieval: 2,500 question and arm pairs in 23 minutes.
+- Answer stage: reader `claude-haiku-5-5`, judge `claude-sonnet-5-5`, both served as
+  requested, through the `claude` CLI 2.1.322; the judge self-check, run separately before this run, agreed in 80
+  of 80 cases (1.000).
+
+#### Headline
+
+**No retrieval gain shown: hivemem does not beat bm25 on recall_all@5.**
+
+| comparison (recall_all@5) | b | c | z | p |
+| --- | --- | --- | --- | --- |
+| hivemem vs bm25 | 16 | 49 | -4.093 | 0.000 |
+| hivemem vs cosine | 22 | 6 | 3.024 | 0.004 |
+| hivemem vs chunkmax | 0 | 2 | -1.414 | 0.500 |
+| hivemem vs hivemem-semantic | 0 | 2 | -1.414 | 0.500 |
+
+The `p` column prints `0.000` for a value below 0.0005.
+
+#### Retrieval
+
+Recall and ranking quality on the 470 non-abstention questions (columns: [How to read the report](#how-to-read-the-report)).
+
+| arm | recall_all@5 | ndcg_any@5 | recall_all@10 | ndcg_any@10 | recall_any@5 | recall_all@50 |
+| --- | --- | --- | --- | --- | --- | --- |
+| bm25 | 0.274 | 0.333 | 0.343 | 0.359 | 0.485 | 0.557 |
+| cosine | 0.170 | 0.212 | 0.213 | 0.233 | 0.309 | 0.415 |
+| chunkmax | 0.209 | 0.257 | 0.260 | 0.278 | 0.377 | 0.436 |
+| hivemem | 0.204 | 0.255 | 0.257 | 0.278 | 0.372 | 0.438 |
+| hivemem-semantic | 0.209 | 0.256 | 0.260 | 0.278 | 0.374 | 0.436 |
+
+recall_all@5 cannot reach 1 for 3 questions whose gold set has more than 5 documents.
+
+#### By question type
+
+`recall_all@5` on the six LongMemEval question types.
+
+| group | n | bm25 | cosine | chunkmax | hivemem | hivemem-semantic |
+| --- | --- | --- | --- | --- | --- | --- |
+| knowledge-update | 72 | 0.361 | 0.083 | 0.181 | 0.181 | 0.181 |
+| multi-session | 121 | 0.091 | 0.033 | 0.066 | 0.066 | 0.066 |
+| single-session-assistant | 56 | 0.929 | 1.000 | 0.982 | 0.982 | 0.982 |
+| single-session-preference | 30 | 0.100 | 0.033 | 0.100 | 0.067 | 0.100 |
+| single-session-user | 64 | 0.359 | 0.141 | 0.234 | 0.219 | 0.234 |
+| temporal-reasoning | 127 | 0.110 | 0.031 | 0.031 | 0.031 | 0.031 |
+
+#### By gold set size
+
+`recall_all@5` by the number of gold documents of a question.
+
+| group | n | bm25 | cosine | chunkmax | hivemem | hivemem-semantic |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | 170 | 0.500 | 0.400 | 0.441 | 0.429 | 0.441 |
+| 2 | 229 | 0.192 | 0.052 | 0.100 | 0.100 | 0.100 |
+| >=3 | 71 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 |
+
+#### By longest gold document (characters)
+
+`recall_all@5` by the length of the longest gold document of a question.
+
+| group | n | bm25 | cosine | chunkmax | hivemem | hivemem-semantic |
+| --- | --- | --- | --- | --- | --- | --- |
+| <=8000 | 50 | 0.880 | 0.920 | 0.900 | 0.900 | 0.900 |
+| 8001-12000 | 41 | 0.512 | 0.439 | 0.415 | 0.415 | 0.415 |
+| 12001-16000 | 186 | 0.188 | 0.054 | 0.102 | 0.102 | 0.102 |
+| >16000 | 193 | 0.150 | 0.031 | 0.088 | 0.078 | 0.088 |
+
+#### Diagnostics and latency
+
+| arm | top5_outside_haystack | top5_other_gold | top5_after_question_date | fewer_than_50 | empty_rankings | match_share | recency_min | recency_max |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| bm25 | 4.417 | 0.353 | 1.232 | 0 | 0 | - | - | - |
+| cosine | 4.657 | 0.317 | 1.279 | 0 | 0 | - | - | - |
+| chunkmax | 4.560 | 0.387 | 1.238 | 0 | 0 | - | - | - |
+| hivemem | 4.564 | 0.385 | 1.236 | 0 | 0 | 0.862 | 0.993 | 1.000 |
+| hivemem-semantic | 4.562 | 0.389 | 1.240 | 0 | 0 | 0.855 | 0.993 | 1.000 |
+
+`hivemem` latency in ms: p50 824.731, p95 2932.995, max 8353.321
+
+#### Answer stage
+
+Questions graded: 500 of the run's 500.
+
+| arm | n | accuracy | knowledge-update | multi-session | single-session-assistant | single-session-preference | single-session-user | temporal-reasoning | abstention |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| bm25 | 500 | 0.418 | 0.551 | 0.233 | 0.946 | 0.267 | 0.471 | 0.308 | 0.733 |
+| cosine | 500 | 0.314 | 0.269 | 0.173 | 1.000 | 0.233 | 0.314 | 0.211 | 0.733 |
+| hivemem | 500 | 0.318 | 0.346 | 0.195 | 0.982 | 0.167 | 0.343 | 0.165 | 0.733 |
+| oracle | 500 | 0.936 | 0.897 | 0.850 | 1.000 | 1.000 | 0.986 | 0.977 | 0.800 |
+
+Paired comparison of answer correctness:
+
+| comparison | b | c | z | p |
+| --- | --- | --- | --- | --- |
+| hivemem vs bm25 | 32 | 82 | -4.683 | 0.000 |
+| hivemem vs cosine | 34 | 32 | 0.246 | 0.902 |
+
+#### What the run shows
+
+1. `hivemem` is below `bm25`, in retrieval (`recall_all@5` 0.204 against 0.274; 16 questions
+   won, 49 lost) and in answer accuracy (0.318 against 0.418; 32 won, 82 lost). Both paired
+   tests are significant (p below 0.001).
+2. `hivemem` is above `cosine` in retrieval (0.204 against 0.170; 22 won, 6 lost, p = 0.004).
+   The gain is not visible in the answers: accuracy 0.318 against 0.314 (34 won, 32 lost,
+   p = 0.902).
+3. On `recall_all@5`, `hivemem`, `hivemem-semantic` and `chunkmax` are within two questions
+   of each other (0.204, 0.209, 0.209; `hivemem` won 0 and lost 2 against each of the other
+   two). The six headline metrics of the three arms differ by at most 0.005, and no metric at
+   depth five shows a gain of `hivemem` or `hivemem-semantic` over `chunkmax`. Deeper in the
+   ranking the default weights are slightly ahead (`recall_all@30` 0.377 against 0.364 for
+   both other arms, six questions). The step from `cosine` to `chunkmax` (chunking) is where
+   the gain over the plain cell vector comes from.
+4. The `oracle` arm reaches 0.936. Reader and judge are therefore not the main limit; the distance
+   between 0.936 and the other arms is retrieval.
+5. No arm gets all gold documents into the top five for any of the 71 questions with three or
+   more gold documents.
+6. The `hivemem` latency (p50 825 ms, p95 2,933 ms, max 8,353 ms) includes embedding the query
+   on the CPU and was measured on a development machine. Where the time goes was not investigated.
+
+#### Limits of this run
+
+- One embedding model, int8-quantised, on CPU. A stronger model or finer chunking was not
+  measured.
+- One run. The paired tests cover question sampling, not run-to-run variation of the reader
+  and judge.
+- The length breakdown is confounded: gold document length, question type and gold set size
+  are correlated, so it does not isolate an effect of length.
+- The setting is one shared corpus (see
+  [Why the numbers are not comparable with vendor headlines](#why-the-numbers-are-not-comparable-with-vendor-headlines));
+  the numbers cannot be compared with per-question LongMemEval results.

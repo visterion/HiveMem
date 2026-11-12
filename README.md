@@ -137,6 +137,10 @@ for details on every 🟡 / 🔴 row.
 | [Consumption folder — auto document separation](documentation/consumption.md) | ✅ Stable | Drop a stack of mixed scans into a network folder; HiveMem ingests off a bounded worker pool, OCRs each page (auto-oriented), and uses a Vistierie LLM agent to split by content — no separator/barcode sheets. High-confidence splits → `committed`, low-confidence → `pending`. The HiveMem→Vistierie run contract is reconciled; live in production. Reassembly of non-contiguous/shuffled pages is a separate roadmap item. |
 | [Inbox Archivist](documentation/archivist.md) | ✅ Stable | Vistierie agent auto-classifies `inbox` cells (realm/signal/topic) once enrichment settles, plus a daily safety-net cron; guarded webhooks require a reason on every move/skip; moves are logged (`archivist_log` MCP tool) and reversible. |
 
+## Benchmark
+
+HiveMem ships a retrieval and answer benchmark on LongMemEval-S in [`benchmarks/longmemeval/`](benchmarks/longmemeval/README.md): one shared corpus of 18,464 sessions, with HiveMem's search measured against BM25 and model-only controls. In the first baseline (2026-11-12) HiveMem's default search does not beat plain BM25 on this corpus (`recall_all@5` 0.204 against 0.274), while it is above its embedding model's plain cell-vector similarity (0.170). Answer accuracy with HiveMem's search results is 0.318 (BM25 0.418, with the gold sessions handed to the reader 0.936); the p95 search latency is 2,933 ms on a CPU-only development machine. The numbers and their limits are in the [Results section](benchmarks/longmemeval/README.md#results) of the benchmark README.
+
 ## Documentation
 
 | | |
@@ -152,6 +156,7 @@ for details on every 🟡 / 🔴 row.
 | [Hook Integration](documentation/hook/) | Auto-inject context into Claude Code sessions |
 | [Operations](documentation/operations.md) | Deployment, migrations, debugging |
 | [Roadmap](documentation/roadmap.md) | What's planned, what's partial, order of work |
+| [Benchmark](benchmarks/longmemeval/README.md) | LongMemEval-based retrieval and answer benchmark, method and baseline results |
 | [Document & Scan Pipeline](documentation/document-pipeline.md) | End-to-end overview: entry points, shared ingest core, the four enrichment paths |
 | [Consumption Folder](documentation/consumption.md) | Scan-to-folder ingest, automatic content-based document separation, config reference |
 | [Inbox Archivist](documentation/archivist.md) | Auto-classification of `inbox` cells into the right realm/signal/topic, trigger model, guarded tools, move log |

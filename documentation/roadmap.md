@@ -105,7 +105,7 @@ README* but is on the agenda:
 | Issue | Topic | Relation |
 |---|---|---|
 | [#1](https://github.com/visterion/HiveMem/issues/1) | Multi-Master Sync Protocol (op-log replication) | Mirror one hive across laptop / desktop / home server. Design finalized 2026-04-25; sub-projects pending. |
-| [#23](https://github.com/visterion/HiveMem/issues/23) | LongMemEval benchmark suite | Harness in [`benchmarks/longmemeval/`](../benchmarks/longmemeval/README.md): shared-corpus retrieval arms against BM25 and model-only controls, plus an answer stage. Open: baseline results, CI regression gate. |
+| [#23](https://github.com/visterion/HiveMem/issues/23) | LongMemEval benchmark suite | Harness in [`benchmarks/longmemeval/`](../benchmarks/longmemeval/README.md): shared-corpus retrieval arms against BM25 and model-only controls, plus an answer stage. Baseline recorded 2026-11-12 ([results](../benchmarks/longmemeval/README.md#results)). Open: CI regression gate. |
 | [#26](https://github.com/visterion/HiveMem/issues/26) | Progressive wake-up: multi-layer session bootstrap | Replaces today's monolithic `wake_up` with layered loading. |
 | [#28](https://github.com/visterion/HiveMem/issues/28) | Asynchronous Curator — move agent work off the hot path | The execution model behind the Queen+Bees entry above. |
 | [#29](https://github.com/visterion/HiveMem/issues/29) | Research-driven roadmap (meta) | Tracks priority and sequencing across #23, #26, #28 and related research-driven tickets. |
