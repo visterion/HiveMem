@@ -164,7 +164,7 @@ class RankedSearchBm25Test {
             insertFull("a", "facts", "keep", new String[]{"x"}, "grape note " + i + " " + "pad ".repeat(i));
         }
         insertFull("a", "facts", "keep", new String[]{"x"}, "grape grape melon");
-        insertFull(null, "facts", "keep", new String[]{"x"}, "grape melon without realm");
+        UUID realmless = insertFull(null, "facts", "keep", new String[]{"x"}, "grape melon without realm");
 
         String[] filters = {
                 "p_tags => ARRAY['x']",
@@ -182,6 +182,10 @@ class RankedSearchBm25Test {
         for (int i = 0; i < filters.length; i++) {
             List<Row> before = searchWith("grape melon", false, filters[i]);
             assertThat(before).as(filters[i]).isNotEmpty();
+            if (filters[i].startsWith("p_realms")) {
+                // The 'none' branch must admit the realm-less cell; losing it would go unnoticed otherwise.
+                assertThat(before).extracting(r -> r.id).contains(realmless);
+            }
             for (int j = 0; j < 5; j++) {
                 excluders[i].run();
             }

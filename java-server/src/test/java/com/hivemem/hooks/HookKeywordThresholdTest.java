@@ -34,17 +34,24 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Pins what the hook's real relevance threshold (the default 0.65, not the 0.0 that
  * {@link HooksIntegrationTest} runs with) does under the BM25 keyword signal.
  *
- * <p>The old keyword signal ({@code ts_rank_cd} with length normalisation) was close to 0.9 for
- * nearly every candidate, so it added about 0.09 to almost every total at the hook's keyword
- * weight of 0.10, and the threshold was set with that offset in place. The BM25 signal is
- * normalised so that the best lexical match of a query scores 1.0 and a candidate without any
- * overlap scores 0, so that offset is gone: a candidate without lexical overlap now has to
- * reach the threshold on its semantic similarity alone, while one that shares the prompt's
- * distinctive words gets the full keyword weight on top.
+ * <p>The old keyword signal ({@code ts_rank_cd(…, 32)}, i.e. rank/(rank+1), without IDF or length
+ * normalisation) was close to 0.9 for nearly every cell that shared any word with the prompt, and
+ * because the {@code simple} configuration has no stop words that is nearly every cell. At the
+ * hook's keyword weight of 0.10 it added about 0.09 to almost every total, and the threshold was
+ * set with that offset in place. The BM25 signal is normalised so that the best lexical match of
+ * a query scores 1.0, while a cell that shares only common words with the prompt scores close to
+ * 0 and so loses most of that offset (up to about 0.09 of its total). A cell that shares no word
+ * at all scored 0 under the old signal too and is unchanged.
  *
- * <p>Both cells have the same cosine similarity to the prompt (0.75). Their other signals are
+ * <p>All cells have the same cosine similarity to the prompt (0.75). Their other signals are
  * identical too (importance 3, created now, no popularity, no graph neighbours), so the only
  * difference between the totals is the keyword signal.
+ *
+ * <p>What the two-cell test pins: the no-overlap cell is dropped before and after the change, and
+ * the change it pins is that the overlap cell now crosses the threshold with the full keyword
+ * weight. The regression itself is pinned by the common-word test: a cell sharing only common
+ * words used to receive a keyword score near the top of the range and a total above the
+ * threshold's neighbourhood, and now stays below it.
  */
 @ExtendWith(SpringExtension.class)
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
@@ -136,6 +143,38 @@ class HookKeywordThresholdTest {
         assertThat(result.formattedContext()).doesNotContain(noOverlap.toString().substring(0, 8));
     }
 
+    @Test
+    void cellSharingOnlyCommonWordsIsNotInjected() {
+        UUID overlap = insertCell("A zephyrquokka relay fails over to a standby node within seconds");
+        // Shares only the common words "how", "does" and "the" with the prompt. Under the earlier
+        // signal such a cell received a keyword score near the top of the range (about 0.9) and
+        // therefore a total about 0.09 higher; with BM25 the words are common in the corpus (low
+        // idf) and the cell scores close to 0.
+        UUID common = insertCell("How does the plant watering rota work");
+        // Fillers carrying the same common words keep their idf low; their embedding is orthogonal
+        // to the prompt, so their semantic score is 0 and they stay far below the threshold.
+        for (int i = 0; i < 20; i++) {
+            insertCell("how does the filler note " + i + " go on the shelf", 0.0, 0.0, 1.0);
+        }
+
+        List<RankedRow> rows = searchRepository.rankedSearch(
+                embeddingClient.encodeQuery(PROMPT), PROMPT, null, null, null, 10,
+                weights().semantic(), weights().keyword(), weights().recency(),
+                weights().importance(), weights().popularity(), weights().graphProximity(),
+                null, null, null);
+        RankedRow commonRow = row(rows, common);
+
+        assertThat(commonRow.scoreSemantic()).isCloseTo(SIMILARITY, org.assertj.core.data.Offset.offset(1e-4));
+        assertThat(commonRow.scoreKeyword()).isGreaterThan(0.0).isLessThan(0.1);
+        assertThat(commonRow.scoreTotal()).isLessThan(props.getRelevanceThreshold());
+        assertThat(row(rows, overlap).scoreKeyword()).isEqualTo(1.0);
+
+        ContextResult result = hook.contextFor(
+                new HookContextRequest("UserPromptSubmit", PROMPT, "threshold-2", null));
+        assertThat(result.citedSources()).extracting(SourceAttribution::cellId)
+                .containsExactly(overlap);
+    }
+
     private SearchWeights weights() {
         return props.getWeights().toSearchWeights();
     }
@@ -147,9 +186,14 @@ class HookKeywordThresholdTest {
 
     /** Inserts a committed cell whose embedding has cosine similarity {@link #SIMILARITY} to the prompt vector. */
     private UUID insertCell(String content) {
+        return insertCell(content, SIMILARITY, Math.sqrt(1 - SIMILARITY * SIMILARITY), 0.0);
+    }
+
+    private UUID insertCell(String content, double d0, double d1, double d2) {
         List<Float> v = new ArrayList<>(Collections.nCopies(DIMS, 0.0f));
-        v.set(0, (float) SIMILARITY);
-        v.set(1, (float) Math.sqrt(1 - SIMILARITY * SIMILARITY));
+        v.set(0, (float) d0);
+        v.set(1, (float) d1);
+        v.set(2, (float) d2);
         String vector = v.toString().replace(" ", "");
         UUID id = UUID.randomUUID();
         dsl.execute("""

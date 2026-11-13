@@ -189,7 +189,7 @@ class ReadToolIntegrationTest {
         assertThat(results.get(0).path("score_keyword").isNumber()).isTrue();
         // Keyword matching uses OR-of-lexemes semantics: both cells contain "oracle",
         // so both pass the kw > 0 hard filter. The "semantic oracle" cell matches both
-        // query lexemes (higher ts_rank_cd) and ranks first; the "keyword oracle" cell
+        // query lexemes (higher BM25) and ranks first; the "keyword oracle" cell
         // matches only "oracle" but still scores keyword > 0.
         assertThat(results).hasSize(2);
 
