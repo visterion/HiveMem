@@ -25,7 +25,8 @@ public class CellSearchRepository {
      * Calls the {@code ranked_search} SQL function, rendered from
      * {@code db/templates/ranked_search.sql.tmpl} at application start, which performs the
      * 6-signal ranking inside Postgres against the {@code cells} table using pgvector cosine
-     * distance and a BM25 keyword score normalised to the best match of the query.
+     * distance and a keyword score (BM25 plus a proximity component for the best BM25 cells)
+     * normalised to the best lexical match of the query.
      *
      * <p>The function applies a hard filter ({@code semantic > 0.3 OR keyword > 0})
      * and orders deterministically by total score then id.

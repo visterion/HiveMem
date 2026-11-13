@@ -5,7 +5,7 @@ All properties under `hivemem.hooks.*` in `application.yml`:
 | Property | Default | Description |
 |---|---|---|
 | `enabled` | `true` | Master switch |
-| `relevance-threshold` | `0.65` | Minimum `score_total` to inject (the keyword signal is BM25: a candidate that shares only common words with the prompt loses up to about 0.09 of its total compared with the earlier full-text signal, so the value may need re-tuning) |
+| `relevance-threshold` | `0.65` | Minimum `score_total` to inject (the keyword signal is BM25: when the prompt also contains a rarer word that occurs in the store, a candidate that shares only common words with it loses up to about 0.09 of its total compared with the earlier full-text signal, so the value may need re-tuning; a prompt of common words only still gives its best matches a keyword score up to 1.0) |
 | `min-semantic-score` | `0.35` | Minimum `score_semantic` to inject |
 | `max-cells` | `3` | Maximum cells injected per turn |
 | `dedup-window-turns` | `5` | Turns before a cell can be re-injected |
