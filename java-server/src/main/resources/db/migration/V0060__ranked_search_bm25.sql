@@ -90,14 +90,14 @@ LANGUAGE SQL STABLE SET hnsw.ef_search = 500 AS $$
             SELECT count(*)::float8 AS df
             FROM cells c
             WHERE (c.valid_until IS NULL OR c.valid_until > now())
-          AND (p_status = 'all' OR c.status = COALESCE(p_status, 'committed'))
-          AND (p_realm IS NULL OR (p_realm = 'none' AND c.realm IS NULL) OR (p_realm <> 'none' AND c.realm = p_realm))
-          AND (p_realms IS NULL
-               OR c.realm = ANY(array_remove(p_realms, 'none'))
-               OR ('none' = ANY(p_realms) AND c.realm IS NULL))
-          AND (p_signal IS NULL OR c.signal = p_signal)
-          AND (p_topic IS NULL OR c.topic = p_topic)
-          AND (p_tags IS NULL OR c.tags && p_tags)
+              AND (p_status = 'all' OR c.status = COALESCE(p_status, 'committed'))
+              AND (p_realm IS NULL OR (p_realm = 'none' AND c.realm IS NULL) OR (p_realm <> 'none' AND c.realm = p_realm))
+              AND (p_realms IS NULL
+                   OR c.realm = ANY(array_remove(p_realms, 'none'))
+                   OR ('none' = ANY(p_realms) AND c.realm IS NULL))
+              AND (p_signal IS NULL OR c.signal = p_signal)
+              AND (p_topic IS NULL OR c.topic = p_topic)
+              AND (p_tags IS NULL OR c.tags && p_tags)
               AND c.tsv @@ t.tq
         ) d
         WHERE d.df > 0
@@ -111,9 +111,11 @@ LANGUAGE SQL STABLE SET hnsw.ef_search = 500 AS $$
     ),
     -- MATERIALIZED on `d` and `m` is required, not a hint: without it PostgreSQL inlines both
     -- into every aggregate argument of `bm25` and re-evaluates ts_filter/ts_rank_cd per use
-    -- (measured 29 s instead of 0.8 s). `v` keeps only the query lexemes of the document's tsvector,
-    -- all at weight A, so that ts_rank_cd(v, term, 0) is the number of positions of the term --
-    -- summary (weight A) and content (weight B) both count. A tsvector keeps at most 255 positions
+    -- (measured 29 s instead of 0.8 s). `v` is the document's tsvector with the query lexemes re-weighted
+    -- to A and then filtered to weight A. Summary lexemes already carry weight A, so non-query
+    -- summary lexemes survive the filter too; that is harmless because tf is taken per term.
+    -- ts_rank_cd(v, term, 0) is then the number of positions of the term -- summary (weight A)
+    -- and content (weight B) both count. A tsvector keeps at most 255 positions
     -- per lexeme, so tf is capped there.
     d AS MATERIALIZED (
         SELECT c.id, ts_filter(setweight(c.tsv, 'A', q.lexes), '{a}') AS v,
