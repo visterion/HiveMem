@@ -73,7 +73,7 @@ class RankedSearchProximityTest {
         assertThat(onlyIds(rows, a, b)).extracting(r -> r.id).containsExactly(a, b);
         assertThat(byId(rows).get(a)).isEqualTo(1.0f);
         // B is a candidate too and holds one of the two equally rare terms: coverage 0.5.
-        assertScores(rows, Map.of(a, 1.0, b, 0.5), "zork", "quib");
+        assertScores(rows, 2, Map.of(a, 1.0, b, 0.5), "zork", "quib");
     }
 
     @Test
@@ -89,7 +89,7 @@ class RankedSearchProximityTest {
         List<Row> rows = search("zork alpha");
 
         assertThat(rows).hasSizeGreaterThan(20);
-        assertScores(rows, Map.of(), "zork", "alpha");
+        assertScores(rows, 23, Map.of(), "zork", "alpha");
     }
 
     @Test
@@ -104,7 +104,7 @@ class RankedSearchProximityTest {
         List<Row> rows = search("alpha beta");
 
         assertThat(rows).hasSize(14);
-        assertScores(rows, Map.of(), "alpha", "beta");
+        assertScores(rows, 14, Map.of(), "alpha", "beta");
     }
 
     @Test
@@ -121,7 +121,7 @@ class RankedSearchProximityTest {
         assertThat(onlyIds(rows, shortCell, longCell)).extracting(r -> r.id)
                 .containsExactly(shortCell, longCell);
         // The long cell gets no bonus: its score is its BM25 share (coverage 0).
-        assertScores(rows, Map.of(shortCell, 0.5, longCell, 0.0), "zork", "quib");
+        assertScores(rows, 2, Map.of(shortCell, 0.5, longCell, 0.0), "zork", "quib");
     }
 
     @Test
@@ -135,7 +135,7 @@ class RankedSearchProximityTest {
         List<Row> rows65 = search(q65);
         assertThat(onlyIds(rows65, adjacent, far)).extracting(r -> r.id).containsExactly(far, adjacent);
         assertThat(byId(rows65).get(far)).isEqualTo(1.0f);
-        assertScores(rows65, Map.of(), "zork", "quib");
+        assertScores(rows65, 2, Map.of(), "zork", "quib");
 
         // 64 distinct lexemes: the window applies.
         String q64 = "zork quib" + unknownWords(62);
@@ -161,7 +161,7 @@ class RankedSearchProximityTest {
         assertThat(kw.get(c)).isGreaterThan(kw.get(s));
         assertThat(kw.get(c)).isEqualTo(1.0f);
         // S holds only one of the two equally rare terms inside any content window: coverage 0.5.
-        assertScores(rows, Map.of(c, 1.0, s, 0.5), "zork", "quib");
+        assertScores(rows, 2, Map.of(c, 1.0, s, 0.5), "zork", "quib");
     }
 
     @Test
@@ -199,28 +199,38 @@ class RankedSearchProximityTest {
     void excludedCellChangesNeitherRareSetNorScores() {
         // Each filter gets its own fixture; the excluded cells hold both rare terms in numbers that
         // would push each term over df/n = 0.5 (switching the window off) if they were counted.
-        String[] filters = {"p_realm => 'a'", "p_tags => ARRAY['x']", "p_status => 'committed'"};
+        // Cell scope = {realm, signal, topic, tag, status}; kept cells are {a, facts, keep, x, committed}.
+        String[] filters = {
+                "p_realm => 'a'", "p_tags => ARRAY['x']", "p_status => 'committed'",
+                "p_signal => 'facts'", "p_topic => 'keep'", "p_realms => ARRAY['a', 'none']"};
+        String[][] excluded = {
+                {"b", "facts", "keep", "x", "committed"},
+                {"a", "facts", "keep", "y", "committed"},
+                {"a", "facts", "keep", "x", "pending"},
+                {"a", "events", "keep", "x", "committed"},
+                {"a", "facts", "other", "x", "committed"},
+                {"b", "facts", "keep", "x", "committed"}};
         for (int scenario = 0; scenario < filters.length; scenario++) {
             dsl.execute("TRUNCATE TABLE cell_references, references_, facts, tunnels, cells CASCADE");
-            docs.clear();
             for (int i = 0; i < 10; i++) {
-                insertTagged("a", "x", "pad note " + i, "committed");
+                insertScoped(new String[]{"a", "facts", "keep", "x", "committed"}, "pad note " + i);
             }
-            UUID adjacent = insertTagged("a", "x", "zork quib" + pad(200), "committed");
-            UUID far = insertTagged("a", "x", "zork" + pad(40) + " quib", "committed");
+            UUID adjacent = insertScoped(new String[]{"a", "facts", "keep", "x", "committed"}, "zork quib" + pad(200));
+            UUID far = insertScoped(new String[]{"a", "facts", "keep", "x", "committed"}, "zork" + pad(40) + " quib");
+            // A realm-less cell must be admitted by the 'none' branch of p_realms; it also holds the
+            // adjacent terms, so losing it would change the result.
+            if (scenario == 5) {
+                insertScoped(new String[]{null, "facts", "keep", "x", "committed"}, "zork quib" + pad(400));
+            }
 
             List<Row> before = searchWith("zork quib", filters[scenario]);
-            assertThat(before).as(filters[scenario]).hasSize(2);
+            assertThat(before).as(filters[scenario]).hasSize(scenario == 5 ? 3 : 2);
             assertThat(before.get(0).id).isEqualTo(adjacent);
             assertThat(before.get(0).kw).isEqualTo(1.0f);
-            assertThat(before.get(1).id).isEqualTo(far);
+            assertThat(before.stream().map(Row::id)).contains(far);
 
             for (int i = 0; i < 15; i++) {
-                switch (scenario) {
-                    case 0 -> insertTagged("b", "x", "zork quib zork quib stuffed " + i, "committed");
-                    case 1 -> insertTagged("a", "y", "zork quib zork quib stuffed " + i, "committed");
-                    default -> insertTagged("a", "x", "zork quib zork quib stuffed " + i, "pending");
-                }
+                insertScoped(excluded[scenario], "zork quib zork quib stuffed " + i);
             }
             assertThat(searchWith("zork quib", filters[scenario])).as(filters[scenario]).isEqualTo(before);
         }
@@ -257,7 +267,7 @@ class RankedSearchProximityTest {
         assertThat(onlyIds(rows, many, far)).extracting(r -> r.id).containsExactly(many, far);
         assertThat(rows).allSatisfy(r -> assertThat(r.kw).isBetween(0f, 1f));
         assertThat(rows.stream().filter(r -> r.kw == 1.0f).count()).isEqualTo(1);
-        assertScores(rows, Map.of(many, 0.5, far, 0.5), "zork", "quib");
+        assertScores(rows, 2, Map.of(many, 0.5, far, 0.5), "zork", "quib");
     }
 
     // ---- expectations ----
@@ -267,19 +277,21 @@ class RankedSearchProximityTest {
      * 4 * coverage * max(bm25) for the cells named in {@code coverage} (the candidates the window
      * applies to) and plain bm25 for the others; an empty map means the window does not apply.
      */
-    private void assertScores(List<Row> rows, Map<UUID, Double> coverage, String... terms) {
+    private void assertScores(List<Row> rows, int expectedRows, Map<UUID, Double> coverage, String... terms) {
+        assertThat(rows).as("returned rows").hasSize(expectedRows);
+        int checked = 0;
         Map<UUID, Double> bm25 = bm25(terms);
         double mx = bm25.values().stream().mapToDouble(Double::doubleValue).max().orElse(0);
         Map<UUID, Double> lex = new HashMap<>();
         bm25.forEach((id, score) -> lex.put(id, score + 4 * coverage.getOrDefault(id, 0.0) * mx));
         double best = lex.values().stream().mapToDouble(Double::doubleValue).max().orElse(0);
         for (Row r : rows) {
-            if (!docs.containsKey(r.id) || !bm25.containsKey(r.id)) {
-                continue;
-            }
+            assertThat(bm25).as("row is a fixture cell matching a term").containsKey(r.id);
+            checked++;
             assertThat((double) r.kw).as(docs.get(r.id)[1].substring(0, Math.min(30, docs.get(r.id)[1].length())))
                     .isNotNaN().isCloseTo(lex.get(r.id) / best, within(1e-4));
         }
+        assertThat(checked).as("checked rows").isEqualTo(expectedRows);
     }
 
     /** BM25 (k1 1.5, b 0.75) of every fixture cell that holds a term; length is the byte length. */
@@ -355,22 +367,23 @@ class RankedSearchProximityTest {
         return id;
     }
 
-    private UUID insertTagged(String realm, String tag, String content, String status) {
-        UUID id = insertCell(realm, null, content, status, tag);
-        if ("a".equals(realm) && "committed".equals(status) && "x".equals(tag)) {
-            docs.put(id, new String[]{null, content});
-        }
-        return id;
+    private UUID insertScoped(String[] scope, String content) {
+        return insertCell(scope[0], null, content, scope[4], scope[1], scope[2], scope[3]);
     }
 
     private UUID insertCell(String realm, String summary, String content, String status, String tag) {
+        return insertCell(realm, summary, content, status, "facts", "t", tag);
+    }
+
+    private UUID insertCell(String realm, String summary, String content, String status,
+                            String signal, String topic, String tag) {
         UUID id = UUID.randomUUID();
         dsl.execute("""
                 INSERT INTO cells (id, content, summary, realm, signal, topic, tags, importance, status, created_by,
                                    created_at, valid_from)
-                VALUES (?, ?, ?, ?, 'facts', 't', ARRAY[?]::text[], 3, ?, 'writer-1',
+                VALUES (?, ?, ?, ?, ?, ?, ARRAY[?]::text[], 3, ?, 'writer-1',
                         '2026-04-03T10:00:00Z'::timestamptz, '2026-04-03T10:00:00Z'::timestamptz)
-                """, id, content, summary, realm, tag, status);
+                """, id, content, summary, realm, signal, topic, tag, status);
         return id;
     }
 

@@ -155,7 +155,7 @@ LANGUAGE SQL STABLE SET hnsw.ef_search = 500 AS $$
         LIMIT 100
     ),
     -- Positions of the rare terms in the CONTENT only: weight B of tsv. The summary carries
-    -- weight A, and its positions continue right after the content's, so summary words would
+    -- weight A, and the content's positions continue right after the summary's, so summary words would
     -- otherwise count as neighbours of the first content words; BM25's tf still counts them.
     -- The rare lexemes are re-weighted to A, then filtered to A. Position 16,383 is left out:
     -- a tsvector stores every position beyond 16,383 as 16,383, so all late occurrences in a
@@ -174,8 +174,7 @@ LANGUAGE SQL STABLE SET hnsw.ef_search = 500 AS $$
     -- Best window per candidate: for every position a of a rare term, the distinct rare terms
     -- found in [a, a + 30), weighted by idf; the maximum over a. Computed as an equijoin on the
     -- document id, NOT as a correlated lateral subquery over `pp`: the lateral form scans all
-    -- positions of all candidates for every position (measured ten times slower on a 63-term
-    -- query, same result).
+    -- positions of all candidates for every position and is far slower.
     win AS (
         SELECT w.id, max(w.s) AS best
         FROM (
@@ -211,8 +210,9 @@ LANGUAGE SQL STABLE SET hnsw.ef_search = 500 AS $$
     ),
     -- Normalisation: a document's score divided by the best score of this query, so the best
     -- lexical match of a query is exactly 1.0 and the signal stays in [0, 1]. When the window
-    -- applies, a candidate with full coverage lies in [0.8, 1] and a document without any
-    -- coverage at 0.2 at most.
+    -- applies, a candidate with full coverage lies in [0.8, 1]. A document without coverage
+    -- scores its BM25 divided by the best lexical score of the query: about 0.25 at most when
+    -- some candidate has full coverage, higher when none does.
     kwmax AS (
         SELECT max(score) AS mx FROM lexical
     ),
