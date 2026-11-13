@@ -5,12 +5,12 @@ All properties under `hivemem.hooks.*` in `application.yml`:
 | Property | Default | Description |
 |---|---|---|
 | `enabled` | `true` | Master switch |
-| `relevance-threshold` | `0.65` | Minimum `score_total` to inject |
+| `relevance-threshold` | `0.65` | Minimum `score_total` to inject (the keyword signal is BM25: a candidate without lexical overlap totals about 0.08 less than under the earlier full-text signal, so the value may need re-tuning) |
 | `min-semantic-score` | `0.35` | Minimum `score_semantic` to inject |
 | `max-cells` | `3` | Maximum cells injected per turn |
 | `dedup-window-turns` | `5` | Turns before a cell can be re-injected |
 | `weights.semantic` | `0.70` | Ranking weight: vector cosine similarity |
-| `weights.keyword` | `0.10` | Ranking weight: full-text match |
+| `weights.keyword` | `0.10` | Ranking weight: BM25 keyword match, normalised so the best lexical match of the prompt scores 1.0 |
 | `weights.recency` | `0.05` | Ranking weight: creation recency |
 | `weights.importance` | `0.05` | Ranking weight: assigned importance (1–5) |
 | `weights.popularity` | `0.05` | Ranking weight: access frequency |

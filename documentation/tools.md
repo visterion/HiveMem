@@ -113,7 +113,7 @@ The `search` tool combines 6 signals with configurable weights:
 | Signal | Default Weight | Description |
 |---|---|---|
 | Semantic | 0.30 | Vector cosine similarity |
-| Keyword | 0.15 | PostgreSQL full-text search (tsvector, BM25-like). Matching is OR-of-lexemes: any query term hitting the `tsv` column scores > 0 (`ts_rank_cd`), with results containing more of the query's terms ranking higher — it is not an AND-of-terms requirement. |
+| Keyword | 0.15 | BM25 (k1 1.5, b 0.75) over the `simple` full-text vector of summary and content, computed at query time. Matching is OR-of-lexemes: any query term occurring in a cell makes it a candidate, and rarer terms, repeated terms and shorter cells score higher — it is not an AND-of-terms requirement. Document frequencies and the average length are taken over the cells the search's filters admit, so a filter changes the scores of the cells it keeps. The score is normalised per query: the best lexical match scores 1.0, a cell without any query term 0. Known limits: at most 255 counted occurrences per word and cell, compounds and URLs in the query count as several terms, and there are no stop words and no stemming. |
 | Recency | 0.15 | Exponential decay, 90-day half-life |
 | Importance | 0.15 | User/agent assigned 1-5 scale |
 | Popularity | 0.15 | Access frequency (materialized view) |

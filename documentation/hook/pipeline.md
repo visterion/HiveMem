@@ -23,7 +23,7 @@ The prompt is embedded via whichever embedding backend is active — `paraphrase
 | Signal | Default weight | What it measures |
 |---|---|---|
 | `score_semantic` | 0.70 | Cosine similarity between prompt and cell embeddings |
-| `score_keyword` | 0.10 | Full-text match (tsvector) |
+| `score_keyword` | 0.10 | BM25 over summary and content (k1 1.5, b 0.75), normalised so the best lexical match of the prompt scores 1.0 |
 | `score_recency` | 0.05 | How recently the cell was created |
 | `score_importance` | 0.05 | Manually assigned importance (1–5) |
 | `score_popularity` | 0.05 | Access frequency |
@@ -38,6 +38,8 @@ score_total >= relevanceThreshold  (default: 0.65)
 ```
 
 Cells below this threshold are discarded. Tunable via `hivemem.hooks.relevance-threshold` or the `?threshold=` query param.
+
+The keyword signal is BM25 and moves the total: a candidate that shares the prompt's distinctive words gains up to the full keyword weight (0.10), while one without lexical overlap gains nothing and has to reach the threshold on its semantic similarity and the minor signals alone. The earlier full-text signal added about 0.09 to nearly every candidate, so a candidate without overlap now totals about 0.08 less than before at the same threshold, and the hook injects less. The default threshold was chosen with the earlier offset in place and may need re-tuning.
 
 ## Stage 4 — Semantic Floor
 
