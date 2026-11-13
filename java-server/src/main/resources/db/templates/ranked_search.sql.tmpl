@@ -36,11 +36,104 @@ RETURNS TABLE (
 -- so without this the chunk_ann ANN prefilter below silently degrades to a seq scan (measured
 -- 53.9 ms vs 4.9 ms). A function-level SET, unlike a session SET, does not depend on the caller.
 LANGUAGE SQL STABLE SET hnsw.ef_search = 500 AS $$
-    WITH q AS (
-        SELECT to_tsquery('simple',
-               (SELECT string_agg('''' || replace(lex, '''', '''''') || '''', ' | ')
-                FROM unnest(tsvector_to_array(to_tsvector('simple', coalesce(query_text, '')))) AS lex)
-        ) AS tsq
+    -- Keyword signal: BM25 (k1 = 1.5, b = 0.75) computed at query time from cells.tsv and its GIN
+    -- index; no stored statistics. `terms` holds the distinct lexemes of the query, each with its
+    -- one-term tsquery (quoted so punctuation inside a lexeme cannot be read as tsquery syntax).
+    WITH terms AS (
+        SELECT lex,
+               to_tsquery('simple', '''' || replace(lex, '''', '''''') || '''') AS tq
+        FROM unnest(tsvector_to_array(to_tsvector('simple', coalesce(query_text, '')))) AS lex
+    ),
+    -- Corpus statistics. n and avgdl, and the document frequencies in `idf`, and the pool in `d`
+    -- all use the same seven filter predicates (validity, status, realm, realms, signal, topic,
+    -- tags) as the ANN pools, so a cell excluded by a filter never changes the idf of the cells
+    -- that are included. Document length is the byte length of summary plus content; it is a
+    -- proxy for the token count that needs no stored column.
+    st AS (
+        SELECT count(*)::float8 AS n,
+               avg((octet_length(coalesce(c.summary, '')) + octet_length(coalesce(c.content, '')))::float8) AS avgdl
+        FROM cells c
+        WHERE (c.valid_until IS NULL OR c.valid_until > now())
+          AND (p_status = 'all' OR c.status = COALESCE(p_status, 'committed'))
+          AND (p_realm IS NULL OR (p_realm = 'none' AND c.realm IS NULL) OR (p_realm <> 'none' AND c.realm = p_realm))
+          AND (p_realms IS NULL
+               OR c.realm = ANY(array_remove(p_realms, 'none'))
+               OR ('none' = ANY(p_realms) AND c.realm IS NULL))
+          AND (p_signal IS NULL OR c.signal = p_signal)
+          AND (p_topic IS NULL OR c.topic = p_topic)
+          AND (p_tags IS NULL OR c.tags && p_tags)
+    ),
+    -- Document frequency per term by one GIN-backed count each; terms found in no document are
+    -- dropped. idf = ln(1 + (n - df + 0.5) / (df + 0.5)) is always positive.
+    idf AS (
+        SELECT t.lex, t.tq, ln(1 + (st.n - d.df + 0.5) / (d.df + 0.5)) AS idf
+        FROM terms t
+        CROSS JOIN st
+        CROSS JOIN LATERAL (
+            SELECT count(*)::float8 AS df
+            FROM cells c
+            WHERE (c.valid_until IS NULL OR c.valid_until > now())
+          AND (p_status = 'all' OR c.status = COALESCE(p_status, 'committed'))
+          AND (p_realm IS NULL OR (p_realm = 'none' AND c.realm IS NULL) OR (p_realm <> 'none' AND c.realm = p_realm))
+          AND (p_realms IS NULL
+               OR c.realm = ANY(array_remove(p_realms, 'none'))
+               OR ('none' = ANY(p_realms) AND c.realm IS NULL))
+          AND (p_signal IS NULL OR c.signal = p_signal)
+          AND (p_topic IS NULL OR c.topic = p_topic)
+          AND (p_tags IS NULL OR c.tags && p_tags)
+              AND c.tsv @@ t.tq
+        ) d
+        WHERE d.df > 0
+    ),
+    -- q.tsq is the OR of the surviving terms (NULL when there are none: no query text, only
+    -- punctuation, or only unknown terms -- then no document matches and every kw is 0).
+    q AS (
+        SELECT to_tsquery('simple', string_agg('''' || replace(lex, '''', '''''') || '''', ' | ')) AS tsq,
+               array_agg(lex) AS lexes
+        FROM idf
+    ),
+    -- MATERIALIZED on `d` and `m` is required, not a hint: without it PostgreSQL inlines both
+    -- into every aggregate argument of `bm25` and re-evaluates ts_filter/ts_rank_cd per use
+    -- (measured 29 s instead of 0.8 s). `v` keeps only the query lexemes of the document's tsvector,
+    -- all at weight A, so that ts_rank_cd(v, term, 0) is the number of positions of the term --
+    -- summary (weight A) and content (weight B) both count. A tsvector keeps at most 255 positions
+    -- per lexeme, so tf is capped there.
+    d AS MATERIALIZED (
+        SELECT c.id, ts_filter(setweight(c.tsv, 'A', q.lexes), '{a}') AS v,
+               (octet_length(coalesce(c.summary, '')) + octet_length(coalesce(c.content, '')))::float8 AS dl
+        FROM cells c, q
+        WHERE (c.valid_until IS NULL OR c.valid_until > now())
+          AND (p_status = 'all' OR c.status = COALESCE(p_status, 'committed'))
+          AND (p_realm IS NULL OR (p_realm = 'none' AND c.realm IS NULL) OR (p_realm <> 'none' AND c.realm = p_realm))
+          AND (p_realms IS NULL
+               OR c.realm = ANY(array_remove(p_realms, 'none'))
+               OR ('none' = ANY(p_realms) AND c.realm IS NULL))
+          AND (p_signal IS NULL OR c.signal = p_signal)
+          AND (p_topic IS NULL OR c.topic = p_topic)
+          AND (p_tags IS NULL OR c.tags && p_tags)
+          AND c.tsv @@ q.tsq
+    ),
+    m AS MATERIALIZED (
+        SELECT d.id, d.dl, i.idf, ts_rank_cd(d.v, i.tq, 0)::float8 AS tf
+        FROM d JOIN idf i ON d.v @@ i.tq
+    ),
+    -- BM25 per document: sum over query terms of idf * tf * (k1 + 1) / (tf + k1 * (1 - b + b * dl / avgdl)).
+    -- A zero avgdl (only empty cells) is guarded so the length term degrades to 0, not to NaN.
+    bm25 AS (
+        SELECT m.id,
+               sum(m.idf * m.tf * 2.5 /
+                   (m.tf + 1.5 * (0.25 + 0.75 * m.dl / COALESCE(NULLIF(st.avgdl, 0), 1)))) AS score
+        FROM m CROSS JOIN st
+        GROUP BY m.id
+    ),
+    -- Keyword pool: the 200 best documents by BM25, ties by id.
+    kw AS (
+        SELECT id FROM bm25 ORDER BY score DESC, id LIMIT 200
+    ),
+    -- Normalisation: a document's score divided by the best score of this query, so the best
+    -- lexical match of a query is exactly 1.0 and the signal stays in [0, 1].
+    kwmax AS (
+        SELECT max(score) AS mx FROM bm25
     ),
     -- Chunk ANN prefilter, deliberately WITHOUT a join to cells (design §3.6a): joining here
     -- forces the planner off the HNSW index (measured 108 ms vs 4.9 ms with the join moved into
@@ -106,23 +199,6 @@ LANGUAGE SQL STABLE SET hnsw.ef_search = 500 AS $$
               AND (p_tags IS NULL OR c.tags && p_tags)
         )
     ),
-    kw AS (
-        SELECT c.id
-        FROM cells c
-        CROSS JOIN q
-        WHERE (c.valid_until IS NULL OR c.valid_until > now())
-          AND (p_status = 'all' OR c.status = COALESCE(p_status, 'committed'))
-          AND q.tsq IS NOT NULL AND c.tsv @@ q.tsq
-          AND (p_realm IS NULL OR (p_realm = 'none' AND c.realm IS NULL) OR (p_realm <> 'none' AND c.realm = p_realm))
-          AND (p_realms IS NULL
-               OR c.realm = ANY(array_remove(p_realms, 'none'))
-               OR ('none' = ANY(p_realms) AND c.realm IS NULL))
-          AND (p_signal IS NULL OR c.signal = p_signal)
-          AND (p_topic IS NULL OR c.topic = p_topic)
-          AND (p_tags IS NULL OR c.tags && p_tags)
-        ORDER BY ts_rank_cd(c.tsv, q.tsq, 32) DESC
-        LIMIT 200
-    ),
     candidates AS (
         SELECT id FROM ann
         UNION
@@ -165,8 +241,7 @@ LANGUAGE SQL STABLE SET hnsw.ef_search = 500 AS $$
             -- vector could push a cell below the `sem > 0.3 OR kw > 0` threshold in the final
             -- WHERE and drop it from the result set entirely. GREATEST can only raise the value.
             GREATEST(COALESCE(cb.chunk_sem, 0::REAL), cs.cell_sem) AS sem,
-            CASE WHEN q.tsq IS NOT NULL THEN ts_rank_cd(c.tsv, q.tsq, 32)::REAL
-                 ELSE 0::REAL END AS kw,
+            COALESCE(b.score / NULLIF(kwmax.mx, 0), 0)::REAL AS kw,
             EXP(-0.693 * EXTRACT(EPOCH FROM (now() - c.created_at)) / (90 * 86400))::REAL AS rec,
             (CASE c.importance
                 WHEN 5 THEN 1.0 WHEN 4 THEN 0.8 WHEN 3 THEN 0.6
@@ -186,8 +261,9 @@ LANGUAGE SQL STABLE SET hnsw.ef_search = 500 AS $$
             CASE WHEN cb.chunk_sem IS NOT NULL AND cb.chunk_sem >= cs.cell_sem
                  THEN cb.chunk_content ELSE NULL END AS match_excerpt
         FROM cells c
-        CROSS JOIN q
+        CROSS JOIN kwmax
         JOIN candidates ca ON ca.id = c.id
+        LEFT JOIN bm25 b ON b.id = c.id
         LEFT JOIN cell_popularity cp ON cp.cell_id = c.id
         LEFT JOIN graph g ON g.cell_id = c.id
         LEFT JOIN chunk_best cb ON cb.cell_id = c.id

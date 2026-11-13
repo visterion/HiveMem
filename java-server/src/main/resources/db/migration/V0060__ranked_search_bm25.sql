@@ -1,0 +1,303 @@
+-- V0060: ranked_search computes its keyword signal as BM25 at query time.
+--
+-- Why: ts_rank_cd(..., 32) has no inverse document frequency and no length normalisation. With an
+-- OR query of every question word the signal sits near the same value for almost every document,
+-- so it does not rank, and the 200-document keyword pool is filled by long documents rather than
+-- by the best lexical matches.
+--
+-- What changes: score_keyword becomes a BM25 score (k1 = 1.5, b = 0.75, document length = byte
+-- length of summary plus content) computed from cells.tsv and its GIN index, divided by the best
+-- score of the query so it stays in [0, 1]; the keyword pool holds the 200 best BM25 documents.
+-- The signature, the other five signals, the final filter and the order are unchanged. No table,
+-- column or index changes.
+--
+-- This migration is the Flyway fallback copy of
+-- java-server/src/main/resources/db/templates/ranked_search.sql.tmpl (the authoritative,
+-- runtime-rendered version, with the dimension hard-coded as vector(1024) as in V0057). The
+-- application re-creates the function from the template at every start, so this file only serves
+-- environments that migrate without booting the application. RankedSearchTemplateTest checks that
+-- the statement below equals the rendered template.
+
+CREATE OR REPLACE FUNCTION ranked_search(
+    query_embedding vector,
+    query_text TEXT,
+    p_realm TEXT DEFAULT NULL,
+    p_signal TEXT DEFAULT NULL,
+    p_topic TEXT DEFAULT NULL,
+    p_limit INTEGER DEFAULT 10,
+    p_weight_semantic REAL DEFAULT 0.30,
+    p_weight_keyword REAL DEFAULT 0.15,
+    p_weight_recency REAL DEFAULT 0.15,
+    p_weight_importance REAL DEFAULT 0.15,
+    p_weight_popularity REAL DEFAULT 0.15,
+    p_weight_graph_proximity REAL DEFAULT 0.10,
+    p_tags TEXT[] DEFAULT NULL,
+    p_status TEXT DEFAULT NULL,
+    p_relation_weights JSONB DEFAULT
+        '{"builds_on":1.0,"refines":0.8,"related_to":0.6,"contradicts":0.4}'::jsonb,
+    p_graph_max_depth INT DEFAULT 2,
+    p_realms TEXT[] DEFAULT NULL
+)
+RETURNS TABLE (
+    id UUID, content TEXT, summary TEXT, realm TEXT, signal TEXT, topic TEXT,
+    tags TEXT[], importance SMALLINT, key_points TEXT[], insight TEXT,
+    created_at TIMESTAMPTZ, valid_from TIMESTAMPTZ,
+    valid_until TIMESTAMPTZ,
+    score_semantic REAL, score_keyword REAL, score_recency REAL,
+    score_importance REAL, score_popularity REAL, score_graph_proximity REAL,
+    score_total REAL,
+    match_page_from INTEGER, match_page_to INTEGER, match_excerpt TEXT
+)
+-- hnsw.ef_search is set as a function-level GUC (design §3.6a): LIMIT 400 alone pushes the
+-- planner's HNSW startup cost estimate past the seq-scan crossover at the default ef_search=40,
+-- so without this the chunk_ann ANN prefilter below silently degrades to a seq scan (measured
+-- 53.9 ms vs 4.9 ms). A function-level SET, unlike a session SET, does not depend on the caller.
+LANGUAGE SQL STABLE SET hnsw.ef_search = 500 AS $$
+    -- Keyword signal: BM25 (k1 = 1.5, b = 0.75) computed at query time from cells.tsv and its GIN
+    -- index; no stored statistics. `terms` holds the distinct lexemes of the query, each with its
+    -- one-term tsquery (quoted so punctuation inside a lexeme cannot be read as tsquery syntax).
+    WITH terms AS (
+        SELECT lex,
+               to_tsquery('simple', '''' || replace(lex, '''', '''''') || '''') AS tq
+        FROM unnest(tsvector_to_array(to_tsvector('simple', coalesce(query_text, '')))) AS lex
+    ),
+    -- Corpus statistics. n and avgdl, and the document frequencies in `idf`, and the pool in `d`
+    -- all use the same seven filter predicates (validity, status, realm, realms, signal, topic,
+    -- tags) as the ANN pools, so a cell excluded by a filter never changes the idf of the cells
+    -- that are included. Document length is the byte length of summary plus content; it is a
+    -- proxy for the token count that needs no stored column.
+    st AS (
+        SELECT count(*)::float8 AS n,
+               avg((octet_length(coalesce(c.summary, '')) + octet_length(coalesce(c.content, '')))::float8) AS avgdl
+        FROM cells c
+        WHERE (c.valid_until IS NULL OR c.valid_until > now())
+          AND (p_status = 'all' OR c.status = COALESCE(p_status, 'committed'))
+          AND (p_realm IS NULL OR (p_realm = 'none' AND c.realm IS NULL) OR (p_realm <> 'none' AND c.realm = p_realm))
+          AND (p_realms IS NULL
+               OR c.realm = ANY(array_remove(p_realms, 'none'))
+               OR ('none' = ANY(p_realms) AND c.realm IS NULL))
+          AND (p_signal IS NULL OR c.signal = p_signal)
+          AND (p_topic IS NULL OR c.topic = p_topic)
+          AND (p_tags IS NULL OR c.tags && p_tags)
+    ),
+    -- Document frequency per term by one GIN-backed count each; terms found in no document are
+    -- dropped. idf = ln(1 + (n - df + 0.5) / (df + 0.5)) is always positive.
+    idf AS (
+        SELECT t.lex, t.tq, ln(1 + (st.n - d.df + 0.5) / (d.df + 0.5)) AS idf
+        FROM terms t
+        CROSS JOIN st
+        CROSS JOIN LATERAL (
+            SELECT count(*)::float8 AS df
+            FROM cells c
+            WHERE (c.valid_until IS NULL OR c.valid_until > now())
+          AND (p_status = 'all' OR c.status = COALESCE(p_status, 'committed'))
+          AND (p_realm IS NULL OR (p_realm = 'none' AND c.realm IS NULL) OR (p_realm <> 'none' AND c.realm = p_realm))
+          AND (p_realms IS NULL
+               OR c.realm = ANY(array_remove(p_realms, 'none'))
+               OR ('none' = ANY(p_realms) AND c.realm IS NULL))
+          AND (p_signal IS NULL OR c.signal = p_signal)
+          AND (p_topic IS NULL OR c.topic = p_topic)
+          AND (p_tags IS NULL OR c.tags && p_tags)
+              AND c.tsv @@ t.tq
+        ) d
+        WHERE d.df > 0
+    ),
+    -- q.tsq is the OR of the surviving terms (NULL when there are none: no query text, only
+    -- punctuation, or only unknown terms -- then no document matches and every kw is 0).
+    q AS (
+        SELECT to_tsquery('simple', string_agg('''' || replace(lex, '''', '''''') || '''', ' | ')) AS tsq,
+               array_agg(lex) AS lexes
+        FROM idf
+    ),
+    -- MATERIALIZED on `d` and `m` is required, not a hint: without it PostgreSQL inlines both
+    -- into every aggregate argument of `bm25` and re-evaluates ts_filter/ts_rank_cd per use
+    -- (measured 29 s instead of 0.8 s). `v` keeps only the query lexemes of the document's tsvector,
+    -- all at weight A, so that ts_rank_cd(v, term, 0) is the number of positions of the term --
+    -- summary (weight A) and content (weight B) both count. A tsvector keeps at most 255 positions
+    -- per lexeme, so tf is capped there.
+    d AS MATERIALIZED (
+        SELECT c.id, ts_filter(setweight(c.tsv, 'A', q.lexes), '{a}') AS v,
+               (octet_length(coalesce(c.summary, '')) + octet_length(coalesce(c.content, '')))::float8 AS dl
+        FROM cells c, q
+        WHERE (c.valid_until IS NULL OR c.valid_until > now())
+          AND (p_status = 'all' OR c.status = COALESCE(p_status, 'committed'))
+          AND (p_realm IS NULL OR (p_realm = 'none' AND c.realm IS NULL) OR (p_realm <> 'none' AND c.realm = p_realm))
+          AND (p_realms IS NULL
+               OR c.realm = ANY(array_remove(p_realms, 'none'))
+               OR ('none' = ANY(p_realms) AND c.realm IS NULL))
+          AND (p_signal IS NULL OR c.signal = p_signal)
+          AND (p_topic IS NULL OR c.topic = p_topic)
+          AND (p_tags IS NULL OR c.tags && p_tags)
+          AND c.tsv @@ q.tsq
+    ),
+    m AS MATERIALIZED (
+        SELECT d.id, d.dl, i.idf, ts_rank_cd(d.v, i.tq, 0)::float8 AS tf
+        FROM d JOIN idf i ON d.v @@ i.tq
+    ),
+    -- BM25 per document: sum over query terms of idf * tf * (k1 + 1) / (tf + k1 * (1 - b + b * dl / avgdl)).
+    -- A zero avgdl (only empty cells) is guarded so the length term degrades to 0, not to NaN.
+    bm25 AS (
+        SELECT m.id,
+               sum(m.idf * m.tf * 2.5 /
+                   (m.tf + 1.5 * (0.25 + 0.75 * m.dl / COALESCE(NULLIF(st.avgdl, 0), 1)))) AS score
+        FROM m CROSS JOIN st
+        GROUP BY m.id
+    ),
+    -- Keyword pool: the 200 best documents by BM25, ties by id.
+    kw AS (
+        SELECT id FROM bm25 ORDER BY score DESC, id LIMIT 200
+    ),
+    -- Normalisation: a document's score divided by the best score of this query, so the best
+    -- lexical match of a query is exactly 1.0 and the signal stays in [0, 1].
+    kwmax AS (
+        SELECT max(score) AS mx FROM bm25
+    ),
+    -- Chunk ANN prefilter, deliberately WITHOUT a join to cells (design §3.6a): joining here
+    -- forces the planner off the HNSW index (measured 108 ms vs 4.9 ms with the join moved into
+    -- `ann` below, where it only ever runs against chunk_best's <=400 rows instead of the full
+    -- cell_chunks table). left(ch.content, 301), not 300: CellSearchRepository turns this into
+    -- "300 chars + ellipsis" and needs the 301st character to tell "exactly 300" from "longer".
+    chunk_ann AS (
+        SELECT ch.cell_id, ch.ordinal, ch.page_from, ch.page_to,
+               left(ch.content, 301) AS chunk_content,
+               (1 - ((ch.embedding::vector(1024)) <=> query_embedding))::REAL AS chunk_sem
+        FROM cell_chunks ch
+        WHERE query_embedding IS NOT NULL AND ch.embedding IS NOT NULL
+        ORDER BY (ch.embedding::vector(1024)) <=> query_embedding
+        LIMIT 400
+    ),
+    -- Best chunk per cell among the 400 ANN candidates above. `, ordinal` tiebreaks a tied
+    -- chunk_sem deterministically (lowest ordinal wins) -- without it, which of two equally
+    -- scoring chunks supplies match_page_from/_to/_excerpt is arbitrary and can vary run to run.
+    chunk_best AS (
+        SELECT DISTINCT ON (cell_id) cell_id, page_from, page_to, chunk_content, chunk_sem
+        FROM chunk_ann ORDER BY cell_id, chunk_sem DESC, ordinal
+    ),
+    ann AS (
+        -- Both arms are parenthesized: the first arm's ORDER BY/LIMIT would otherwise be parsed
+        -- as applying to the whole UNION, which Postgres rejects as a syntax error.
+        (
+            SELECT c.id
+            FROM cells c
+            WHERE (c.valid_until IS NULL OR c.valid_until > now())
+              AND (p_status = 'all' OR c.status = COALESCE(p_status, 'committed'))
+              AND c.embedding IS NOT NULL
+              AND query_embedding IS NOT NULL
+              AND (p_realm IS NULL OR (p_realm = 'none' AND c.realm IS NULL) OR (p_realm <> 'none' AND c.realm = p_realm))
+              AND (p_realms IS NULL
+                   OR c.realm = ANY(array_remove(p_realms, 'none'))
+                   OR ('none' = ANY(p_realms) AND c.realm IS NULL))
+              AND (p_signal IS NULL OR c.signal = p_signal)
+              AND (p_topic IS NULL OR c.topic = p_topic)
+              AND (p_tags IS NULL OR c.tags && p_tags)
+            ORDER BY (c.embedding::vector(1024)) <=> query_embedding
+            LIMIT 200
+        )
+
+        UNION
+
+        -- The chunk branch of `ann` (design §3.6b): joins chunk_best (<=400 rows, already
+        -- ANN-narrowed) to cells so the same seven filter predicates as the cell-vector branch
+        -- above apply here too. Without this, a cell reachable only through its chunk could
+        -- bypass a realm/signal/topic/tags/status/valid_until filter that would have excluded it
+        -- via the cell-vector branch -- §5.3 tests exactly that parity.
+        (
+            SELECT c.id
+            FROM chunk_best cb
+            JOIN cells c ON c.id = cb.cell_id
+            WHERE (c.valid_until IS NULL OR c.valid_until > now())
+              AND (p_status = 'all' OR c.status = COALESCE(p_status, 'committed'))
+              AND (p_realm IS NULL OR (p_realm = 'none' AND c.realm IS NULL) OR (p_realm <> 'none' AND c.realm = p_realm))
+              AND (p_realms IS NULL
+                   OR c.realm = ANY(array_remove(p_realms, 'none'))
+                   OR ('none' = ANY(p_realms) AND c.realm IS NULL))
+              AND (p_signal IS NULL OR c.signal = p_signal)
+              AND (p_topic IS NULL OR c.topic = p_topic)
+              AND (p_tags IS NULL OR c.tags && p_tags)
+        )
+    ),
+    candidates AS (
+        SELECT id FROM ann
+        UNION
+        SELECT id FROM kw
+    ),
+    -- Anchors sort by the same GREATEST(chunk, cell) expression as `scored` and no longer
+    -- require c.embedding IS NOT NULL (design §3.6f): a cell reachable only through its chunk
+    -- must be eligible to seed graph_proximity_scores, or the graph channel keeps reinforcing
+    -- the pre-chunking ranking for exactly the cells chunking was meant to help find.
+    anchors AS (
+        SELECT c.id
+        FROM cells c
+        JOIN candidates ca ON ca.id = c.id
+        LEFT JOIN chunk_best cb ON cb.cell_id = c.id
+        WHERE query_embedding IS NOT NULL
+          AND (c.embedding IS NOT NULL OR cb.chunk_sem IS NOT NULL)
+        -- `, c.id` tiebreaks a tied GREATEST score deterministically -- anchors previously had a
+        -- total ordering (ties broken by the cell-vector distance operator's own stability),
+        -- which this explicit rule restores now that two cells can tie exactly on GREATEST.
+        ORDER BY GREATEST(
+            COALESCE(cb.chunk_sem, 0::REAL),
+            CASE WHEN c.embedding IS NOT NULL AND query_embedding IS NOT NULL
+                 THEN (1 - ((c.embedding::vector(1024)) <=> query_embedding))::REAL
+                 ELSE 0::REAL END
+        ) DESC, c.id
+        LIMIT 25
+    ),
+    graph AS (
+        SELECT cell_id, score
+        FROM graph_proximity_scores(
+            (SELECT array_agg(id) FROM anchors),
+            p_relation_weights,
+            p_graph_max_depth
+        )
+    ),
+    scored AS (
+        SELECT c.id, c.content, c.summary, c.realm, c.signal, c.topic,
+            c.tags, c.importance, c.key_points, c.insight, c.created_at, c.valid_from, c.valid_until,
+            -- sem = GREATEST(chunk, cell), never a replacement (design §3.6c): replacing the cell
+            -- vector could push a cell below the `sem > 0.3 OR kw > 0` threshold in the final
+            -- WHERE and drop it from the result set entirely. GREATEST can only raise the value.
+            GREATEST(COALESCE(cb.chunk_sem, 0::REAL), cs.cell_sem) AS sem,
+            COALESCE(b.score / NULLIF(kwmax.mx, 0), 0)::REAL AS kw,
+            EXP(-0.693 * EXTRACT(EPOCH FROM (now() - c.created_at)) / (90 * 86400))::REAL AS rec,
+            (CASE c.importance
+                WHEN 5 THEN 1.0 WHEN 4 THEN 0.8 WHEN 3 THEN 0.6
+                WHEN 2 THEN 0.4 WHEN 1 THEN 0.2 ELSE 0.6 END)::REAL AS imp,
+            LEAST(COALESCE(cp.recent_access_count, 0)::REAL / 25.0, 1.0)::REAL AS pop,
+            COALESCE(g.score, 0)::REAL AS gp,
+            -- match_* columns (design §3.6d): NULL unless the chunk actually contributed to sem,
+            -- i.e. chunk_sem is present and >= the cell vector's own similarity (cs.cell_sem, the
+            -- single definition computed once by the LATERAL below instead of being repeated).
+            -- At an exact tie the chunk counts as the provider (>=, not >): the value is identical
+            -- either way, so reporting the more informative match location is the more useful
+            -- reading.
+            CASE WHEN cb.chunk_sem IS NOT NULL AND cb.chunk_sem >= cs.cell_sem
+                 THEN cb.page_from ELSE NULL END AS match_page_from,
+            CASE WHEN cb.chunk_sem IS NOT NULL AND cb.chunk_sem >= cs.cell_sem
+                 THEN cb.page_to ELSE NULL END AS match_page_to,
+            CASE WHEN cb.chunk_sem IS NOT NULL AND cb.chunk_sem >= cs.cell_sem
+                 THEN cb.chunk_content ELSE NULL END AS match_excerpt
+        FROM cells c
+        CROSS JOIN kwmax
+        JOIN candidates ca ON ca.id = c.id
+        LEFT JOIN bm25 b ON b.id = c.id
+        LEFT JOIN cell_popularity cp ON cp.cell_id = c.id
+        LEFT JOIN graph g ON g.cell_id = c.id
+        LEFT JOIN chunk_best cb ON cb.cell_id = c.id
+        CROSS JOIN LATERAL (
+            SELECT CASE WHEN c.embedding IS NOT NULL AND query_embedding IS NOT NULL
+                        THEN (1 - ((c.embedding::vector(1024)) <=> query_embedding))::REAL
+                        ELSE 0::REAL END AS cell_sem
+        ) cs
+    )
+    SELECT s.id, s.content, s.summary, s.realm, s.signal, s.topic,
+           s.tags, s.importance, s.key_points, s.insight, s.created_at, s.valid_from, s.valid_until,
+           s.sem, s.kw, s.rec, s.imp, s.pop, s.gp,
+           (s.sem * p_weight_semantic + s.kw * p_weight_keyword +
+            s.rec * p_weight_recency + s.imp * p_weight_importance +
+            s.pop * p_weight_popularity +
+            s.gp  * p_weight_graph_proximity)::REAL AS score_total,
+           s.match_page_from, s.match_page_to, s.match_excerpt
+    FROM scored s WHERE s.sem > 0.3 OR s.kw > 0
+    ORDER BY score_total DESC, s.id ASC LIMIT p_limit;
+$$;
