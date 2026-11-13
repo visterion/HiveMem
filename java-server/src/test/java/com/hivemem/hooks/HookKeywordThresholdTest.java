@@ -35,13 +35,17 @@ import static org.assertj.core.api.Assertions.assertThat;
  * {@link HooksIntegrationTest} runs with) does under the BM25 keyword signal.
  *
  * <p>The old keyword signal ({@code ts_rank_cd(…, 32)}, i.e. rank/(rank+1), without IDF or length
- * normalisation) was close to 0.9 for nearly every cell that shared any word with the prompt, and
- * because the {@code simple} configuration has no stop words that is nearly every cell. At the
- * hook's keyword weight of 0.10 it added about 0.09 to almost every total, and the threshold was
- * set with that offset in place. The BM25 signal is normalised so that the best lexical match of
- * a query scores 1.0, while a cell that shares only common words with the prompt scores close to
- * 0 and so loses most of that offset (up to about 0.09 of its total). A cell that shares no word
- * at all scored 0 under the old signal too and is unchanged.
+ * normalisation) was roughly 0.5 for this short cell (about 0.9 for typical, longer cells) and
+ * for nearly every cell that shared any word with the prompt, and because the {@code simple}
+ * configuration has no stop words that is nearly every cell. At the hook's keyword weight of 0.10
+ * it added up to about 0.09 to almost every total, and the threshold was set with that offset in
+ * place; for this short cell it was just enough to lift its total over the threshold. The BM25
+ * signal is normalised so that the best lexical match of a query scores 1.0, while a cell that
+ * shares only common words with the prompt scores close to 0 and so loses most of that offset
+ * (up to about 0.09 of its total). A cell that shares no word at all scored 0 under the old
+ * signal too and is unchanged. The low score of the common-word cell comes from the idf of the
+ * common words and, since the proximity window, from the missing proximity bonus: it holds none
+ * of the rare words of the prompt, so no window of rare words lifts it.
  *
  * <p>All cells have the same cosine similarity to the prompt (0.75). Their other signals are
  * identical too (importance 3, created now, no popularity, no graph neighbours), so the only
@@ -147,9 +151,9 @@ class HookKeywordThresholdTest {
     void cellSharingOnlyCommonWordsIsNotInjected() {
         UUID overlap = insertCell("A zephyrquokka relay fails over to a standby node within seconds");
         // Shares only the common words "how", "does" and "the" with the prompt. Under the earlier
-        // signal such a cell received a keyword score near the top of the range (about 0.9) and
-        // therefore a total about 0.09 higher; with BM25 the words are common in the corpus (low
-        // idf) and the cell scores close to 0.
+        // signal such a cell received a keyword score of roughly 0.5 to 0.9 and therefore a total
+        // up to about 0.09 higher; with BM25 the words are common in the corpus (low idf), and
+        // the cell holds no rare query word, so it earns no proximity bonus: it scores close to 0.
         UUID common = insertCell("How does the plant watering rota work");
         // Fillers carrying the same common words keep their idf low; their embedding is orthogonal
         // to the prompt, so their semantic score is 0 and they stay far below the threshold.
@@ -165,7 +169,7 @@ class HookKeywordThresholdTest {
         RankedRow commonRow = row(rows, common);
 
         assertThat(commonRow.scoreSemantic()).isCloseTo(SIMILARITY, org.assertj.core.data.Offset.offset(1e-4));
-        assertThat(commonRow.scoreKeyword()).isGreaterThan(0.0).isLessThan(0.1);
+        assertThat(commonRow.scoreKeyword()).isGreaterThan(0.0).isLessThan(0.02);
         assertThat(commonRow.scoreTotal()).isLessThan(props.getRelevanceThreshold());
         assertThat(row(rows, overlap).scoreKeyword()).isEqualTo(1.0);
 

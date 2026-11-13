@@ -64,9 +64,12 @@ LANGUAGE SQL STABLE SET hnsw.ef_search = 500 AS $$
           AND (p_tags IS NULL OR c.tags && p_tags)
     ),
     -- Document frequency per term by one GIN-backed count each; terms found in no document are
-    -- dropped. idf = ln(1 + (n - df + 0.5) / (df + 0.5)) is always positive.
+    -- dropped. idf = ln(1 + (n - df + 0.5) / (df + 0.5)) is always positive. dfn = df / n is the
+    -- share of the admitted cells that contain the term; the proximity window below calls a term
+    -- rare when dfn <= 0.5.
     idf AS (
-        SELECT t.lex, t.tq, ln(1 + (st.n - d.df + 0.5) / (d.df + 0.5)) AS idf
+        SELECT t.lex, t.tq, d.df / NULLIF(st.n, 0) AS dfn,
+               ln(1 + (st.n - d.df + 0.5) / (d.df + 0.5)) AS idf
         FROM terms t
         CROSS JOIN st
         CROSS JOIN LATERAL (
@@ -87,9 +90,20 @@ LANGUAGE SQL STABLE SET hnsw.ef_search = 500 AS $$
     ),
     -- q.tsq is the OR of the surviving terms (NULL when there are none: no query text, only
     -- punctuation, or only unknown terms -- then no document matches and every kw is 0).
+    -- q also carries the proximity window's inputs: the rare lexemes, the sum of their idf, and
+    -- `wnd`, whether the window applies at all: at least two rare terms (with one, every cell that
+    -- holds the term has full coverage, so the window orders nothing) and at most 64 distinct
+    -- query lexemes (the row count of `terms`, before terms without a match are dropped). The
+    -- window joins the positions of a candidate's rare terms with themselves, which grows
+    -- quadratically with the number of query terms; a whole document passed as the query text
+    -- must not pay for that. When `wnd` is false the keyword score is plain BM25.
     q AS (
         SELECT to_tsquery('simple', string_agg('''' || replace(lex, '''', '''''') || '''', ' | ')) AS tsq,
-               array_agg(lex) AS lexes
+               array_agg(lex) AS lexes,
+               array_agg(lex) FILTER (WHERE dfn <= 0.5) AS rare,
+               COALESCE(sum(idf) FILTER (WHERE dfn <= 0.5), 0) AS rare_idf,
+               (count(*) FILTER (WHERE dfn <= 0.5) >= 2
+                AND (SELECT count(*) FROM terms) <= 64) AS wnd
         FROM idf
     ),
     -- MATERIALIZED on `d` and `m` is required, not a hint: without it PostgreSQL inlines both
@@ -128,14 +142,79 @@ LANGUAGE SQL STABLE SET hnsw.ef_search = 500 AS $$
         FROM m CROSS JOIN st
         GROUP BY m.id
     ),
-    -- Keyword pool: the 200 best documents by BM25, ties by id.
+    -- Proximity window. Among the 100 best BM25 documents, a document whose rare query terms
+    -- stand close together is ranked up: its best window of 30 token positions is scored as the
+    -- idf of the distinct rare terms inside it, divided by the idf of all rare terms (coverage,
+    -- in [0, 1]). `cand` is empty when the window does not apply. MATERIALIZED, like `pp`,
+    -- because the planner would otherwise recompute both for every use.
+    cand AS MATERIALIZED (
+        SELECT b.id, b.score
+        FROM bm25 b, q
+        WHERE q.wnd
+        ORDER BY b.score DESC, b.id
+        LIMIT 100
+    ),
+    -- Positions of the rare terms in the CONTENT only: weight B of tsv. The summary carries
+    -- weight A, and its positions continue right after the content's, so summary words would
+    -- otherwise count as neighbours of the first content words; BM25's tf still counts them.
+    -- The rare lexemes are re-weighted to A, then filtered to A. Position 16,383 is left out:
+    -- a tsvector stores every position beyond 16,383 as 16,383, so all late occurrences in a
+    -- very long document would appear to stand at the same place and fake proximity. Evidence
+    -- beyond position 16,382 of a document therefore gets no bonus.
+    pp AS MATERIALIZED (
+        SELECT cand.id, u.lexeme, p.pos
+        FROM cand
+        JOIN cells c ON c.id = cand.id
+        CROSS JOIN q
+        CROSS JOIN LATERAL unnest(
+            ts_filter(setweight(ts_filter(c.tsv, '{b}'), 'A', q.rare), '{a}')) AS u
+        CROSS JOIN LATERAL unnest(u.positions) AS p(pos)
+        WHERE p.pos < 16383
+    ),
+    -- Best window per candidate: for every position a of a rare term, the distinct rare terms
+    -- found in [a, a + 30), weighted by idf; the maximum over a. Computed as an equijoin on the
+    -- document id, NOT as a correlated lateral subquery over `pp`: the lateral form scans all
+    -- positions of all candidates for every position (measured ten times slower on a 63-term
+    -- query, same result).
+    win AS (
+        SELECT w.id, max(w.s) AS best
+        FROM (
+            SELECT x.id, x.pos, sum(i.idf) AS s
+            FROM (
+                SELECT DISTINCT a.id, a.pos, b.lexeme
+                FROM pp a
+                JOIN pp b ON b.id = a.id AND b.pos >= a.pos AND b.pos < a.pos + 30
+            ) x
+            JOIN idf i ON i.lex = x.lexeme
+            GROUP BY x.id, x.pos
+        ) w
+        GROUP BY w.id
+    ),
+    -- Lexical score: BM25 plus 4 * coverage * (best BM25 of the query) for the candidates, plain
+    -- BM25 for every other matching document. No non-candidate can outrank a candidate, so the
+    -- keyword pool below holds the same documents as with BM25 alone; only values and order among
+    -- the candidates change.
+    lexical AS (
+        SELECT b.id,
+               b.score + CASE WHEN cand.id IS NOT NULL
+                              THEN 4 * COALESCE(win.best, 0) / NULLIF(q.rare_idf, 0)
+                                   * (SELECT max(score) FROM bm25)
+                              ELSE 0 END AS score
+        FROM bm25 b
+        CROSS JOIN q
+        LEFT JOIN cand ON cand.id = b.id
+        LEFT JOIN win ON win.id = b.id
+    ),
+    -- Keyword pool: the 200 best documents by lexical score, ties by id.
     kw AS (
-        SELECT id FROM bm25 ORDER BY score DESC, id LIMIT 200
+        SELECT id FROM lexical ORDER BY score DESC, id LIMIT 200
     ),
     -- Normalisation: a document's score divided by the best score of this query, so the best
-    -- lexical match of a query is exactly 1.0 and the signal stays in [0, 1].
+    -- lexical match of a query is exactly 1.0 and the signal stays in [0, 1]. When the window
+    -- applies, a candidate with full coverage lies in [0.8, 1] and a document without any
+    -- coverage at 0.2 at most.
     kwmax AS (
-        SELECT max(score) AS mx FROM bm25
+        SELECT max(score) AS mx FROM lexical
     ),
     -- Chunk ANN prefilter, deliberately WITHOUT a join to cells (design §3.6a): joining here
     -- forces the planner off the HNSW index (measured 108 ms vs 4.9 ms with the join moved into
@@ -265,7 +344,7 @@ LANGUAGE SQL STABLE SET hnsw.ef_search = 500 AS $$
         FROM cells c
         CROSS JOIN kwmax
         JOIN candidates ca ON ca.id = c.id
-        LEFT JOIN bm25 b ON b.id = c.id
+        LEFT JOIN lexical b ON b.id = c.id
         LEFT JOIN cell_popularity cp ON cp.cell_id = c.id
         LEFT JOIN graph g ON g.cell_id = c.id
         LEFT JOIN chunk_best cb ON cb.cell_id = c.id

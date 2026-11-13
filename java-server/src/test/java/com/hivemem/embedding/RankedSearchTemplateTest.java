@@ -40,9 +40,9 @@ class RankedSearchTemplateTest {
     }
 
     @Test
-    void migrationV0060EqualsRenderedTemplate() throws Exception {
+    void newestRankedSearchMigrationEqualsRenderedTemplate() throws Exception {
         String migration;
-        try (var in = new ClassPathResource("db/migration/V0060__ranked_search_bm25.sql").getInputStream()) {
+        try (var in = new ClassPathResource("db/migration/V0061__ranked_search_proximity.sql").getInputStream()) {
             migration = StreamUtils.copyToString(in, StandardCharsets.UTF_8);
         }
 
