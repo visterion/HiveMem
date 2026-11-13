@@ -180,10 +180,13 @@ class ReadToolIntegrationTest {
 
         JsonNode results = callToolContent("search", Map.of(
                 "query", "semantic oracle", "limit", 10, "include", List.of("scores")));
-        // Both cells match "oracle"; under the balanced profile the importance signal now
-        // (correctly, post H10) favours the importance=5 cell (502) over the importance=1
-        // cell (501), so the 5-star cell ranks first even though 501 matches more lexemes.
-        assertThat(results.get(0).path("id").asText()).isEqualTo("00000000-0000-0000-0000-000000000502");
+        // Both cells match "oracle". With the balanced weights (keyword 0.25, importance 0.15)
+        // the keyword gap between the cell that matches both lexemes (501) and the one that
+        // matches only "oracle" (502) outweighs the importance gap (1 vs 5), so 501 ranks first.
+        // The importance-weighted call below still puts the importance=5 cell (502) first.
+        assertThat(results.get(0).path("id").asText()).isEqualTo("00000000-0000-0000-0000-000000000501");
+        assertThat(results.get(0).path("score_keyword").asDouble())
+                .isGreaterThan(results.get(1).path("score_keyword").asDouble());
         assertThat(results.get(0).path("score_total").isNumber()).isTrue();
         assertThat(results.get(0).path("score_semantic").isNumber()).isTrue();
         assertThat(results.get(0).path("score_keyword").isNumber()).isTrue();

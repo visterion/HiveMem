@@ -1017,9 +1017,11 @@ class SearchParityIntegrationTest {
         // score_total: identical content/embedding/recency, only importance
         // varies -> only score_importance varies -> distinct score_total. The
         // FixedEmbeddingClient maps any content containing "semantic" to the same
-        // vector as the query, so the semantic component is a constant 0.30
-        // baseline (well above the 0.20 floor) regardless of the wall clock —
-        // this keeps the top hit's "not NONE" guarantee time-independent.
+        // vector as the query, so the semantic component is a constant 0.20
+        // (similarity 1.0 at weight 0.20) regardless of the wall clock. Together with the
+        // constant importance/recency/popularity terms of the seeded cells the top hit stays
+        // above the 0.20 floor, and the keyword leg adds to it on top; this keeps the top
+        // hit's "not NONE" guarantee time-independent.
         FixedEmbeddingClient client = new FixedEmbeddingClient();
         String content = "semantic probe spread relative confidence cell";
         List<Float> embedding = client.encodeDocument(content);
@@ -1062,6 +1064,39 @@ class SearchParityIntegrationTest {
         assertThat(levels.stream().distinct().count())
                 .as("distinct confidence levels across result-set: %s", levels)
                 .isGreaterThanOrEqualTo(2L);
+    }
+
+    @Test
+    void semanticOnlyOldCellFallsBelowTheFloor() throws Exception {
+        // The query vector is axis 0 ("semantic oracle"). The probe cell shares no word with the
+        // query, has similarity exactly 0.5, is years old (recency ~0), importance 3 (0.6) and no
+        // popularity or graph signal: new balanced 0.20*0.5 + 0.15*0.6 = 0.19 < floor 0.20,
+        // old weights 0.30*0.5 + 0.15*0.6 = 0.24 >= floor.
+        UUID probe = UUID.fromString("00000000-0000-0000-0000-000000000f01");
+        OffsetDateTime old = OffsetDateTime.parse("2020-01-01T10:00:00Z");
+        OffsetDateTime recent = OffsetDateTime.now().minusDays(1);
+        insertCellWithEmbedding(probe, "unrelated gardening compost notes", "eng", "facts", "floor", null, 3,
+                "gardening", "committed", old, null, halfSimilarityVector());
+        insertCellWithEmbedding(UUID.fromString("00000000-0000-0000-0000-000000000f02"),
+                "semantic oracle handbook chapter one", "eng", "facts", "floor", null, 3,
+                "handbook one", "committed", recent, null, unitVector(1));
+        insertCellWithEmbedding(UUID.fromString("00000000-0000-0000-0000-000000000f03"),
+                "semantic oracle handbook chapter two", "eng", "facts", "floor", null, 3,
+                "handbook two", "committed", recent, null, unitVector(1));
+
+        JsonNode defaults = callTool("writer-token", "search", Map.of(
+                "query", "semantic oracle", "limit", 10, "include", List.of("scores")));
+        assertThat(defaults).hasSizeGreaterThanOrEqualTo(3);
+        float newTotal = totalOf(defaults, probe);
+        assertThat(newTotal).as("probe score_total with the default weights").isLessThan(0.20f);
+        assertThat(confidenceOf(defaults, probe)).isEqualTo("NONE");
+
+        JsonNode oldWeights = callTool("writer-token", "search", Map.of(
+                "query", "semantic oracle", "limit", 10, "include", List.of("scores"),
+                "weight_semantic", 0.30, "weight_keyword", 0.15, "weight_recency", 0.15,
+                "weight_importance", 0.15, "weight_popularity", 0.15, "weight_graph_proximity", 0.10));
+        float oldTotal = totalOf(oldWeights, probe);
+        assertThat(oldTotal).as("probe score_total with the old weights").isGreaterThanOrEqualTo(0.20f);
     }
 
     @Test

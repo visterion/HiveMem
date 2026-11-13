@@ -45,4 +45,33 @@ class SearchWeightsPropertiesTest {
                 + w.importance() + w.popularity() + w.graphProximity())
                 .isEqualTo(1.00);
     }
+
+    @Test
+    void javaDefaultsEqualTheBalancedProfile() {
+        assertMatchesBalanced(SearchWeights.defaults());
+        assertMatchesBalanced(new SearchWeightsProperties().toSearchWeights());
+    }
+
+    @Test
+    void applicationYmlEqualsTheBalancedProfile() throws Exception {
+        java.util.List<org.springframework.core.env.PropertySource<?>> sources =
+                new org.springframework.boot.env.YamlPropertySourceLoader().load(
+                        "application", new org.springframework.core.io.ClassPathResource("application.yml"));
+        SearchWeightsProperties bound = new org.springframework.boot.context.properties.bind.Binder(
+                org.springframework.boot.context.properties.source.ConfigurationPropertySources
+                        .from(sources.get(0)))
+                .bind("hivemem.search.weights", SearchWeightsProperties.class)
+                .get();
+        assertMatchesBalanced(bound.toSearchWeights());
+    }
+
+    private static void assertMatchesBalanced(SearchWeights w) {
+        SearchProfile b = SearchProfile.BALANCED;
+        assertThat(w.semantic()).isEqualTo(b.semantic);
+        assertThat(w.keyword()).isEqualTo(b.keyword);
+        assertThat(w.recency()).isEqualTo(b.recency);
+        assertThat(w.importance()).isEqualTo(b.importance);
+        assertThat(w.popularity()).isEqualTo(b.popularity);
+        assertThat(w.graphProximity()).isEqualTo(b.graphProximity);
+    }
 }

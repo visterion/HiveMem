@@ -2,11 +2,14 @@ package com.hivemem.search;
 
 /**
  * Named 6-signal weight presets for search. Each vector sums to 1.0.
- * BALANCED equals the historical default weights, so omitting profile is behavior-preserving.
+ * BALANCED is the default of the {@code search} tool (also used by {@code entity_overview}); it
+ * weighs the keyword signal above the semantic one because it was calibrated with the BM25 and
+ * proximity keyword signal. The SQL function's own parameter defaults are not used by the
+ * application: every caller passes all six weights explicitly.
  */
 public enum SearchProfile {
 
-    BALANCED (0.30, 0.15, 0.15, 0.15, 0.15, 0.10),
+    BALANCED (0.20, 0.25, 0.15, 0.15, 0.15, 0.10),
     SEMANTIC (0.55, 0.10, 0.05, 0.10, 0.10, 0.10),
     RECENT   (0.25, 0.10, 0.40, 0.10, 0.05, 0.10),
     IMPORTANT(0.25, 0.10, 0.10, 0.40, 0.05, 0.10),

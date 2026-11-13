@@ -7,8 +7,8 @@ import org.springframework.context.annotation.Configuration;
 @ConfigurationProperties(prefix = "hivemem.search.weights")
 public class SearchWeightsProperties {
 
-    private double semantic = 0.30;
-    private double keyword = 0.15;
+    private double semantic = 0.20;
+    private double keyword = 0.25;
     private double recency = 0.15;
     private double importance = 0.15;
     private double popularity = 0.15;

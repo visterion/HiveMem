@@ -60,8 +60,8 @@ hivemem:
     refresh-interval: ${HIVEMEM_POPULARITY_REFRESH_INTERVAL:PT1H}
   search:
     weights:
-      semantic: 0.30
-      keyword: 0.15
+      semantic: 0.20
+      keyword: 0.25
       recency: 0.15
       importance: 0.15
       popularity: 0.15

@@ -41,13 +41,28 @@ class SearchProfileTest {
     }
 
     @Test
-    void balancedEqualsHistoricalDefaults() {
+    void balancedIsTheCalibratedDefault() {
         SearchProfile b = SearchProfile.BALANCED;
-        assertThat(b.semantic).isEqualTo(0.30);
-        assertThat(b.keyword).isEqualTo(0.15);
+        assertThat(b.semantic).isEqualTo(0.20);
+        assertThat(b.keyword).isEqualTo(0.25);
         assertThat(b.recency).isEqualTo(0.15);
         assertThat(b.importance).isEqualTo(0.15);
         assertThat(b.popularity).isEqualTo(0.15);
         assertThat(b.graphProximity).isEqualTo(0.10);
+    }
+
+    @Test
+    void otherProfilesAreUnchanged() {
+        assertVector(SearchProfile.SEMANTIC, 0.55, 0.10, 0.05, 0.10, 0.10, 0.10);
+        assertVector(SearchProfile.RECENT, 0.25, 0.10, 0.40, 0.10, 0.05, 0.10);
+        assertVector(SearchProfile.IMPORTANT, 0.25, 0.10, 0.10, 0.40, 0.05, 0.10);
+        assertVector(SearchProfile.KEYWORD, 0.20, 0.45, 0.10, 0.10, 0.05, 0.10);
+    }
+
+    private static void assertVector(SearchProfile p, double semantic, double keyword, double recency,
+                                     double importance, double popularity, double graphProximity) {
+        assertThat(new double[] {p.semantic, p.keyword, p.recency, p.importance, p.popularity, p.graphProximity})
+                .as("weights of %s", p.name())
+                .containsExactly(semantic, keyword, recency, importance, popularity, graphProximity);
     }
 }

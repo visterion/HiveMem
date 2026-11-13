@@ -9,6 +9,6 @@ public record SearchWeights(
         double graphProximity
 ) {
     public static SearchWeights defaults() {
-        return new SearchWeights(0.30, 0.15, 0.15, 0.15, 0.15, 0.10);
+        return new SearchWeights(0.20, 0.25, 0.15, 0.15, 0.15, 0.10);
     }
 }

@@ -17,6 +17,7 @@ import com.hivemem.search.MediaListRepository;
 import com.hivemem.search.FacetRepository;
 import com.hivemem.search.KgSearchRepository;
 import com.hivemem.search.ResultSetStats;
+import com.hivemem.search.SearchProfile;
 import com.hivemem.search.SearchWeightsProperties;
 import com.hivemem.write.AdminToolService;
 import org.slf4j.Logger;
@@ -348,7 +349,9 @@ public class ReadToolService {
         }
         List<Map<String, Object>> cells = search(subject, limit, null, null, null,
                 CellFieldSelection.forSearch(null),
-                0.30d, 0.15d, 0.15d, 0.15d, 0.15d, 0.10d, null, null, null, false);
+                SearchProfile.BALANCED.semantic, SearchProfile.BALANCED.keyword, SearchProfile.BALANCED.recency,
+                SearchProfile.BALANCED.importance, SearchProfile.BALANCED.popularity,
+                SearchProfile.BALANCED.graphProximity, null, null, null, false);
         List<Map<String, Object>> facts = new ArrayList<>(cellReadRepository.quickFacts(subject, limit));
         if (facts.size() < limit) {
             Set<Object> seen = facts.stream().map(f -> f.get("id")).collect(java.util.stream.Collectors.toSet());
