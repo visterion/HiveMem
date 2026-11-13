@@ -39,7 +39,7 @@ score_total >= relevanceThreshold  (default: 0.65)
 
 Cells below this threshold are discarded. Tunable via `hivemem.hooks.relevance-threshold` or the `?threshold=` query param.
 
-The keyword signal is BM25 and moves the total: the best lexical match of the prompt gets the full keyword weight (0.10), and a cell that shares no word with the prompt scores 0, as before. The earlier full-text signal gave about 0.9 to nearly every cell that shared any word with the prompt, and because there are no stop words that is nearly every cell. A candidate that shares only common words with the prompt now scores close to 0 and loses most of that contribution, up to about 0.09 of its total at the same threshold, so the hook injects less. The default threshold was chosen with the earlier offset in place and may need re-tuning.
+The keyword signal is BM25 and moves the total: the best lexical match of the prompt gets the full keyword weight (0.10), and a cell that shares no word with the prompt scores 0, as before. The earlier full-text signal gave about 0.9 to nearly every cell that shared any word with the prompt, and because there are no stop words that is nearly every cell. A candidate that shares only common words with the prompt now scores close to 0 and loses most of that contribution, up to about 0.09 of its total at the same threshold, so the hook injects less. The default threshold was chosen with the earlier offset in place and may need re-tuning. A prompt of more than 64 distinct words, or with fewer than two rare words (words found in at most half of the cells), gets the BM25 keyword score without the proximity component that ranks up cells in which the rare words stand close together.
 
 ## Stage 4 — Semantic Floor
 
