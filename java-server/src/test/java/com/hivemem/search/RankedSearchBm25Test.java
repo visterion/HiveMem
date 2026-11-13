@@ -255,6 +255,65 @@ class RankedSearchBm25Test {
         assertThat(search(null, "empty", null)).isEmpty();
     }
 
+    @Test
+    void annOnlyCandidateStillGetsItsKeywordScore() {
+        // 201 short cells hold "kiwi"; one long cell holds it too, so its BM25 is the lowest and it falls
+        // out of the keyword pool (200). Only it has an embedding: it enters through the ANN pool.
+        List<String> contents = new ArrayList<>();
+        for (int i = 0; i < 20; i++) {
+            contents.add("background note " + i);
+            insertCell("a", contents.get(i), null, "committed", false);
+        }
+        for (int i = 0; i < 201; i++) {
+            String text = "kiwi note " + i;
+            contents.add(text);
+            insertCell("a", text, null, "committed", false);
+        }
+        String longText = "kiwi " + "pad ".repeat(3000);
+        contents.add(longText);
+        UUID target = insertCellWithEmbedding("a", longText);
+
+        // Precondition: without the embedding the pool is full and the long cell is not in it.
+        List<Row> poolOnly = searchAll("kiwi", false);
+        assertThat(poolOnly).hasSize(200);
+        assertThat(poolOnly).extracting(r -> r.id).doesNotContain(target);
+
+        // With it, the cell comes back, and its keyword score is its BM25 over the best BM25 of the query.
+        List<Row> rows = searchAll("kiwi", true);
+        assertThat(rows).hasSize(201);
+        double n = contents.size();
+        double avgdl = contents.stream().mapToDouble(c -> c.getBytes(java.nio.charset.StandardCharsets.UTF_8).length)
+                .average().orElseThrow();
+        double idf = Math.log(1 + (n - 202 + 0.5) / (202 + 0.5));
+        java.util.function.ToDoubleFunction<String> bm25 = c -> idf * 2.5
+                / (1 + 1.5 * (0.25 + 0.75 * c.getBytes(java.nio.charset.StandardCharsets.UTF_8).length / avgdl));
+        double best = contents.stream().filter(c -> c.startsWith("kiwi")).mapToDouble(bm25).max().orElseThrow();
+        Row hit = rows.stream().filter(r -> r.id.equals(target)).findFirst().orElseThrow();
+        assertThat(hit.kw).isGreaterThan(0f);
+        assertThat((double) hit.kw).isCloseTo(bm25.applyAsDouble(longText) / best,
+                org.assertj.core.data.Offset.offset(1e-4));
+    }
+
+    @Test
+    void queryOfCommonWordsOnlyFillsTheKeywordScale() {
+        // Characterisation of a known limitation (whole-branch review finding I2, the owner's decision is
+        // pending): a word that occurs in no cell is dropped from the query before scoring, so a query
+        // whose distinctive words are absent from the store is scored on its common words alone, and
+        // the best of those cells scores 1.0 on the keyword scale. Not a fix; this pins today's behaviour.
+        for (int i = 0; i < 12; i++) {
+            insertCell("a", "alpha beta note " + i + " " + "pad ".repeat(i * 5), null, "committed", false);
+        }
+        insertCell("a", "alpha only here", null, "committed", false);
+        insertCell("a", "something else entirely", null, "committed", false);
+
+        List<Row> withAbsent = search("alpha beta qqqqzzzz wwwwxxxx", "a", null);
+        List<Row> commonOnly = search("alpha beta", "a", null);
+
+        assertThat(withAbsent).hasSize(13);
+        assertThat(withAbsent.get(0).kw).isEqualTo(1.0f);
+        assertThat(withAbsent).isEqualTo(commonOnly);
+    }
+
     // ---- helpers ----
 
     private record Row(UUID id, float kw) {
@@ -285,6 +344,21 @@ class RankedSearchBm25Test {
                 binds);
         List<Row> rows = new ArrayList<>();
         for (Record r : result) {
+            rows.add(new Row((UUID) r.get("id"), ((Number) r.get("score_keyword")).floatValue()));
+        }
+        return rows;
+    }
+
+    /** Like search, but with a limit large enough to see the whole keyword pool, and optionally the embedding. */
+    private List<Row> searchAll(String query, boolean withEmbedding) {
+        List<Row> rows = new ArrayList<>();
+        for (Record r : dsl.fetch(
+                "SELECT id, score_keyword FROM ranked_search("
+                        + "query_embedding => " + (withEmbedding ? "'" + EMBEDDING + "'::vector" : "NULL::vector")
+                        + ", query_text => ?, p_limit => 500, "
+                        + "p_weight_semantic => 0, p_weight_keyword => 1, p_weight_recency => 0, "
+                        + "p_weight_importance => 0, p_weight_popularity => 0, p_weight_graph_proximity => 0, "
+                        + "p_realm => 'a')", query)) {
             rows.add(new Row((UUID) r.get("id"), ((Number) r.get("score_keyword")).floatValue()));
         }
         return rows;

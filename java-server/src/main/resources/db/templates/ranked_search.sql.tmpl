@@ -94,9 +94,9 @@ LANGUAGE SQL STABLE SET hnsw.ef_search = 500 AS $$
     -- `wnd`, whether the window applies at all: at least two rare terms (with one, every cell that
     -- holds the term has full coverage, so the window orders nothing) and at most 64 distinct
     -- query lexemes (the row count of `terms`, before terms without a match are dropped). The
-    -- window joins the positions of a candidate's rare terms with themselves, which grows
-    -- quadratically with the number of query terms; a whole document passed as the query text
-    -- must not pay for that. When `wnd` is false the keyword score is plain BM25.
+    -- window costs time in proportion to the rare-term positions of the 100 candidates, and every
+    -- window sums over the idf rows; a whole document passed as the query text would make both
+    -- large and must not pay for that. When `wnd` is false the keyword score is plain BM25.
     q AS (
         SELECT to_tsquery('simple', string_agg('''' || replace(lex, '''', '''''') || '''', ' | ')) AS tsq,
                array_agg(lex) AS lexes,
@@ -172,22 +172,22 @@ LANGUAGE SQL STABLE SET hnsw.ef_search = 500 AS $$
         WHERE p.pos < 16383
     ),
     -- Best window per candidate: for every position a of a rare term, the distinct rare terms
-    -- found in [a, a + 30), weighted by idf; the maximum over a. Computed as an equijoin on the
-    -- document id, NOT as a correlated lateral subquery over `pp`: the lateral form scans all
-    -- positions of all candidates for every position and is far slower.
+    -- found in [a, a + 30), weighted by idf; the maximum over a. A window frame over the sorted
+    -- positions of one document collects the lexemes of the 30 positions starting at the current
+    -- one (RANGE ... 29 FOLLOWING on the integer position is exactly [a, a + 30), rows at the same
+    -- position included). `idf` has one row per lexeme, so `i.lex = ANY(f.lx)` counts every
+    -- distinct rare lexeme once. The cost is proportional to the number of rare-term positions of
+    -- the 100 candidates (each window is one frame and one sum over the at most 64 idf rows).
     win AS (
-        SELECT w.id, max(w.s) AS best
+        SELECT f.id,
+               max((SELECT sum(i.idf) FROM idf i WHERE i.lex = ANY(f.lx))) AS best
         FROM (
-            SELECT x.id, x.pos, sum(i.idf) AS s
-            FROM (
-                SELECT DISTINCT a.id, a.pos, b.lexeme
-                FROM pp a
-                JOIN pp b ON b.id = a.id AND b.pos >= a.pos AND b.pos < a.pos + 30
-            ) x
-            JOIN idf i ON i.lex = x.lexeme
-            GROUP BY x.id, x.pos
-        ) w
-        GROUP BY w.id
+            SELECT pp.id,
+                   array_agg(pp.lexeme) OVER (PARTITION BY pp.id ORDER BY pp.pos
+                                              RANGE BETWEEN CURRENT ROW AND 29 FOLLOWING) AS lx
+            FROM pp
+        ) f
+        GROUP BY f.id
     ),
     -- Lexical score: BM25 plus 4 * coverage * (best BM25 of the query) for the candidates, plain
     -- BM25 for every other matching document. No non-candidate can outrank a candidate, so the

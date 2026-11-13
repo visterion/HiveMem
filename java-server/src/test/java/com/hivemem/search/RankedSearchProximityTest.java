@@ -19,6 +19,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -270,6 +271,68 @@ class RankedSearchProximityTest {
         assertScores(rows, 2, Map.of(many, 0.5, far, 0.5), "zork", "quib");
     }
 
+    @Test
+    void positionHeavyCandidatesKeepExactCoverage() {
+        // Ten rare terms of strictly decreasing rarity (term k is also in k extra one-term cells), each
+        // about 250 times per cell: about 2,500 rare-term positions in each of the four cells below.
+        // The occurrences of one term stand in runs (the same term next to itself costs no coverage);
+        // runs of different terms are 41 positions apart, so only the deliberate adjacencies count.
+        String[] t = {"rarea", "rareb", "rarec", "rared", "raree", "raref", "rareg", "rareh", "rarei", "rarej"};
+        addFillers(30);
+        StringBuilder all = new StringBuilder(t[0]);
+        for (int k = 1; k < t.length; k++) {
+            all.append(' ').append(t[k]);
+        }
+        String ten = all.toString();
+        Set<Integer> five = Set.of(1, 3, 5, 7, 9);
+
+        // A: the ten terms once next to each other, everything else in runs: full coverage.
+        UUID a = add(ten + pad(40) + runs(t, Set.of(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
+        // B: no two different terms within 30 positions: the best window holds the single rarest term.
+        UUID b = add(runs(t, Set.of()));
+        // C: five of the ten terms next to each other once, otherwise isolated.
+        UUID c = add(String.join(" ", five.stream().sorted().map(k -> t[k]).toList())
+                + pad(40) + runs(t, five));
+        // D: like B, plus one adjacent pair of the two rarest terms beyond position 16,383, where the
+        // tsvector stores every position as 16,383: that pair must not count.
+        UUID d = add(runs(t, Set.of()) + pad(14_000) + " " + t[0] + " " + t[1]);
+        List<UUID> extras = new ArrayList<>();
+        for (int k = 0; k < t.length; k++) {
+            for (int i = 0; i < k; i++) {
+                extras.add(add(t[k] + " pad note"));
+            }
+        }
+
+        List<Row> rows = search(String.join(" ", t));
+
+        double n = docs.size();
+        double[] idf = new double[t.length];
+        double sum = 0;
+        for (int k = 0; k < t.length; k++) {
+            String term = t[k];
+            long df = docs.values().stream().filter(doc -> tf(doc, term) > 0).count();
+            assertThat(df / n).as("term %s stays rare", term).isLessThanOrEqualTo(0.5);
+            idf[k] = Math.log(1 + (n - df + 0.5) / (df + 0.5));
+            sum += idf[k];
+        }
+        double fiveSum = five.stream().mapToDouble(k -> idf[k]).sum();
+        Map<UUID, Double> coverage = new HashMap<>();
+        coverage.put(a, 1.0);
+        coverage.put(b, idf[0] / sum);
+        coverage.put(c, fiveSum / sum);
+        coverage.put(d, idf[0] / sum);
+        int e = 0;
+        for (int k = 0; k < t.length; k++) {
+            for (int i = 0; i < k; i++) {
+                coverage.put(extras.get(e++), idf[k] / sum);
+            }
+        }
+        // The expectations differ from one another, so a window that merged terms, dropped a run or
+        // counted the clamped pair would change a score.
+        assertThat(idf[0]).isGreaterThan(idf[1]).isGreaterThan(idf[9]);
+        assertScores(rows, 4 + extras.size(), coverage, t);
+    }
+
     // ---- expectations ----
 
     /**
@@ -341,6 +404,15 @@ class RankedSearchProximityTest {
 
     private static String pad(int words) {
         return " pad".repeat(words);
+    }
+
+    /** One run of 250 occurrences per term (249 for the terms in {@code shorter}), 40 filler words after each. */
+    private static String runs(String[] terms, Set<Integer> shorter) {
+        StringBuilder sb = new StringBuilder();
+        for (int k = 0; k < terms.length; k++) {
+            sb.append((" " + terms[k]).repeat(shorter.contains(k) ? 249 : 250)).append(pad(40));
+        }
+        return sb.toString();
     }
 
     private static String unknownWords(int count) {
