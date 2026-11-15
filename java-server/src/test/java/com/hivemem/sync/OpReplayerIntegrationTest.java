@@ -20,6 +20,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
+import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -337,12 +338,12 @@ class OpReplayerIntegrationTest {
         payload.put("new_summary", "revised summary");
         payload.put("status", "committed");
 
-        OpDto op = new OpDto(32L, UUID.randomUUID(), "revise_cell", payload, OffsetDateTime.now());
+        OpDto op = new OpDto(99L, UUID.randomUUID(), "revise_cell", payload, OffsetDateTime.now());
         assertThat(replayer.replay(sourcePeer, op)).isEqualTo(OpReplayer.ReplayResult.REPLAYED);
 
         var newRow = dsl.fetchOne("SELECT valid_from FROM cells WHERE id = ?", newId);
         assertThat(newRow.get("valid_from", OffsetDateTime.class).toInstant())
-                .isEqualTo(java.time.Instant.parse("2024-03-05T10:00:00Z"));
+                .isEqualTo(Instant.parse("2024-03-05T10:00:00Z"));
         var oldRow = dsl.fetchOne("SELECT valid_until FROM cells WHERE id = ?", oldId);
         assertThat(oldRow.get("valid_until", OffsetDateTime.class)).isNotNull();
     }
@@ -747,6 +748,27 @@ class OpReplayerIntegrationTest {
         assertThat(row.get("valid_from", OffsetDateTime.class).toInstant())
                 .isEqualTo(OffsetDateTime.parse("2026-01-15T00:00:00Z").toInstant());
         assertThat(row.get("tags", String[].class)).contains("steuerrelevant", "tax_scanned");
+    }
+
+    @Test
+    void repairOpReplaysOntoTheCurrentRow() {
+        UUID cellId = insertMinimalCell();
+        Instant restored = Instant.parse("2023-06-15T00:00:00Z");
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.put("cell_id", cellId.toString());
+        payload.putNull("document_type");
+        payload.putNull("topic");
+        payload.put("valid_from", restored.toString());
+        payload.putArray("add_tags");
+        payload.put("agent_id", "system-repair");
+
+        OpDto op = new OpDto(100L, UUID.randomUUID(), "update_cell_meta", payload, OffsetDateTime.now());
+        assertThat(replayer.replay(sourcePeer, op)).isEqualTo(OpReplayer.ReplayResult.REPLAYED);
+
+        var row = dsl.fetchOne("SELECT document_type, topic, valid_from FROM cells WHERE id = ?", cellId);
+        assertThat(row.get("valid_from", OffsetDateTime.class).toInstant()).isEqualTo(restored);
+        assertThat(row.get("topic", String.class)).isEqualTo("test");
+        assertThat(row.get("document_type", String.class)).isNull();
     }
 
     @Test

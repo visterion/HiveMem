@@ -312,9 +312,11 @@ On startup, any live committed cell with a NULL embedding and content longer tha
 
 Before revisions kept the event time of the version they replace, every revision gave the new row `valid_from = now()` and so threw away the cell's event date. `POST /admin/backfill-event-time` restores it. The rule: starting at the lineage root, a row inherits the event time unless its `valid_from` was set on purpose (it differs from both its own `created_at` and its parent's `valid_from`); the current row of each lineage gets that event time back.
 
-Run the dry run first (the default) and read `candidates`, `by_status`, `shift` and the listed cells. The real run (`dry_run=false`) writes to the live store, one transaction per cell, and appends an `update_cell_meta` op per updated cell — get the owner's authorization before running it. It is paged by `limit` (default 200, clamped to 1…1000); repeat until `remaining` is 0. A cell revised or re-dated since the query is skipped, not overwritten.
+Run the dry run first (the default) and read `candidates`, `by_status`, `shift` and the listed cells. The real run (`dry_run=false`) writes to the live store, one transaction per cell, and appends an `update_cell_meta` op per updated cell — get the owner's authorization before running it. It is paged by `limit` (default 200, clamped to 1…1000); repeat until `remaining` is 0. A cell revised or re-dated since the query is skipped, not overwritten (`skipped`); a cell whose update or op append throws is rolled back, logged by id and counted in `failed`, and the run continues with the next cell. A failed cell stays a candidate, so a later run retries it.
 
-To undo, set each listed `old_valid_from` back on its cell.
+The `shift` counters count restores that move a date earlier by more than the interval; a restore to a later date is counted only in `event_time_later`.
+
+**Save the response of every real run** — it is the only list of the old values. To undo, set the listed `old_valid_from` back on the cell's current version: the listed `cell_id` while it is still current; if the cell was revised since, the current version of that lineage, which copied the restored date. An undo by SQL appends no op and is therefore not replicated to peers.
 
 ```bash
 curl -s -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
@@ -322,7 +324,7 @@ curl -s -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
 # dry run → {"dry_run":true,"candidates":12,"by_status":{"committed":12},"shift":{...},"cells":[...]}
 curl -s -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
   "https://example.com/admin/backfill-event-time?dry_run=false&limit=200"
-# → {"dry_run":false,"updated":12,"skipped":0,"remaining":0,"cells":[...]}
+# → {"dry_run":false,"updated":12,"skipped":0,"failed":0,"remaining":0,"cells":[...]}
 ```
 
 ### Retro-dedup of existing scans

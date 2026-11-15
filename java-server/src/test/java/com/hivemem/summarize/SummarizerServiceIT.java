@@ -213,7 +213,7 @@ class SummarizerServiceIT {
 
         String inner = "{"
                 + "\"document_type\":\"invoice\","
-                + "\"summary\":\"Malerrechnung.\","
+                + "\"summary\":\"Painter invoice.\","
                 + "\"key_points\":[],"
                 + "\"insight\":null,"
                 + "\"tags\":[],"

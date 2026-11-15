@@ -1213,6 +1213,7 @@ class ReadToolIntegrationTest {
         assertThat(content).hasSize(2);
         assertThat(content.get(0).path("summary").asText()).isEqualTo("Dated V1");
         assertThat(content.get(1).path("summary").asText()).isEqualTo("Dated V2");
+        assertThat(content.get(1).path("parent_id").asText()).isEqualTo(content.get(0).path("id").asText());
     }
 
     @Test
@@ -1226,6 +1227,9 @@ class ReadToolIntegrationTest {
         assertThat(content).hasSize(2);
         assertThat(content.get(0).path("summary").asText()).isEqualTo("Middle V1");
         assertThat(content.get(1).path("summary").asText()).isEqualTo("Middle V2");
+        for (JsonNode version : content) {
+            assertThat(version.path("id").asText()).isNotEqualTo(historyId(523).toString());
+        }
     }
 
     private static UUID historyId(int n) {

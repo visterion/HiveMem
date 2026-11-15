@@ -33,7 +33,10 @@ public class EventTimeRepairService {
         this.pushDispatcher = pushDispatcher;
     }
 
-    /** Dry run: reports what a real run would change and writes nothing. */
+    /**
+     * Dry run: reports what a real run would change and writes nothing. Every call walks all
+     * lineages of the store, which is acceptable for a one-time repair.
+     */
     public Map<String, Object> preview(int limit) {
         List<EventTimeCandidate> candidates = repository.findCandidates();
         Map<String, Integer> byStatus = new TreeMap<>();
@@ -70,14 +73,24 @@ public class EventTimeRepairService {
     /**
      * Real run: restores the first {@code limit} candidates. Each cell is updated and logged in its
      * own transaction, so a failure on one cell does not undo cells already repaired. A cell that
-     * changed since the query is skipped and logged nowhere.
+     * changed since the query is skipped and logged nowhere; a cell that throws is counted as failed
+     * and the run continues. Every call walks all lineages of the store (the real run twice), which
+     * is acceptable for a one-time repair.
      */
     public Map<String, Object> repair(int limit) {
         List<EventTimeCandidate> batch = repository.findCandidates().stream().limit(limit).toList();
         List<EventTimeCandidate> updatedCells = new ArrayList<>();
         int skipped = 0;
+        int failed = 0;
         for (EventTimeCandidate c : batch) {
-            UUID opId = repository.inTransaction(() -> repairOne(c));
+            UUID opId;
+            try {
+                opId = repository.inTransaction(() -> repairOne(c));
+            } catch (RuntimeException e) {
+                failed++;
+                log.warn("event-time repair failed for cell {}: {}", c.cellId(), e.getMessage());
+                continue;
+            }
             if (opId == null) {
                 skipped++;
                 continue;
@@ -86,12 +99,13 @@ public class EventTimeRepairService {
             // Dispatch after the commit: the op must be visible to the push before it is sent.
             pushDispatcher.dispatch(opId);
         }
-        log.info("event-time repair: updated={} skipped={}", updatedCells.size(), skipped);
+        log.info("event-time repair: updated={} skipped={} failed={}", updatedCells.size(), skipped, failed);
 
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("dry_run", false);
         body.put("updated", updatedCells.size());
         body.put("skipped", skipped);
+        body.put("failed", failed);
         body.put("remaining", repository.findCandidates().size());
         body.put("cells", describe(updatedCells));
         return body;

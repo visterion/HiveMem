@@ -83,6 +83,21 @@ class ReviseCellEventTimeIT {
         assertThat(current.get("valid_until")).isNull();
         assertThat(current.get("created_at", OffsetDateTime.class)).isAfter(EVENT_TIME);
         assertThat(row(oldId).get("valid_until")).isNotNull();
+        assertThat(row(oldId).get("valid_until", OffsetDateTime.class).toInstant())
+                .isEqualTo(current.get("created_at", OffsetDateTime.class).toInstant());
+    }
+
+    @Test
+    void revisionWithKeyPointsAndInsightKeepsEventTime() {
+        UUID oldId = addCell(EVENT_TIME);
+
+        Map<String, Object> result = service.reviseCell(
+                principal, oldId, "revised content", "revised summary", List.of("point"), "insight");
+        UUID newId = UUID.fromString(result.get("new_id").toString());
+
+        assertThat(row(newId).get("valid_from", OffsetDateTime.class).toInstant())
+                .isEqualTo(EVENT_TIME.toInstant());
+        assertThat(row(newId).get("valid_until")).isNull();
     }
 
     @Test

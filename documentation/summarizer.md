@@ -36,6 +36,8 @@ Each successful run persists, on a new revision of the cell:
   content exceeds the embedding backend's character cap)
 - `key_points`, `insight`, `tags` — the curated metadata the LLM returns
 - `document_type` — the inferred profile type (invoice / contract / other)
+- `valid_from` — becomes the document's own date when one is found; otherwise the cell keeps
+  its event time (the revision no longer moves it)
 - extracted facts — written to the knowledge graph (see [extraction](extraction.md))
 
 If the LLM returns no summary, the cell is **not** revised; the `needs_summary` tag is

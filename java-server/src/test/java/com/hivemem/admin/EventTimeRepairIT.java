@@ -102,10 +102,10 @@ class EventTimeRepairIT {
         assertThat(result.keySet()).containsExactly("dry_run", "candidates", "by_status", "shift", "cells");
         assertThat(result.get("dry_run")).isEqualTo(true);
         assertThat(result.get("candidates")).isEqualTo(8);
-        assertThat((Map<String, Object>) result.get("by_status"))
+        assertThat(map(result.get("by_status")))
                 .containsEntry("committed", 6).containsEntry("rejected", 1).containsEntry("pending", 1)
                 .hasSize(3);
-        assertThat((Map<String, Object>) result.get("shift"))
+        assertThat(map(result.get("shift")))
                 .containsEntry("over_1_hour", 7).containsEntry("over_1_day", 7)
                 .containsEntry("over_30_days", 7).containsEntry("over_365_days", 1)
                 .containsEntry("event_time_later", 1);
@@ -141,6 +141,7 @@ class EventTimeRepairIT {
         assertThat(result.get("dry_run")).isEqualTo(false);
         assertThat(result.get("updated")).isEqualTo(8);
         assertThat(result.get("skipped")).isEqualTo(0);
+        assertThat(result.get("failed")).isEqualTo(0);
         assertThat(result.get("remaining")).isEqualTo(0);
         assertThat(cells(result)).hasSize(8);
         Map<UUID, Instant> after = validFromByCell();
@@ -243,6 +244,38 @@ class EventTimeRepairIT {
                 id(21).toString()).get("n", Integer.class)).isEqualTo(0);
     }
 
+    @Test
+    void aFailingCellDoesNotAbortTheRun() {
+        Map<UUID, Instant> before = validFromByCell();
+        EventTimeRepairRepository failingOnce = new EventTimeRepairRepository(dsl) {
+            @Override
+            public int compareAndSetValidFrom(UUID cellId, OffsetDateTime expectedOld, OffsetDateTime newValue) {
+                if (cellId.equals(id(21))) {
+                    throw new IllegalStateException("synthetic failure");
+                }
+                return super.compareAndSetValidFrom(cellId, expectedOld, newValue);
+            }
+        };
+        int opsBefore = opsCount();
+
+        Map<String, Object> result =
+                new EventTimeRepairService(failingOnce, opLogWriter, new NoopPushDispatcher()).repair(200);
+
+        assertThat(result.keySet())
+                .containsExactly("dry_run", "updated", "skipped", "failed", "remaining", "cells");
+        assertThat(result.get("updated")).isEqualTo(7);
+        assertThat(result.get("skipped")).isEqualTo(0);
+        assertThat(result.get("failed")).isEqualTo(1);
+        assertThat(result.get("remaining")).isEqualTo(1);
+        assertThat(cells(result)).extracting(c -> UUID.fromString((String) c.get("cell_id")))
+                .doesNotContain(id(21)).hasSize(7);
+        assertThat(validFromByCell().get(id(21))).isEqualTo(before.get(id(21)));
+        assertThat(opsCount()).isEqualTo(opsBefore + 7);
+        assertThat(dsl.fetchOne("SELECT count(*) AS n FROM ops_log WHERE payload->>'cell_id' = ?",
+                id(21).toString()).get("n", Integer.class)).isEqualTo(0);
+        assertThat(repository.findCandidates()).extracting(EventTimeCandidate::cellId).containsExactly(id(21));
+    }
+
     // ── seeding ────────────────────────────────────────────────────────────
 
     private void seedLineages() {
@@ -332,8 +365,16 @@ class EventTimeRepairIT {
     }
 
     @SuppressWarnings("unchecked")
+    private static <T> T cast(Object value) {
+        return (T) value;
+    }
+
+    private static Map<String, Object> map(Object value) {
+        return cast(value);
+    }
+
     private static List<Map<String, Object>> cells(Map<String, Object> result) {
-        return (List<Map<String, Object>>) result.get("cells");
+        return cast(result.get("cells"));
     }
 
     private static Instant instant(Object text) {
