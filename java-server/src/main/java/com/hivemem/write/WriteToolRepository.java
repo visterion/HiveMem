@@ -441,7 +441,8 @@ public class WriteToolRepository {
             Record timestampRow = tx.fetchOne("SELECT now() AS ts");
             OffsetDateTime revisionTimestamp = timestampRow.get("ts", OffsetDateTime.class);
             Record oldRow = tx.fetchOne("""
-                    SELECT realm, signal, topic, source, tags, importance, summary, key_points, insight, actionability
+                    SELECT realm, signal, topic, source, tags, importance, summary, key_points, insight, actionability,
+                           valid_from
                     FROM cells
                     WHERE id = ? AND valid_until IS NULL
                     FOR UPDATE
@@ -485,7 +486,9 @@ public class WriteToolRepository {
                     oldRow.get("actionability", String.class),
                     status,
                     createdBy,
-                    revisionTimestamp
+                    // The revision keeps the event time of the version it replaces; the revision
+                    // time itself lives in the old row's valid_until and the new row's created_at.
+                    oldRow.get("valid_from", OffsetDateTime.class)
             );
             UUID newId = newRow.get("id", UUID.class);
             // Carry cell↔attachment links to the new revision so the current cell stays linked to its

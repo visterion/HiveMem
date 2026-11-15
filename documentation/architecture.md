@@ -202,6 +202,7 @@ Unknown or blank language falls back to the instance default language (`HIVEMEM_
 - Accepted formats: `YYYY-MM-DD` (strict ISO), `YYYY-MM` (expanded to first of month), `YYYY` (expanded to Jan 1).
 - Plausibility window: `1970-01-01` … today + 1 day. Values outside the window are discarded.
 - When a valid date is parsed, the cell's `valid_from` is set to that date so that timeline views and sort-by-date reflect the document's own date rather than the ingest timestamp.
+- A revision (summarizer, OCR, enrichment, `revise_cell`) keeps the event time of the version it replaces; a document date written afterwards replaces it.
 
 ### Image EXIF & geolocation
 

@@ -30,7 +30,7 @@ public class ReviseCellToolHandler implements ToolHandler {
 
     @Override
     public String description() {
-        return "Revise a cell by closing the current version and inserting a new one.";
+        return "Revise a cell by closing the current version and inserting a new one. The new version keeps the cell's event time (valid_from).";
     }
 
     @Override

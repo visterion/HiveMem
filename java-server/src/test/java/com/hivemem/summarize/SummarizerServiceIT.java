@@ -202,6 +202,37 @@ class SummarizerServiceIT {
         }
     }
 
+    /**
+     * A revision keeps the cell's event time: when the summarizer finds no document_date fact, the
+     * revised row carries the original valid_from, not the revision time.
+     */
+    @Test
+    void documentWithoutDate_keepsOriginalValidFrom() throws Exception {
+        OffsetDateTime eventTime = OffsetDateTime.parse("2024-03-05T10:00:00Z");
+        UUID id = seedLongCell(eventTime);
+
+        String inner = "{"
+                + "\"document_type\":\"invoice\","
+                + "\"summary\":\"Malerrechnung.\","
+                + "\"key_points\":[],"
+                + "\"insight\":null,"
+                + "\"tags\":[],"
+                + "\"facts\":[]"
+                + "}";
+        mockVistierie.stubComplete(inner.replace("\"", "\\\""));
+
+        buildService().summarizeOne(id);
+
+        try (Connection c = conn(); Statement st = c.createStatement();
+             ResultSet rs = st.executeQuery(
+                     "SELECT valid_from, parent_id FROM cells WHERE valid_until IS NULL")) {
+            assertTrue(rs.next(), "Expected a revised, current cell row");
+            assertEquals(id, rs.getObject("parent_id", UUID.class), "current row must be the revision");
+            assertThat(rs.getObject("valid_from", OffsetDateTime.class).toInstant())
+                    .isEqualTo(eventTime.toInstant());
+        }
+    }
+
     @Test
     void logsCostAndLatencyLineOnSummarize(CapturedOutput output) throws Exception {
         UUID id = seedLongCell();
@@ -220,13 +251,18 @@ class SummarizerServiceIT {
     // --- helpers ---
 
     private UUID seedLongCell() throws Exception {
+        return seedLongCell(null);
+    }
+
+    private UUID seedLongCell(OffsetDateTime validFrom) throws Exception {
+        String validFromSql = validFrom == null ? "now()" : "'" + validFrom + "'::timestamptz";
         UUID id = UUID.randomUUID();
         try (Connection c = conn(); Statement st = c.createStatement()) {
             String content = "a".repeat(2000);
             st.execute(
                     "INSERT INTO cells (id, content, realm, signal, status, tags, embedding, created_at, valid_from) "
                             + "VALUES ('" + id + "', '" + content + "', 'documents', 'facts', 'committed', "
-                            + "ARRAY['needs_summary']::text[], NULL, now(), now())");
+                            + "ARRAY['needs_summary']::text[], NULL, now(), " + validFromSql + ")");
         }
         return id;
     }

@@ -431,7 +431,8 @@ export class MockApiClient implements ApiClient {
       id: newId,
       content: args.new_content,
       summary: args.new_summary ?? old.summary,
-      valid_from: now,
+      // The new version keeps the event time; the revision time is the old version's valid_until.
+      valid_from: old.valid_from,
       valid_until: null,
     }
     old.valid_until = now

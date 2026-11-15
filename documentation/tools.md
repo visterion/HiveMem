@@ -59,7 +59,7 @@ HiveMem exposes **50 MCP tools** by default, across search, knowledge graph, pro
 32. `add_reference`: Store source documents/URLs.
 33. `link_reference`: Cite source for a cell.
 34. `remove_tunnel`: Expire a cell link.
-35. `revise_cell`: Create a new version of a cell, closing the current one. Required: `old_id`, `new_content`. Optional: `new_summary`, `key_points` (string array), `insight` — each carries the prior revision's value over unchanged when omitted (`new_summary`/`key_points`/`insight` are independent: e.g. passing only `key_points` leaves `new_summary` and `insight` as carried over). Use this to repair a cell whose `summary`/`key_points`/`insight` were corrupted (e.g. by a malformed client-side tool call), not just to update `new_content`.
+35. `revise_cell`: Create a new version of a cell, closing the current one. Required: `old_id`, `new_content`. Optional: `new_summary`, `key_points` (string array), `insight` — each carries the prior revision's value over unchanged when omitted (`new_summary`/`key_points`/`insight` are independent: e.g. passing only `key_points` leaves `new_summary` and `insight` as carried over). Use this to repair a cell whose `summary`/`key_points`/`insight` were corrupted (e.g. by a malformed client-side tool call), not just to update `new_content`. The new version keeps the cell's event time (`valid_from`); the revision time is the closed version's `valid_until` and the new version's `ingested_at`.
 36. `revise_fact`: Create a new version of a fact.
 37. `register_agent`: Add an agent to the fleet.
 38. `diary_write`: Agent-private reflection tool.
