@@ -86,6 +86,51 @@ Extended Mind, Forgetting Curve, Zettelkasten, PARA).
 
 **Docker images:** [`ghcr.io/visterion/hivemem:main`](https://github.com/visterion/HiveMem/pkgs/container/hivemem) for the rolling `main` branch, plus semver tags such as `ghcr.io/visterion/hivemem:9.1.5` for cut releases.
 
+## Benchmark: LongMemEval
+
+**HiveMem on the LongMemEval-S questions, asked against one shared memory of 18,464 sessions: 46.8 % answer accuracy, 821 ms p95 search latency** (as of 2026-11-13; config: search of [v9.43.0](https://github.com/visterion/HiveMem/tree/v9.43.0) with default weights, `snowflake-arctic-embed-l-v2.0` int8 on CPU, reader `claude-haiku-5-5`, judge `claude-sonnet-5-5`). This is not the published per-question setting; see [How this relates to published numbers](#how-this-relates-to-published-numbers).
+
+HiveMem's search is measured with its own harness in [`benchmarks/longmemeval/`](benchmarks/longmemeval/README.md) on [LongMemEval](https://github.com/xiaowu0162/LongMemEval) ([paper](https://arxiv.org/abs/2410.10813)). The setting is deliberately harder than the published one: all 18,464 distinct sessions of the dataset live in **one** memory and all 500 questions are asked against it, instead of one small store of about 50 sessions per question.
+
+| One shared memory, 18,464 sessions | Baseline 2026-11-12 | Current (v9.43.0) | BM25 only, no model |
+|---|---|---|---|
+| All evidence sessions in the top 5 (`recall_all@5`) | 0.204 | **0.360** | 0.274 |
+| At least one evidence session in the top 5 (`recall_any@5`) | 0.372 | **0.545** | 0.485 |
+| Answer accuracy from the top 5 sessions | 0.318 | **0.468** | 0.418 |
+| Search latency p50 / p95 | 825 ms / 2,933 ms | 582 ms / 821 ms | – |
+
+- The baseline was below plain BM25. The current search (a BM25 keyword signal with a proximity window, and new default weights) is above it in retrieval (46 questions won, 6 lost, p < 0.001) and in answers (48 won, 23 lost, p = 0.004; BM25 answers from the baseline run).
+- With the evidence sessions handed to the reader, answer accuracy is 0.936. Most of the distance to 0.468 is retrieval, not the reader model.
+- Weak spot: questions that need several sessions. `recall_all@5` is 0.157 for multi-session and for temporal-reasoning questions, and 0.000 for the 71 questions with three or more evidence sessions.
+- Latency includes embedding the query and was measured on a CPU-only development machine; machine load was not controlled.
+- The default weights were chosen on these same questions; a split-half check (weights chosen on one half, scored on the other) gives the same 0.360.
+
+Method, arms, safety guards and how to reproduce: [benchmark README](benchmarks/longmemeval/README.md). All tables of both runs: [Results](benchmarks/longmemeval/README.md#results).
+
+### How this relates to published numbers
+
+Published LongMemEval figures cannot be ranked against the table above, nor against each other: the published setting is one store of about 50 sessions per question, and every publisher chooses its own answer model, judge and retrieval depth. They are listed for orientation, each with its source.
+
+| System | Published figure | What the figure is | Source |
+|---|---|---|---|
+| GPT-4o reading the whole history, no memory system | 60.6 % | answer accuracy | [LongMemEval paper, Fig. 3(b)](https://arxiv.org/html/2410.10813v2) |
+| Zep | 71.2 % | answer accuracy, GPT-4o | [Zep paper, Table 2](https://arxiv.org/html/2501.13956v1) |
+| Hindsight | 83.6 % / 91.4 % | answer accuracy, open-source 20B model / scaled-up backbone | [Hindsight paper](https://arxiv.org/abs/2512.12818) |
+| Mastra Observational Memory | 84.23 % / 94.87 % | answer accuracy, GPT-4o / gpt-5-mini | [Mastra research](https://mastra.ai/research/observational-memory) |
+| Mem0 | 94.4 | score stated on Mem0's own page; metric, model and setting not given there | [Mem0 research](https://mem0.ai/research) |
+| Supermemory | 97 % | "Recall@20 with aggregation", as the publisher labels it | [Supermemory research](https://supermemory.ai/research) |
+| MemPalace | 96.6 % | retrieval recall R@5, no LLM | [MemPalace benchmarks](https://github.com/MemPalace/mempalace/blob/main/benchmarks/BENCHMARKS.md) |
+| BM25 only, no model, same per-question setting | 96.8 % | `recall_any@5`, measured for this project | [benchmark README](benchmarks/longmemeval/README.md#why-the-numbers-are-not-comparable-with-vendor-headlines) |
+| HiveMem's vectors, same per-question setting | 97.2 % | `recall_any@5`, measured for this project | [benchmark README](benchmarks/longmemeval/README.md#why-the-numbers-are-not-comparable-with-vendor-headlines) |
+
+What can and cannot be read from this:
+
+- **Retrieval in the published setting is saturated.** HiveMem's stored vectors reach 97.2 % `recall_any@5` there (84.3 % `recall_all@5`); plain BM25 without any model reaches 96.8 % (83.2 %), and the difference is not significant (30 questions won, 25 lost, p = 0.59). The HiveMem figure is the exact cosine similarity of the best of a session's cell vector and chunk vectors, computed on the stored vectors, not a run through the search endpoint.
+- **HiveMem has no answer-accuracy figure in the published setting yet.** The 46.8 % above comes from the harder shared memory, so it is not a rank among the answer-accuracy figures in this table.
+- **The reader model moves answer accuracy by itself.** Mastra reports 84.23 % and 94.87 % for the same memory with two answer models.
+
+Published figures as read from the linked pages on 2026-11-15.
+
 ## Highlights
 
 - **[6-Signal Ranked Search](documentation/tools.md#search-signals)** — Semantic similarity, keyword, recency, importance, popularity, and graph proximity — combined into one ranked result.
@@ -137,10 +182,6 @@ for details on every 🟡 / 🔴 row.
 | [Consumption folder — auto document separation](documentation/consumption.md) | ✅ Stable | Drop a stack of mixed scans into a network folder; HiveMem ingests off a bounded worker pool, OCRs each page (auto-oriented), and uses a Vistierie LLM agent to split by content — no separator/barcode sheets. High-confidence splits → `committed`, low-confidence → `pending`. The HiveMem→Vistierie run contract is reconciled; live in production. Reassembly of non-contiguous/shuffled pages is a separate roadmap item. |
 | [Inbox Archivist](documentation/archivist.md) | ✅ Stable | Vistierie agent auto-classifies `inbox` cells (realm/signal/topic) once enrichment settles, plus a daily safety-net cron; guarded webhooks require a reason on every move/skip; moves are logged (`archivist_log` MCP tool) and reversible. |
 
-## Benchmark
-
-HiveMem ships a retrieval and answer benchmark on LongMemEval-S in [`benchmarks/longmemeval/`](benchmarks/longmemeval/README.md): one shared corpus of 18,464 sessions, with HiveMem's search measured against BM25 and model-only controls. In the first baseline (2026-11-12) HiveMem's default search does not beat plain BM25 on this corpus (`recall_all@5` 0.204 against 0.274), while it is above its embedding model's plain cell-vector similarity (0.170). Answer accuracy with HiveMem's search results is 0.318 (BM25 0.418, with the gold sessions handed to the reader 0.936); the p95 search latency is 2,933 ms on a CPU-only development machine. The numbers and their limits are in the [Results section](benchmarks/longmemeval/README.md#results) of the benchmark README.
-
 ## Documentation
 
 | | |
@@ -156,7 +197,7 @@ HiveMem ships a retrieval and answer benchmark on LongMemEval-S in [`benchmarks/
 | [Hook Integration](documentation/hook/) | Auto-inject context into Claude Code sessions |
 | [Operations](documentation/operations.md) | Deployment, migrations, debugging |
 | [Roadmap](documentation/roadmap.md) | What's planned, what's partial, order of work |
-| [Benchmark](benchmarks/longmemeval/README.md) | LongMemEval-based retrieval and answer benchmark, method and baseline results |
+| [Benchmark](benchmarks/longmemeval/README.md) | LongMemEval-based retrieval and answer benchmark: method, results, and how they relate to published numbers |
 | [Document & Scan Pipeline](documentation/document-pipeline.md) | End-to-end overview: entry points, shared ingest core, the four enrichment paths |
 | [Consumption Folder](documentation/consumption.md) | Scan-to-folder ingest, automatic content-based document separation, config reference |
 | [Inbox Archivist](documentation/archivist.md) | Auto-classification of `inbox` cells into the right realm/signal/topic, trigger model, guarded tools, move log |

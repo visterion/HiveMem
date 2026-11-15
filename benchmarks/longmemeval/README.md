@@ -19,24 +19,30 @@ The harness answers it in two stages on the same data:
    of an arm, and a fixed judge model grades the answer with the upstream judge prompts. Both
    are Claude models called through the local `claude` CLI, so no API key is involved.
 
-The instrument is internal. It is not a leaderboard entry and not a marketing number.
+The instrument is internal. It is not a leaderboard entry, and its numbers are not comparable
+with per-question LongMemEval results.
 
 ## Why the numbers are not comparable with vendor headlines
 
-Published LongMemEval numbers from memory-system vendors are end-to-end answer accuracy
-with an LLM judge, but the answer model, the judge model, the judge prompt and the number of
-retrieved items differ from vendor to vendor. One vendor moves from 84 % to 95 % by swapping
+Most published LongMemEval numbers from memory-system vendors are end-to-end answer
+accuracy with an LLM judge, but the answer model, the judge model, the judge prompt and the
+number of retrieved items differ from vendor to vendor. One vendor moves from 84 % to 95 % by swapping
 the reader model alone; another reports 93 % for itself while third parties measure 47 to
 49 %. Retrieval-only headlines (for example 96.6 % `recall_any@5`) are computed with a fresh
 vector index per question, no LLM and none of the product's own code. No vendor compares
 itself with a plain vector store that uses the same embedding model. This README therefore
-does not compare against any of them.
+does not rank HiveMem against any of them; the project README lists
+published figures with their sources [for orientation](../../README.md#how-this-relates-to-published-numbers).
 
 Two settings are worth keeping apart:
 
 - **Upstream: one store per question.** Each question is asked against its own haystack of
   about 48 sessions. That setting is saturated: BM25 alone, with no model, reaches 0.968
-  `recall_any@5`. There is little left to measure.
+  `recall_any@5` (0.832 `recall_all@5`). HiveMem's stored vectors, scored there with the exact
+  `chunkmax` similarity outside the search endpoint, reach 0.972 (0.843); the difference from
+  BM25 is not significant (30 questions won, 25 lost, p = 0.59). Both figures come from a
+  one-off analysis of the baseline corpus on 2026-11-12, not from a command of this harness.
+  There is little left to measure.
 - **Here: one shared memory.** All 18,464 distinct sessions of the dataset live in one
   HiveMem, and all questions are asked against that one memory. That resembles real use (one
   large store) and is not saturated: BM25 reaches 0.274 `recall_all@5` and 0.485
@@ -309,6 +315,144 @@ The dataset and the reader and judge prompt templates come from
 Di Wu).
 
 ## Results
+
+Two full runs are recorded: the [current search](#current-search-v9430-2026-11-13) and the
+[baseline](#baseline-2026-11-12) it is compared with.
+
+| shared corpus, 18,464 documents | baseline 2026-11-12 | current search (v9.43.0) | `bm25` |
+| --- | --- | --- | --- |
+| `recall_all@5` | 0.204 | 0.360 | 0.274 |
+| `recall_any@5` | 0.372 | 0.545 | 0.485 |
+| answer accuracy | 0.318 | 0.468 | 0.418 |
+| `hivemem` latency p50 / p95 (ms) | 825 / 2,933 | 582 / 821 | - |
+
+### Current search (v9.43.0), 2026-11-13
+
+Run id `fix-window-frame-1`. It measures the search as released in v9.43.0 (commit `46f38db`):
+a BM25 keyword signal with a proximity window, and new default weights of the `balanced`
+profile (see `documentation/tools.md`). Terms and columns are those defined in "What this
+measures", "The arms" and [How to read the report](#how-to-read-the-report).
+
+- HiveMem built from commit `46f38db`; harness at commit `cc6aea5` (clean tree); dataset
+  sha256 `d6f21ea9d60a0d56f34a05b609c79c88a451d2ae03597821ea3d5a9678c3a442`.
+- Same corpus and the same stored vectors as the baseline: the run uses a copy of the
+  baseline database (18,464 documents, 77,287 chunks, embedding model unchanged).
+- Arms run: `bm25`, `hivemem` and `hivemem-semantic`. `cosine` and `chunkmax` are computed in
+  SQL on the stored vectors and do not depend on the search code; they were not run again,
+  and their baseline values apply. The `bm25` rankings are identical to the baseline's for
+  all 470 questions.
+- Answer stage: arm `hivemem` only, reader `claude-haiku-5-5`, judge `claude-sonnet-5-5`,
+  both served as requested. The answers of `bm25`, `cosine` and `oracle` are those of the
+  baseline run.
+
+#### Headline
+
+The report of this run prints "Headline not available", because its rule needs the `cosine`
+arm in the same run. Evaluated with the baseline's `cosine` rankings on the same vectors,
+`hivemem` beats both controls on `recall_all@5`:
+
+| comparison (recall_all@5) | b | c | z | p |
+| --- | --- | --- | --- | --- |
+| hivemem vs bm25 | 46 | 6 | 5.547 | 0.000 |
+| hivemem vs cosine (baseline run) | 91 | 2 | 9.229 | 0.000 |
+| hivemem vs chunkmax (baseline run) | 77 | 6 | 7.793 | 0.000 |
+| hivemem vs hivemem-semantic | 77 | 6 | 7.793 | 0.000 |
+| hivemem vs hivemem (baseline run) | 78 | 5 | 8.013 | 0.000 |
+
+The `p` column prints `0.000` for a value below 0.0005.
+
+#### Retrieval
+
+| arm | recall_all@5 | ndcg_any@5 | recall_all@10 | ndcg_any@10 | recall_any@5 | recall_all@50 |
+| --- | --- | --- | --- | --- | --- | --- |
+| bm25 | 0.274 | 0.333 | 0.343 | 0.359 | 0.485 | 0.557 |
+| hivemem | 0.360 | 0.395 | 0.428 | 0.420 | 0.545 | 0.594 |
+| hivemem-semantic | 0.209 | 0.256 | 0.260 | 0.278 | 0.374 | 0.436 |
+
+recall_all@5 cannot reach 1 for 3 questions whose gold set has more than 5 documents.
+
+#### By question type
+
+| group | n | bm25 | hivemem | hivemem-semantic |
+| --- | --- | --- | --- | --- |
+| knowledge-update | 72 | 0.361 | 0.597 | 0.181 |
+| multi-session | 121 | 0.091 | 0.157 | 0.066 |
+| single-session-assistant | 56 | 0.929 | 0.982 | 0.982 |
+| single-session-preference | 30 | 0.100 | 0.100 | 0.100 |
+| single-session-user | 64 | 0.359 | 0.453 | 0.234 |
+| temporal-reasoning | 127 | 0.110 | 0.157 | 0.031 |
+
+#### By gold set size
+
+| group | n | bm25 | hivemem | hivemem-semantic |
+| --- | --- | --- | --- | --- |
+| 1 | 170 | 0.500 | 0.559 | 0.441 |
+| 2 | 229 | 0.192 | 0.323 | 0.100 |
+| >=3 | 71 | 0.000 | 0.000 | 0.000 |
+
+#### By longest gold document (characters)
+
+| group | n | bm25 | hivemem | hivemem-semantic |
+| --- | --- | --- | --- | --- |
+| <=8000 | 50 | 0.880 | 0.940 | 0.900 |
+| 8001-12000 | 41 | 0.512 | 0.634 | 0.415 |
+| 12001-16000 | 186 | 0.188 | 0.306 | 0.102 |
+| >16000 | 193 | 0.150 | 0.202 | 0.088 |
+
+#### Diagnostics and latency
+
+| arm | top5_outside_haystack | top5_other_gold | top5_after_question_date | fewer_than_50 | empty_rankings | match_share | recency_min | recency_max |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| bm25 | 4.417 | 0.353 | 1.232 | 0 | 0 | - | - | - |
+| hivemem | 4.285 | 0.326 | 1.213 | 0 | 0 | 0.667 | 0.984 | 0.991 |
+| hivemem-semantic | 4.562 | 0.389 | 1.240 | 0 | 0 | 0.855 | 0.984 | 0.991 |
+
+`hivemem` latency in ms: p50 582.135, p95 821.449, max 1133.551
+
+#### Answer stage
+
+Questions graded: 500 of the run's 500.
+
+| arm | n | accuracy | knowledge-update | multi-session | single-session-assistant | single-session-preference | single-session-user | temporal-reasoning | abstention |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| hivemem | 500 | 0.468 | 0.628 | 0.293 | 0.982 | 0.267 | 0.571 | 0.323 | 0.700 |
+
+Paired comparison of answer correctness against the arms of the baseline run:
+
+| comparison | b | c | p |
+| --- | --- | --- | --- |
+| hivemem vs hivemem (baseline run) | 100 | 25 | 0.000 |
+| hivemem vs bm25 (baseline run) | 48 | 23 | 0.004 |
+| hivemem vs cosine (baseline run) | 104 | 27 | 0.000 |
+
+#### What the run shows
+
+1. `hivemem` is now above `bm25`, in retrieval (`recall_all@5` 0.360 against 0.274; 46
+   questions won, 6 lost) and in answer accuracy (0.468 against 0.418; 48 won, 23 lost,
+   p = 0.004).
+2. Against the baseline search on the same vectors, `recall_all@5` rises from 0.204 to 0.360
+   (78 won, 5 lost) and answer accuracy from 0.318 to 0.468 (100 won, 25 lost).
+3. The gain comes from the keyword side: `hivemem-semantic` is unchanged at 0.209.
+4. By question type, `recall_all@5` rises most for knowledge-update (0.181 to 0.597) and
+   single-session-user (0.219 to 0.453). Multi-session (0.066 to 0.157) and temporal-reasoning
+   (0.031 to 0.157) stay low, and no arm gets all gold documents into the top five for any of
+   the 71 questions with three or more gold documents.
+5. The `hivemem` latency falls to p50 582 ms, p95 821 ms, max 1,134 ms (baseline 825, 2,933
+   and 8,353 ms), measured on the same development machine; machine load was not controlled.
+6. Of the 30 abstention questions 21 are answered correctly (baseline 22).
+
+#### Limits of this run
+
+- The new default weights were chosen with a sweep on these 470 questions. A split-half check
+  (weights chosen on one half, scored on the other) gives the same 0.360; the figures are
+  still not from questions that played no part in the choice.
+- `cosine` and `chunkmax` and the answers of `bm25`, `cosine` and `oracle` are taken from the
+  baseline run on the same vectors.
+- One run. The paired tests cover question sampling, not run-to-run variation of the reader
+  and judge.
+- The setting is one shared corpus (see
+  [Why the numbers are not comparable with vendor headlines](#why-the-numbers-are-not-comparable-with-vendor-headlines));
+  the numbers cannot be compared with per-question LongMemEval results.
 
 ### Baseline 2026-11-12
 
