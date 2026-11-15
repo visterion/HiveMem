@@ -19,8 +19,9 @@ The harness answers it in two stages on the same data:
    of an arm, and a fixed judge model grades the answer with the upstream judge prompts. Both
    are Claude models called through the local `claude` CLI, so no API key is involved.
 
-The instrument is internal. It is not a leaderboard entry, and its numbers are not comparable
-with per-question LongMemEval results.
+The instrument is internal. It is not a leaderboard entry. Its shared-corpus numbers are not
+comparable with per-question LongMemEval results, and the one per-question measurement
+recorded below differs from published ones in reader and judge.
 
 ## Why the numbers are not comparable with vendor headlines
 
@@ -37,12 +38,15 @@ published figures with their sources [for orientation](../../README.md#how-this-
 Two settings are worth keeping apart:
 
 - **Upstream: one store per question.** Each question is asked against its own haystack of
-  about 48 sessions. That setting is saturated: BM25 alone, with no model, reaches 0.968
-  `recall_any@5` (0.832 `recall_all@5`). HiveMem's stored vectors, scored there with the exact
+  about 48 sessions. That setting is close to saturated for `recall_any@5`: BM25 alone, with
+  no model, reaches 0.968 (0.832 `recall_all@5`). HiveMem's stored vectors, scored there with the exact
   `chunkmax` similarity outside the search endpoint, reach 0.972 (0.843); the difference from
   BM25 is not significant (30 questions won, 25 lost, p = 0.59). Both figures come from a
   one-off analysis of the baseline corpus on 2026-11-12, not from a command of this harness.
-  There is little left to measure.
+  Through the search endpoint, restricted to the haystack with a tag filter, HiveMem reaches
+  0.981 (0.868); see [Per-question setting](#per-question-setting-v9430-2026-11-15). For
+  `recall_any@5` there is little left to measure; `recall_all@5` still separates the search
+  from BM25.
 - **Here: one shared memory.** All 18,464 distinct sessions of the dataset live in one
   HiveMem, and all questions are asked against that one memory. That resembles real use (one
   large store) and is not saturated: BM25 reaches 0.274 `recall_all@5` and 0.485
@@ -246,7 +250,8 @@ From upstream LongMemEval:
 - **Identical sessions are merged.** Hundreds of evidence sessions have a content twin under
   another id, so the corpus unit is the content, not the session id. A hit on a twin counts.
 - **One shared corpus** instead of one store per question, and no official session ids reach
-  HiveMem (they leak the label).
+  HiveMem (they leak the label). The one-off per-question measurement emulates per-question
+  stores with a tag filter; see [Per-question setting](#per-question-setting-v9430-2026-11-15).
 - **The judge verdict is parsed strictly.** The `claude` CLI offers no temperature or token
   cap, so a reply that does not start with a plain yes or no is not guessed at; unusable
   judgments stop the run instead of being counted.
@@ -316,8 +321,10 @@ Di Wu).
 
 ## Results
 
-Two full runs are recorded: the [current search](#current-search-v9430-2026-11-13) and the
-[baseline](#baseline-2026-11-12) it is compared with.
+Recorded: two full runs on the shared corpus, the
+[current search](#current-search-v9430-2026-11-13) and the [baseline](#baseline-2026-11-12)
+it is compared with, and one measurement of the current search in the
+[per-question setting](#per-question-setting-v9430-2026-11-15).
 
 | shared corpus, 18,464 documents | baseline 2026-11-12 | current search (v9.43.0) | `bm25` |
 | --- | --- | --- | --- |
@@ -325,6 +332,12 @@ Two full runs are recorded: the [current search](#current-search-v9430-2026-11-1
 | `recall_any@5` | 0.372 | 0.545 | 0.485 |
 | answer accuracy | 0.318 | 0.468 | 0.418 |
 | `hivemem` latency p50 / p95 (ms) | 825 / 2,933 | 582 / 821 | - |
+
+| per-question setting, current search (v9.43.0) | `hivemem` | `bm25` |
+| --- | --- | --- |
+| `recall_all@5` | 0.868 | 0.832 |
+| `recall_any@5` | 0.981 | 0.968 |
+| answer accuracy | 0.852 | - |
 
 ### Current search (v9.43.0), 2026-11-13
 
@@ -453,6 +466,101 @@ Paired comparison of answer correctness against the arms of the baseline run:
 - The setting is one shared corpus (see
   [Why the numbers are not comparable with vendor headlines](#why-the-numbers-are-not-comparable-with-vendor-headlines));
   the numbers cannot be compared with per-question LongMemEval results.
+
+### Per-question setting (v9.43.0), 2026-11-15
+
+Run id `t3-perquestion-tagfilter-1`. The published LongMemEval setting, measured through
+HiveMem's search endpoint: each question is ranked against its own haystack of about 48
+sessions only.
+
+- Same stack as the current search (HiveMem built from commit `46f38db`, same corpus and
+  vectors). The per-question store is emulated: every cell got one tag per question whose
+  haystack contains it (one to eight tags per cell, written by SQL into the disposable bench
+  database), and each question was searched with `where.tags` set to its own tag, default
+  profile, limit 50.
+- A one-off measurement with scripts outside this harness; `run.py` has no command for the
+  tagging and the filtered search. The answer stage is the harness's `qa` command on the
+  resulting rankings.
+- Checks: the unfiltered search returned the same top 10 as the run `fix-window-frame-1`
+  before and after tagging (25 of 25 sampled questions); no hit lay outside the question's
+  haystack; every ranking held between 38 and 50 documents.
+- Answer stage: 500 questions, top five sessions, reader `claude-haiku-5-5`, judge
+  `claude-sonnet-5-5`, both served as requested.
+
+#### Retrieval
+
+470 non-abstention questions, each ranked within its own haystack. `chunkmax`, `bm25` and
+`cosine` are the figures of the one-off analysis of 2026-11-12 on the same vectors, computed
+outside the search endpoint.
+
+| arm | recall_all@5 | recall_any@5 | recall_all@10 |
+| --- | --- | --- | --- |
+| hivemem (tag filter) | 0.868 | 0.981 | 0.930 |
+| chunkmax | 0.843 | 0.972 | 0.923 |
+| bm25 | 0.832 | 0.968 | 0.904 |
+| cosine | 0.834 | 0.955 | 0.921 |
+
+| comparison (recall_all@5) | b | c | p |
+| --- | --- | --- | --- |
+| hivemem vs chunkmax | 34 | 22 | 0.141 |
+| hivemem vs bm25 | 17 | 0 | 0.000 |
+
+`recall_all@5` by question type:
+
+| group | n | hivemem (tag filter) | chunkmax | bm25 |
+| --- | --- | --- | --- | --- |
+| knowledge-update | 72 | 0.972 | 0.917 | 0.958 |
+| multi-session | 121 | 0.727 | 0.744 | 0.653 |
+| single-session-assistant | 56 | 1.000 | 1.000 | 1.000 |
+| single-session-preference | 30 | 0.867 | 0.967 | 0.867 |
+| single-session-user | 64 | 1.000 | 0.953 | 1.000 |
+| temporal-reasoning | 127 | 0.819 | 0.740 | 0.764 |
+
+`hivemem` latency of the filtered search in ms: p50 88, p95 123.
+
+#### Answer stage
+
+Questions graded: 500 of the run's 500.
+
+| arm | n | accuracy | knowledge-update | multi-session | single-session-assistant | single-session-preference | single-session-user | temporal-reasoning | abstention |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| hivemem | 500 | 0.852 | 0.897 | 0.662 | 1.000 | 0.867 | 0.971 | 0.887 | 0.800 |
+
+Paired comparison of answer correctness with the same reader and judge:
+
+| comparison | b | c | p |
+| --- | --- | --- | --- |
+| per-question vs shared corpus (`fix-window-frame-1`) | 198 | 6 | 0.000 |
+| per-question vs oracle (baseline run) | 5 | 47 | 0.000 |
+
+The unweighted mean of the six question-type columns is 0.881.
+
+#### What the measurement shows
+
+1. Within a question's own haystack the search gets all gold documents into the top five for
+   0.868 of the questions, against 0.360 in the shared corpus. The difference is the sessions
+   written for other questions.
+2. `hivemem` is ahead of `bm25` on `recall_all@5` (17 questions won, none lost). It is not
+   distinguishable from `chunkmax` (34 won, 22 lost, p = 0.141).
+3. Answer accuracy is 0.852, against 0.468 in the shared corpus and 0.936 with the gold
+   sessions handed to the reader.
+4. The weakest type is multi-session: 0.727 in retrieval and 0.662 in answers.
+
+#### Limits of this measurement
+
+- The per-question store is emulated with a tag filter. The search draws its chunk candidates
+  (the 400 nearest chunks) from the whole store before the filter applies, so a haystack cell
+  whose chunks are not among them is scored on its cell vector alone; in a store holding only
+  the haystack every cell's best chunk would count. Only 32 % of the top-five hits carry a
+  chunk match here. How much this moves the ranking, and in which direction, was not
+  measured; a separate store per question was not built. BM25 statistics (document count,
+  average length, document frequencies) are computed over the filtered cells, as in a real
+  per-question store.
+- Reader and judge are Claude models; the published answer-accuracy figures whose judge is
+  stated use GPT-4o as judge. Accuracy is the share of all 500 questions, and the default
+  weights were chosen on these same questions in the shared corpus.
+- Not a harness command, and one run. The paired tests cover question sampling, not
+  run-to-run variation of the reader and judge.
 
 ### Baseline 2026-11-12
 

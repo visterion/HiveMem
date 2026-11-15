@@ -88,30 +88,32 @@ Extended Mind, Forgetting Curve, Zettelkasten, PARA).
 
 ## Benchmark: LongMemEval
 
-**HiveMem on the LongMemEval-S questions, asked against one shared memory of 18,464 sessions: 46.8 % answer accuracy, 821 ms p95 search latency** (as of 2026-11-13; config: search of [v9.43.0](https://github.com/visterion/HiveMem/tree/v9.43.0) with default weights, `snowflake-arctic-embed-l-v2.0` int8 on CPU, reader `claude-haiku-5-5`, judge `claude-sonnet-5-5`). This is not the published per-question setting; see [How this relates to published numbers](#how-this-relates-to-published-numbers).
+**HiveMem on LongMemEval-S: 85.2 % answer accuracy with each question searched only within its own haystack, 46.8 % against one shared memory of all 18,464 sessions** (as of 2026-11-15; config: search of [v9.43.0](https://github.com/visterion/HiveMem/tree/v9.43.0) with default weights, `snowflake-arctic-embed-l-v2.0` int8 on CPU, reader `claude-haiku-5-5`, judge `claude-sonnet-5-5`, top 5 sessions; the per-question store is emulated with a tag filter; a one-off measurement, not rank-comparable with published figures, see [below](#how-this-relates-to-published-numbers)). Search latency p95: 123 ms within a question's haystack, 821 ms over the shared memory.
 
-HiveMem's search is measured with its own harness in [`benchmarks/longmemeval/`](benchmarks/longmemeval/README.md) on [LongMemEval](https://github.com/xiaowu0162/LongMemEval) ([paper](https://arxiv.org/abs/2410.10813)). The setting is deliberately harder than the published one: all 18,464 distinct sessions of the dataset live in **one** memory and all 500 questions are asked against it, instead of one small store of about 50 sessions per question.
+HiveMem's search is measured with its own harness in [`benchmarks/longmemeval/`](benchmarks/longmemeval/README.md) on [LongMemEval](https://github.com/xiaowu0162/LongMemEval) ([paper](https://arxiv.org/abs/2410.10813)), in two settings. **Per question** uses the published haystacks: each of the 500 questions is asked against its own haystack of about 48 sessions; the store per question is emulated by restricting the search to that haystack with a tag filter. **Shared memory** is deliberately harder: all 18,464 distinct sessions of the dataset live in one memory and every question is asked against all of it.
 
-| One shared memory, 18,464 sessions | Baseline 2026-11-12 | Current (v9.43.0) | BM25 only, no model |
-|---|---|---|---|
-| All evidence sessions in the top 5 (`recall_all@5`) | 0.204 | **0.360** | 0.274 |
-| At least one evidence session in the top 5 (`recall_any@5`) | 0.372 | **0.545** | 0.485 |
-| Answer accuracy from the top 5 sessions | 0.318 | **0.468** | 0.418 |
-| Search latency p50 / p95 | 825 ms / 2,933 ms | 582 ms / 821 ms | – |
+| Search of v9.43.0 | Per question | Shared memory |
+|---|---|---|
+| Answer accuracy from the top 5 sessions | **0.852** | **0.468** |
+| All evidence sessions in the top 5 (`recall_all@5`) | 0.868 | 0.360 |
+| At least one evidence session in the top 5 (`recall_any@5`) | 0.981 | 0.545 |
+| `recall_all@5` of BM25 only, no model | 0.832 | 0.274 |
+| Search latency p50 / p95 | 88 ms / 123 ms | 582 ms / 821 ms |
 
-- The baseline was below plain BM25. The current search (a BM25 keyword signal with a proximity window, and new default weights) is above it in retrieval (46 questions won, 6 lost, p < 0.001) and in answers (48 won, 23 lost, p = 0.004; BM25 answers from the baseline run).
-- With the evidence sessions handed to the reader, answer accuracy is 0.936. Most of the distance to 0.468 is retrieval, not the reader model.
-- Weak spot: questions that need several sessions. `recall_all@5` is 0.157 for multi-session and for temporal-reasoning questions, and 0.000 for the 71 questions with three or more evidence sessions.
+- Per question, the search is ahead of plain BM25 on `recall_all@5` (17 questions won, none lost, p < 0.001). Answers are weakest for questions that span several sessions (multi-session 0.662); every other question type is between 0.867 and 1.000; the 30 abstention questions score 0.800.
+- With the evidence sessions handed to the reader, answer accuracy is 0.936. That is the reference for this reader and judge in both settings.
+- In the shared memory the first baseline (2026-11-12) was below plain BM25 (`recall_all@5` 0.204, answers 0.318). The current search (a BM25 keyword signal with a proximity window, and new default weights) is above it in retrieval (46 questions won, 6 lost, p < 0.001) and in answers (0.468 against 0.418; 48 won, 23 lost, p = 0.004; BM25 answers from the baseline run).
+- The shared memory pools the histories written for all 500 questions, which is what makes it harder: `recall_all@5` there is 0.157 for multi-session and for temporal-reasoning questions and 0.000 for the 71 questions with three or more evidence sessions.
 - Latency includes embedding the query and was measured on a CPU-only development machine; machine load was not controlled.
-- The default weights were chosen on these same questions; a split-half check (weights chosen on one half, scored on the other) gives the same 0.360.
+- The default weights were chosen on these same 500 questions, asked against the shared memory; a split-half check (weights chosen on one half, scored on the other) gives the same 0.360 there. The per-question figures use the same questions and weights.
 
-Method, arms, safety guards and how to reproduce: [benchmark README](benchmarks/longmemeval/README.md). All tables of both runs: [Results](benchmarks/longmemeval/README.md#results).
+Method, arms, safety guards and how to reproduce: [benchmark README](benchmarks/longmemeval/README.md). All tables of all runs: [Results](benchmarks/longmemeval/README.md#results).
 
 ### How this relates to published numbers
 
-Published LongMemEval figures cannot be ranked against the table above, nor against each other: the published setting is one store of about 50 sessions per question, and every publisher chooses its own answer model, judge and retrieval depth. They are listed for orientation, each with its source.
+Published LongMemEval figures are listed for orientation, each with its source. They cannot be ranked against each other or against HiveMem's figure: every publisher chooses its own answer model, judge and retrieval depth. HiveMem's per-question figure uses the same questions and haystacks (each question searched only within its own haystack of about 48 sessions, emulated with a tag filter on one store), but not the same models, judge or store.
 
-| System | Published figure | What the figure is | Source |
+| System | Figure | What the figure is | Source |
 |---|---|---|---|
 | GPT-4o reading the whole history, no memory system | 60.6 % | answer accuracy | [LongMemEval paper, Fig. 3(b)](https://arxiv.org/html/2410.10813v2) |
 | Zep | 71.2 % | answer accuracy, GPT-4o | [Zep paper, Table 2](https://arxiv.org/html/2501.13956v1) |
@@ -120,13 +122,16 @@ Published LongMemEval figures cannot be ranked against the table above, nor agai
 | Mem0 | 94.4 | score stated on Mem0's own page; metric, model and setting not given there | [Mem0 research](https://mem0.ai/research) |
 | Supermemory | 97 % | "Recall@20 with aggregation", as the publisher labels it | [Supermemory research](https://supermemory.ai/research) |
 | MemPalace | 96.6 % | retrieval recall R@5, no LLM | [MemPalace benchmarks](https://github.com/MemPalace/mempalace/blob/main/benchmarks/BENCHMARKS.md) |
-| BM25 only, no model, same per-question setting | 96.8 % | `recall_any@5`, measured for this project | [benchmark README](benchmarks/longmemeval/README.md#why-the-numbers-are-not-comparable-with-vendor-headlines) |
-| HiveMem's vectors, same per-question setting | 97.2 % | `recall_any@5`, measured for this project | [benchmark README](benchmarks/longmemeval/README.md#why-the-numbers-are-not-comparable-with-vendor-headlines) |
+| *Measured for this project: emulated per-question store, Claude reader and judge, not rank-comparable* | | | |
+| HiveMem | 85.2 % | answer accuracy, Claude Haiku 5.5, judged by Claude Sonnet 5.5 | [benchmark README](benchmarks/longmemeval/README.md#per-question-setting-v9430-2026-11-15) |
+| BM25 only, no model | 96.8 % | `recall_any@5` | [benchmark README](benchmarks/longmemeval/README.md#per-question-setting-v9430-2026-11-15) |
+| HiveMem search | 98.1 % | `recall_any@5` | [benchmark README](benchmarks/longmemeval/README.md#per-question-setting-v9430-2026-11-15) |
 
 What can and cannot be read from this:
 
-- **Retrieval in the published setting is saturated.** HiveMem's stored vectors reach 97.2 % `recall_any@5` there (84.3 % `recall_all@5`); plain BM25 without any model reaches 96.8 % (83.2 %), and the difference is not significant (30 questions won, 25 lost, p = 0.59). The HiveMem figure is the exact cosine similarity of the best of a session's cell vector and chunk vectors, computed on the stored vectors, not a run through the search endpoint.
-- **HiveMem has no answer-accuracy figure in the published setting yet.** The 46.8 % above comes from the harder shared memory, so it is not a rank among the answer-accuracy figures in this table.
+- **Same questions and haystacks, different models.** HiveMem's 85.2 % is the share of all 500 questions answered correctly, with Claude Haiku 5.5 as reader and Claude Sonnet 5.5 as judge; the published answer-accuracy figures in this table whose judge is stated use GPT-4o as judge. The unweighted mean over the six question types, which Mastra reports as overall accuracy, is 88.1 % for HiveMem (abstention questions counted in their own type).
+- **The per-question store is emulated.** All sessions stay in one store and the search is restricted to the question's haystack with a tag filter; the [benchmark README](benchmarks/longmemeval/README.md#per-question-setting-v9430-2026-11-15) lists what that changes.
+- **Retrieval in this setting is close to saturated for `recall_any@5`.** HiveMem's search reaches 98.1 % (86.8 % `recall_all@5`); plain BM25 without any model reaches 96.8 % (83.2 %). With the evidence sessions handed to the reader, 47 more questions are answered correctly and 5 fewer, so retrieval still costs about 8 points of answer accuracy.
 - **The reader model moves answer accuracy by itself.** Mastra reports 84.23 % and 94.87 % for the same memory with two answer models.
 
 Published figures as read from the linked pages on 2026-11-15.
