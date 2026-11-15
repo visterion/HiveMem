@@ -26,6 +26,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -37,6 +38,7 @@ class AdminControllerTest {
     private InstanceConfig instanceConfig;
     private TokenService tokenService;
     private com.hivemem.consumption.DocumentDedupService dedup;
+    private EventTimeRepairService eventTimeRepair;
     private AdminController controller;
     private static final UUID INSTANCE_ID = UUID.fromString("11111111-2222-3333-4444-555555555555");
 
@@ -45,12 +47,14 @@ class AdminControllerTest {
         instanceConfig = mock(InstanceConfig.class);
         tokenService = mock(TokenService.class);
         dedup = mock(com.hivemem.consumption.DocumentDedupService.class);
+        eventTimeRepair = mock(EventTimeRepairService.class);
         when(instanceConfig.instanceId()).thenReturn(INSTANCE_ID);
         @SuppressWarnings("unchecked")
         org.springframework.beans.factory.ObjectProvider<com.hivemem.summarize.SummarizerService> summarizer =
                 mock(org.springframework.beans.factory.ObjectProvider.class);
         controller = new AdminController(instanceConfig, tokenService,
-                mock(com.hivemem.attachment.AttachmentChunkRepairService.class), summarizer, dedup);
+                mock(com.hivemem.attachment.AttachmentChunkRepairService.class), summarizer, dedup,
+                eventTimeRepair);
     }
 
     // ── identity ───────────────────────────────────────────────────────────
@@ -287,6 +291,51 @@ class AdminControllerTest {
         var resp = controller.dedupBackfill(null, null, 500, writerRequest());
         assertEquals(HttpStatus.FORBIDDEN, resp.getStatusCode());
         verifyNoInteractions(dedup);
+    }
+
+    // ── backfillEventTime ──────────────────────────────────────────────────
+
+    @Test
+    void backfillEventTimeDefaultsToDryRun() throws Exception {
+        var param = AdminController.class
+                .getMethod("backfillEventTime", boolean.class, int.class, HttpServletRequest.class)
+                .getParameters()[0].getAnnotation(org.springframework.web.bind.annotation.RequestParam.class);
+        assertEquals("true", param.defaultValue());
+        when(eventTimeRepair.preview(200)).thenReturn(Map.of("dry_run", true));
+
+        var resp = controller.backfillEventTime(Boolean.parseBoolean(param.defaultValue()), 200, adminRequest());
+
+        assertEquals(HttpStatus.OK, resp.getStatusCode());
+        verify(eventTimeRepair).preview(200);
+        verify(eventTimeRepair, never()).repair(anyInt());
+    }
+
+    @Test
+    void backfillEventTimeClampsLimit() {
+        controller.backfillEventTime(true, 0, adminRequest());
+        controller.backfillEventTime(true, -5, adminRequest());
+        controller.backfillEventTime(true, 100000, adminRequest());
+
+        verify(eventTimeRepair, times(2)).preview(1);
+        verify(eventTimeRepair).preview(1000);
+    }
+
+    @Test
+    void backfillEventTimeRealRunCallsRepair() {
+        when(eventTimeRepair.repair(50)).thenReturn(Map.of("dry_run", false));
+
+        var resp = controller.backfillEventTime(false, 50, adminRequest());
+
+        assertEquals(HttpStatus.OK, resp.getStatusCode());
+        verify(eventTimeRepair).repair(50);
+        verify(eventTimeRepair, never()).preview(anyInt());
+    }
+
+    @Test
+    void backfillEventTimeForbiddenForNonAdmin() {
+        var resp = controller.backfillEventTime(false, 50, writerRequest());
+        assertEquals(HttpStatus.FORBIDDEN, resp.getStatusCode());
+        verifyNoInteractions(eventTimeRepair);
     }
 
     // ── helpers ────────────────────────────────────────────────────────────

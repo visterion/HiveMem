@@ -42,7 +42,8 @@ class AdminControllerTokenTest {
                 mock(org.springframework.beans.factory.ObjectProvider.class);
         controller = new AdminController(instanceConfig, tokenService,
                 mock(com.hivemem.attachment.AttachmentChunkRepairService.class), summarizer,
-                mock(com.hivemem.consumption.DocumentDedupService.class));
+                mock(com.hivemem.consumption.DocumentDedupService.class),
+                mock(EventTimeRepairService.class));
     }
 
     @Test

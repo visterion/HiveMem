@@ -38,16 +38,19 @@ public class AdminController {
     private final com.hivemem.attachment.AttachmentChunkRepairService chunkRepair;
     private final ObjectProvider<SummarizerService> summarizer;
     private final DocumentDedupService dedup;
+    private final EventTimeRepairService eventTimeRepair;
 
     public AdminController(InstanceConfig instanceConfig, TokenService tokenService,
                            com.hivemem.attachment.AttachmentChunkRepairService chunkRepair,
                            ObjectProvider<SummarizerService> summarizer,
-                           DocumentDedupService dedup) {
+                           DocumentDedupService dedup,
+                           EventTimeRepairService eventTimeRepair) {
         this.instanceConfig = instanceConfig;
         this.tokenService = tokenService;
         this.chunkRepair = chunkRepair;
         this.summarizer = summarizer;
         this.dedup = dedup;
+        this.eventTimeRepair = eventTimeRepair;
     }
 
     @GetMapping("/identity")
@@ -129,6 +132,22 @@ public class AdminController {
         }
         int processed = svc.backfillTaxAndDate(limit);
         return ResponseEntity.ok(Map.of("processed", processed));
+    }
+
+    /**
+     * One-time repair: restore the event time (valid_from) that revisions made before the
+     * keep-event-time rule replaced with the revision time. A dry run unless {@code dry_run=false};
+     * the real run writes to the live store, one transaction per cell. {@code limit} is clamped
+     * into {@code [1, MAX_BACKFILL_LIMIT]}.
+     */
+    @PostMapping("/backfill-event-time")
+    public ResponseEntity<?> backfillEventTime(
+            @RequestParam(value = "dry_run", defaultValue = "true") boolean dryRun,
+            @RequestParam(value = "limit", defaultValue = "200") int limit,
+            HttpServletRequest request) {
+        if (!isAdmin(request)) return forbidden();
+        int bounded = Math.clamp(limit, 1, MAX_BACKFILL_LIMIT);
+        return ResponseEntity.ok(dryRun ? eventTimeRepair.preview(bounded) : eventTimeRepair.repair(bounded));
     }
 
     /**

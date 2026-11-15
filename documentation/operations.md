@@ -308,6 +308,23 @@ A physical re-scan produces different bytes (so SHA-256 dedup does not catch it)
 
 On startup, any live committed cell with a NULL embedding and content longer than 500 characters is tagged `needs_summary`; the scheduled summarizer (every 5 min) then generates its summary and re-embeds it. This is automatic and idempotent — no operator action is needed. It restores semantic search for scans that previously missed their embedding (long OCR'd documents are embedded only after summarization).
 
+### Restoring event times replaced by revisions
+
+Before revisions kept the event time of the version they replace, every revision gave the new row `valid_from = now()` and so threw away the cell's event date. `POST /admin/backfill-event-time` restores it. The rule: starting at the lineage root, a row inherits the event time unless its `valid_from` was set on purpose (it differs from both its own `created_at` and its parent's `valid_from`); the current row of each lineage gets that event time back.
+
+Run the dry run first (the default) and read `candidates`, `by_status`, `shift` and the listed cells. The real run (`dry_run=false`) writes to the live store, one transaction per cell, and appends an `update_cell_meta` op per updated cell — get the owner's authorization before running it. It is paged by `limit` (default 200, clamped to 1…1000); repeat until `remaining` is 0. A cell revised or re-dated since the query is skipped, not overwritten.
+
+To undo, set each listed `old_valid_from` back on its cell.
+
+```bash
+curl -s -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
+  "https://example.com/admin/backfill-event-time"
+# dry run → {"dry_run":true,"candidates":12,"by_status":{"committed":12},"shift":{...},"cells":[...]}
+curl -s -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
+  "https://example.com/admin/backfill-event-time?dry_run=false&limit=200"
+# → {"dry_run":false,"updated":12,"skipped":0,"remaining":0,"cells":[...]}
+```
+
 ### Retro-dedup of existing scans
 
 `POST /admin/dedup-backfill` walks existing live `consumption:`-sourced cells (status `committed` or `pending`) oldest→newest and discards re-scans (same soft-delete + `duplicate_of` tunnel + S3 cleanup as live dedup; a discarded `pending` cell also becomes `rejected`, so it leaves the approval queue). Run it **only after embeddings have been backfilled** — give the startup `needs_summary` tagging plus at least one 5-min summarizer cycle to embed the long scans first, otherwise they have no embedding to match on. This is a production write — get explicit authorization before running it.
