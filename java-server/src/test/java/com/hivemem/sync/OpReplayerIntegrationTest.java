@@ -323,6 +323,31 @@ class OpReplayerIntegrationTest {
     }
 
     @Test
+    void reviseCellReplayKeepsTheOldRowsValidFrom() {
+        UUID oldId = insertMinimalCell();
+        // The replaying instance's own row carries the event time; the op payload does not.
+        dsl.execute("UPDATE cells SET valid_from = ?::timestamptz WHERE id = ?",
+                "2024-03-05T10:00:00Z", oldId);
+        UUID newId = UUID.randomUUID();
+
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.put("cell_id", oldId.toString());
+        payload.put("new_cell_id", newId.toString());
+        payload.put("new_content", "revised content");
+        payload.put("new_summary", "revised summary");
+        payload.put("status", "committed");
+
+        OpDto op = new OpDto(32L, UUID.randomUUID(), "revise_cell", payload, OffsetDateTime.now());
+        assertThat(replayer.replay(sourcePeer, op)).isEqualTo(OpReplayer.ReplayResult.REPLAYED);
+
+        var newRow = dsl.fetchOne("SELECT valid_from FROM cells WHERE id = ?", newId);
+        assertThat(newRow.get("valid_from", OffsetDateTime.class).toInstant())
+                .isEqualTo(java.time.Instant.parse("2024-03-05T10:00:00Z"));
+        var oldRow = dsl.fetchOne("SELECT valid_until FROM cells WHERE id = ?", oldId);
+        assertThat(oldRow.get("valid_until", OffsetDateTime.class)).isNotNull();
+    }
+
+    @Test
     void reviseCellSkippedWhenNewIdMissing() {
         ObjectNode payload = objectMapper.createObjectNode();
         payload.put("cell_id", UUID.randomUUID().toString());

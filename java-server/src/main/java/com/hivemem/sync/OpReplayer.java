@@ -149,7 +149,7 @@ public class OpReplayer {
         if (newId == null) return ReplayResult.SKIPPED;
         if (dsl.fetchOne("SELECT 1 FROM cells WHERE id = ?", newId) != null) return ReplayResult.SKIPPED;
         var meta = dsl.fetchOne("""
-                SELECT realm, signal, topic, source, tags, importance, key_points, insight, actionability
+                SELECT realm, signal, topic, source, tags, importance, key_points, insight, actionability, valid_from
                 FROM cells WHERE id = ? AND valid_until IS NULL
                 """, oldId);
         if (meta == null) {
@@ -183,7 +183,7 @@ public class OpReplayer {
             tx.execute("""
                     INSERT INTO cells (id, parent_id, content, embedding, realm, signal, topic, source, tags,
                                        importance, summary, key_points, insight, actionability, status, created_by, valid_from)
-                    VALUES (?::uuid, ?::uuid, ?, ?::vector, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, now())
+                    VALUES (?::uuid, ?::uuid, ?, ?::vector, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::timestamptz)
                     """,
                     newId, oldId, newContent, embArr,
                     meta.get("realm", String.class), meta.get("signal", String.class),
@@ -191,7 +191,9 @@ public class OpReplayer {
                     tags, meta.get("importance", Integer.class),
                     newSummary, keyPoints,
                     insight, meta.get("actionability", String.class),
-                    status, text(p, "agent_id"));
+                    status, text(p, "agent_id"),
+                    // A revision keeps the event time of the version it replaces.
+                    meta.get("valid_from", OffsetDateTime.class));
         });
         return ReplayResult.REPLAYED;
     }
