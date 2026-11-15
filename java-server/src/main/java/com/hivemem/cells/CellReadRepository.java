@@ -321,7 +321,7 @@ public class CellReadRepository {
                 )
                 SELECT id, parent_id, summary, created_by, valid_from, valid_until, ingested_at
                 FROM chain
-                ORDER BY valid_from ASC
+                ORDER BY depth DESC
                 """, cellId)) {
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("id", uuidValue(row, "id"));

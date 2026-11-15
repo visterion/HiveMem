@@ -1191,6 +1191,54 @@ class ReadToolIntegrationTest {
     }
 
     @Test
+    void cellHistoryOrdersByLineageWhenVersionsShareValidFrom() throws Exception {
+        OffsetDateTime shared = OffsetDateTime.parse("2024-03-05T10:00:00Z");
+        insertHistoryVersion(501, null, "Lineage V1", shared);
+        insertHistoryVersion(502, 501, "Lineage V2", shared);
+        insertHistoryVersion(503, 502, "Lineage V3", shared);
+
+        JsonNode content = callToolContent("history", Map.of("type", "cell", "id", historyId(503).toString()));
+        assertThat(content).hasSize(3);
+        assertThat(content.get(0).path("summary").asText()).isEqualTo("Lineage V1");
+        assertThat(content.get(1).path("summary").asText()).isEqualTo("Lineage V2");
+        assertThat(content.get(2).path("summary").asText()).isEqualTo("Lineage V3");
+    }
+
+    @Test
+    void cellHistoryOrdersByLineageWhenChildIsDatedEarlier() throws Exception {
+        insertHistoryVersion(511, null, "Dated V1", OffsetDateTime.parse("2025-02-01T00:00:00Z"));
+        insertHistoryVersion(512, 511, "Dated V2", OffsetDateTime.parse("2025-01-01T00:00:00Z"));
+
+        JsonNode content = callToolContent("history", Map.of("type", "cell", "id", historyId(512).toString()));
+        assertThat(content).hasSize(2);
+        assertThat(content.get(0).path("summary").asText()).isEqualTo("Dated V1");
+        assertThat(content.get(1).path("summary").asText()).isEqualTo("Dated V2");
+    }
+
+    @Test
+    void cellHistoryOnMiddleVersionReturnsItAndItsAncestors() throws Exception {
+        OffsetDateTime shared = OffsetDateTime.parse("2024-03-05T10:00:00Z");
+        insertHistoryVersion(521, null, "Middle V1", shared);
+        insertHistoryVersion(522, 521, "Middle V2", shared);
+        insertHistoryVersion(523, 522, "Middle V3", shared);
+
+        JsonNode content = callToolContent("history", Map.of("type", "cell", "id", historyId(522).toString()));
+        assertThat(content).hasSize(2);
+        assertThat(content.get(0).path("summary").asText()).isEqualTo("Middle V1");
+        assertThat(content.get(1).path("summary").asText()).isEqualTo("Middle V2");
+    }
+
+    private static UUID historyId(int n) {
+        return UUID.fromString(String.format("00000000-0000-0000-0000-000000000%03d", n));
+    }
+
+    private void insertHistoryVersion(int n, Integer parent, String summary, OffsetDateTime validFrom) {
+        insertDrawer(historyId(n), parent == null ? null : historyId(parent), summary + " content", "alpha", "facts",
+                "history", "system", 3, summary, null, null, "committed", "writer",
+                validFrom, validFrom, null);
+    }
+
+    @Test
     void historyWithFactTypeReturnsOldestVersionFirst() throws Exception {
         UUID originalId = UUID.fromString("00000000-0000-0000-0000-000000000401");
         UUID revisedId = UUID.fromString("00000000-0000-0000-0000-000000000402");
