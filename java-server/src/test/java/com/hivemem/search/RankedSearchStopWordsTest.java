@@ -176,6 +176,32 @@ class RankedSearchStopWordsTest {
     }
 
     @Test
+    void onLongQueryUnderTheBoundGetsTheProximityWindow() {
+        // Both cells hold the same words in the same number; only the distance of the two rare words differs.
+        UUID adjacent = insertCell("a", "zorkon quibex" + " fill".repeat(40));
+        UUID far = insertCell("a", "zorkon" + " fill".repeat(40) + " quibex");
+        StringBuilder q = new StringBuilder("zorkon quibex");
+        for (int i = 1; i <= 20; i++) {
+            q.append(String.format(" qx%02d", i));
+        }
+        for (String w : new String[]{"the", "of", "and", "an", "to", "in", "is", "it", "for", "on",
+                "with", "as", "by", "at", "be", "this", "that", "was", "are", "were",
+                "but", "or", "if", "then", "so", "than", "too", "very", "can", "will",
+                "just", "should", "now", "i", "me", "my", "we", "our", "you", "your",
+                "he", "she", "they", "them", "its"}) {
+            q.append(' ').append(w);
+        }
+        // 67 distinct lexemes with the stop words: above the bound of 64, no window.
+        off();
+        Map<UUID, Float> keywordOff = byId(search(q.toString()));
+        assertThat(keywordOff.get(adjacent)).isGreaterThan(0f).isEqualTo(keywordOff.get(far));
+        // 22 distinct lexemes without them: the window applies and ranks the adjacent pair up.
+        on();
+        Map<UUID, Float> keywordOn = byId(search(q.toString()));
+        assertThat(keywordOn.get(adjacent)).isGreaterThan(keywordOn.get(far));
+    }
+
+    @Test
     void switchingOffAgainRemovesTheFilter() {
         on();
         assertThat(functionDefinition()).contains("length(to_tsvector('german', lex)) > 0");
