@@ -26,6 +26,22 @@ class EmbeddingMigrationServiceUnitTest {
     private final EmbeddingMigrationService service = new EmbeddingMigrationService(client, repo);
 
     @Test
+    void unknownStopWordConfigurationFailsBeforeAnythingIsTouched() {
+        when(client.getInfo()).thenReturn(new EmbeddingInfo("new-model", 768));
+        when(repo.unknownStopWordConfigs()).thenReturn(List.of("klingon"));
+
+        assertThatThrownBy(() -> service.run(null))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("hivemem.search.keyword.stop-word-configs")
+                .hasMessageContaining("klingon");
+
+        verify(repo, never()).loadStoredInfo();
+        verify(repo, never()).dropEmbeddingIndex();
+        verify(repo, never()).replaceRankedSearchFunction(anyInt());
+        verify(repo, never()).saveInfo(any());
+    }
+
+    @Test
     void isReencodingActiveStartsFalse() {
         assertThat(service.isReencodingActive()).isFalse();
     }

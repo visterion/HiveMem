@@ -94,6 +94,21 @@ public class EmbeddingMigrationService implements ApplicationRunner {
                     + " (must be 1..2000 for a pgvector HNSW index). Refusing to migrate.");
         }
 
+        // An unknown text search configuration would only fail when ranked_search is created,
+        // which on the re-encode path is after the backup and the full re-encode. Refuse it here.
+        List<String> unknownStopWordConfigs = stateRepository.unknownStopWordConfigs();
+        if (!unknownStopWordConfigs.isEmpty()) {
+            throw new IllegalStateException("hivemem.search.keyword.stop-word-configs names text search "
+                    + "configurations the database does not have: " + unknownStopWordConfigs
+                    + ". Fix the setting or leave it empty. Refusing to start.");
+        }
+        List<String> stopWordConfigs = stateRepository.stopWordConfigs();
+        if (stopWordConfigs.isEmpty()) {
+            log.info("Keyword signal uses every query word (no stop-word configurations set)");
+        } else {
+            log.info("Keyword signal drops stop words of the configurations {}", stopWordConfigs);
+        }
+
         Optional<EmbeddingInfo> storedInfo = stateRepository.loadStoredInfo();
 
         if (storedInfo.isEmpty()) {

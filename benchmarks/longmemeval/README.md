@@ -562,6 +562,26 @@ The unweighted mean of the six question-type columns is 0.881.
 - Not a harness command, and one run. The paired tests cover question sampling, not
   run-to-run variation of the reader and judge.
 
+### Stop-word option (off by default), 2026-11-15
+
+The `hivemem` arm on the shared store of the v9.43.0 search, once unchanged and once with the
+stop words of `german` and `english` dropped from the query (the clause the option
+`hivemem.search.keyword.stop-word-configs` renders, installed in the benchmark database for the
+measurement). 470 non-abstention questions.
+
+| 470 non-abstention questions | unchanged | stop words dropped | option wins : unchanged wins | p |
+| --- | --- | --- | --- | --- |
+| `recall_all@5` | 0.360 | 0.343 | 1 : 9 | 0.0215 |
+| `recall_all@10` | 0.428 | 0.417 | 2 : 7 | 0.18 |
+| `recall_any@5` | 0.545 | 0.536 | 3 : 7 | 0.34 |
+| search latency p50 (ms) | 588 | 334 | - | - |
+| search latency p95 (ms) | 846 | 441 | - | - |
+
+The top 5 differs for 252 questions. All nine questions the option loses lose only English
+function words such as "my", "I" and "did", which in chat transcripts mark the user's own
+statements. Therefore the option is off by default and the benchmark's compose file does not
+pass the variable.
+
 ### Baseline 2026-11-12
 
 This is the first full run (run id `baseline-2026-11-12`). Terms and columns are those

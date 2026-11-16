@@ -138,6 +138,9 @@ services:
       HIVEMEM_EMBEDDING_TIMEOUT: ${HIVEMEM_EMBEDDING_TIMEOUT:-PT30S}
       HIVEMEM_EMBEDDING_MAX_RETRIES: ${HIVEMEM_EMBEDDING_MAX_RETRIES:-3}
       HIVEMEM_EMBEDDING_RETRY_BACKOFF_MS: ${HIVEMEM_EMBEDDING_RETRY_BACKOFF_MS:-500}
+      # Optional, empty = off: text search configurations whose stop words the keyword signal ignores
+      # (for example german,english). See documentation/tools.md.
+      HIVEMEM_SEARCH_STOP_WORD_CONFIGS: ${HIVEMEM_SEARCH_STOP_WORD_CONFIGS:-}
       HIVEMEM_ATTACHMENT_ENABLED: "true"
       SEAWEEDFS_S3_ENDPOINT: http://seaweedfs:8333
       SEAWEEDFS_S3_BUCKET: hivemem-attachments
