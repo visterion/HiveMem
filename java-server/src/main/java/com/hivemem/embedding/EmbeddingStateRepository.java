@@ -3,11 +3,11 @@ package com.hivemem.embedding;
 import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.impl.DSL;
+import com.hivemem.search.SearchKeywordProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.lang.Nullable;
-import com.hivemem.search.SearchKeywordProperties;
 import org.springframework.stereotype.Repository;
 
 import javax.sql.DataSource;
@@ -39,19 +39,25 @@ public class EmbeddingStateRepository {
         this(dslContext, dataSource, new SearchKeywordProperties());
     }
 
-    /**
-     * Explicitly {@code @Autowired}: the class declares two constructors, and Spring's implicit
-     * single-constructor autowiring only applies when exactly one is declared. A malformed
-     * configuration name fails here, i.e. at bean creation. The properties bean is {@code @Nullable} so
-     * that slim test contexts that wire only this repository keep working; absent means "off".
-     */
-    @Autowired
+    /** Direct construction (tests): the given settings, no Spring lookup. */
     public EmbeddingStateRepository(DSLContext dslContext, DataSource dataSource,
-                                    @Nullable SearchKeywordProperties keywordProperties) {
+                                    SearchKeywordProperties keywordProperties) {
         this.dslContext = dslContext;
         this.dataSource = dataSource;
         this.stopWordConfigs = RankedSearchTemplate.normalizeStopWordConfigs(
-                keywordProperties == null ? null : keywordProperties.getStopWordConfigs());
+                keywordProperties.getStopWordConfigs());
+    }
+
+    /**
+     * Explicitly {@code @Autowired}: the class declares several constructors, and Spring's implicit
+     * single-constructor autowiring only applies when exactly one is declared. The settings bean is
+     * optional so that slim test contexts that wire only this repository keep working; absent means
+     * "off". A malformed configuration name fails here, i.e. at bean creation.
+     */
+    @Autowired
+    public EmbeddingStateRepository(DSLContext dslContext, DataSource dataSource,
+                                    ObjectProvider<SearchKeywordProperties> keywordProperties) {
+        this(dslContext, dataSource, keywordProperties.getIfAvailable(SearchKeywordProperties::new));
     }
 
     /** The configured stop-word configuration names, normalised; empty when the filter is off. */

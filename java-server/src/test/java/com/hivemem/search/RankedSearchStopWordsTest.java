@@ -118,6 +118,7 @@ class RankedSearchStopWordsTest {
         new EmbeddingStateRepository(dsl, ds, new SearchKeywordProperties(List.of("simple")))
                 .replaceRankedSearchFunction(DIMS);
         assertThat(search("the zebra der")).isEqualTo(before);
+        assertThat(functionDefinition()).contains("to_tsvector('simple', lex)");
     }
 
     @Test
@@ -125,7 +126,8 @@ class RankedSearchStopWordsTest {
         off();
         var repo = new EmbeddingStateRepository(dsl, ds, new SearchKeywordProperties(List.of("german", "klingon")));
         assertThat(repo.unknownStopWordConfigs()).containsExactly("klingon");
-        assertThatThrownBy(() -> repo.replaceRankedSearchFunction(DIMS)).isInstanceOf(RuntimeException.class);
+        assertThatThrownBy(() -> repo.replaceRankedSearchFunction(DIMS)).isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("klingon");
         assertThat(byId(search("zebra")).get(content)).isEqualTo(1.0f);
         assertThat(functionDefinition()).doesNotContain("length(to_tsvector(");
     }
