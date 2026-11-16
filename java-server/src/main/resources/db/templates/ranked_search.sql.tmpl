@@ -1,5 +1,7 @@
 -- Template loaded by EmbeddingStateRepository.replaceRankedSearchFunction.
 -- {{DIM}} is replaced at runtime with the active embedding dimension.
+-- The stop-word filter placeholder after `AS lex` in `terms` is replaced at runtime; it is empty unless
+-- stop-word configurations are set.
 
 CREATE OR REPLACE FUNCTION ranked_search(
     query_embedding vector,
@@ -42,7 +44,7 @@ LANGUAGE SQL STABLE SET hnsw.ef_search = 500 AS $$
     WITH terms AS (
         SELECT lex,
                to_tsquery('simple', '''' || replace(lex, '''', '''''') || '''') AS tq
-        FROM unnest(tsvector_to_array(to_tsvector('simple', coalesce(query_text, '')))) AS lex
+        FROM unnest(tsvector_to_array(to_tsvector('simple', coalesce(query_text, '')))) AS lex{{STOP_WORD_FILTER}}
     ),
     -- Corpus statistics. n and avgdl, and the document frequencies in `idf`, and the pool in `d`
     -- all use the same seven filter predicates (validity, status, realm, realms, signal, topic,
