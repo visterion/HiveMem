@@ -68,6 +68,9 @@ hivemem:
       graph-proximity: 0.10
     confidence:
       floor: 0.20
+    keyword:
+      # Comma-separated text search configuration names (e.g. german,english); empty = off.
+      stop-word-configs: ${HIVEMEM_SEARCH_STOP_WORD_CONFIGS:}
   hooks:
     enabled: true
     relevance-threshold: ${HIVEMEM_HOOKS_RELEVANCE_THRESHOLD:0.65}

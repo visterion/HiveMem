@@ -5,6 +5,9 @@ import org.jooq.Record;
 import org.jooq.impl.DSL;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.lang.Nullable;
+import com.hivemem.search.SearchKeywordProperties;
 import org.springframework.stereotype.Repository;
 
 import javax.sql.DataSource;
@@ -29,9 +32,46 @@ public class EmbeddingStateRepository {
      *  the lock stuck on an idle pooled connection. */
     private Connection lockConnection;
 
+    private final List<String> stopWordConfigs;
+
+    /** Without a keyword setting: the stop-word filter is off. */
     public EmbeddingStateRepository(DSLContext dslContext, DataSource dataSource) {
+        this(dslContext, dataSource, new SearchKeywordProperties());
+    }
+
+    /**
+     * Explicitly {@code @Autowired}: the class declares two constructors, and Spring's implicit
+     * single-constructor autowiring only applies when exactly one is declared. A malformed
+     * configuration name fails here, i.e. at bean creation. The properties bean is {@code @Nullable} so
+     * that slim test contexts that wire only this repository keep working; absent means "off".
+     */
+    @Autowired
+    public EmbeddingStateRepository(DSLContext dslContext, DataSource dataSource,
+                                    @Nullable SearchKeywordProperties keywordProperties) {
         this.dslContext = dslContext;
         this.dataSource = dataSource;
+        this.stopWordConfigs = RankedSearchTemplate.normalizeStopWordConfigs(
+                keywordProperties == null ? null : keywordProperties.getStopWordConfigs());
+    }
+
+    /** The configured stop-word configuration names, normalised; empty when the filter is off. */
+    public List<String> stopWordConfigs() {
+        return stopWordConfigs;
+    }
+
+    /** Configured names for which the database has no text search configuration, in configured order. */
+    public List<String> unknownStopWordConfigs() {
+        if (stopWordConfigs.isEmpty()) {
+            return List.of();
+        }
+        return dslContext.fetch(
+                        // PostgreSQL has no to_regconfig(); resolve through the catalog the way an
+                        // unqualified name in to_tsvector() resolves, i.e. via the search path.
+                        "SELECT n FROM unnest(?::text[]) WITH ORDINALITY AS t(n, i) "
+                                + "WHERE NOT EXISTS (SELECT 1 FROM pg_ts_config c "
+                                + "WHERE c.cfgname = t.n AND pg_ts_config_is_visible(c.oid)) ORDER BY i",
+                        (Object) stopWordConfigs.toArray(new String[0]))
+                .getValues("n", String.class);
     }
 
     public Optional<EmbeddingInfo> loadStoredInfo() {
@@ -264,7 +304,7 @@ public class EmbeddingStateRepository {
                 END
                 $do$
                 """;
-        String createSql = RankedSearchTemplate.render(dimension);
+        String createSql = RankedSearchTemplate.render(dimension, stopWordConfigs);
         // Drop and create must be atomic: a crash between the two statements would
         // otherwise leave the database without ranked_search until the next boot.
         dslContext.transaction(cfg -> {
