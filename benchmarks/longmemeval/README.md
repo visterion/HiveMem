@@ -567,7 +567,10 @@ The unweighted mean of the six question-type columns is 0.881.
 The `hivemem` arm on the shared store of the v9.43.0 search, once unchanged and once with the
 stop words of `german` and `english` dropped from the query (the clause the option
 `hivemem.search.keyword.stop-word-configs` renders, installed in the benchmark database for the
-measurement). 470 non-abstention questions.
+measurement). 470 non-abstention questions. The two runs are `m6-control` and `m6-stopwords`, on the
+store and image of the v9.43.0 search (commit `46f38db`). For the measurement the clause was installed
+directly in the benchmark database, before the option existed; the function the option installs for
+`german,english` was afterwards compared with the measured one and is byte-identical.
 
 | 470 non-abstention questions | unchanged | stop words dropped | option wins : unchanged wins | p |
 | --- | --- | --- | --- | --- |

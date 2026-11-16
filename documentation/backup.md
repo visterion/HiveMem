@@ -33,6 +33,8 @@ installs `postgresql-client-17` from the PGDG repository.
 
 ## Export (CLI)
 
+The CLI starts the full application, which renders the `ranked_search` function from its own environment; run it with the same `HIVEMEM_SEARCH_STOP_WORD_CONFIGS` as the server (see [Stop words in the keyword signal](tools.md#stop-words-in-the-keyword-signal-optional)).
+
 ```
 java -jar app.jar --spring.profiles.active=backup \
     backup export --out /var/lib/hivemem/exports/backup.tar.gz

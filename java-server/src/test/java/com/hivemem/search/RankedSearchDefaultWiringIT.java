@@ -23,6 +23,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Installs no stop-word filter by default. Runs the real startup runner ({@code EmbeddingMigrationService.run}) in a full
  * application context with the real {@code SearchKeywordProperties} binding, then reads back the installed function.
+ * The migrations already install the default function body, so this test pins that no filter is installed by default (the
+ * setting binds to "off"); that the startup runner renders the configured filter is proved by {@code RankedSearchStopWordsWiringIT}.
  */
 @SpringBootTest(classes = HiveMemApplication.class, webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 @ActiveProfiles("test")
